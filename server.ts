@@ -1989,6 +1989,11 @@ app.post('/api/export/docx', async (req, res) => {
   }
 });
 
+// Fallback 404 for any unhandled /api/* endpoints (prevents falling through to Vite)
+app.all('/api/*', (req, res) => {
+  res.status(404).json({ error: `مسیر API یافت نشد: ${req.method} ${req.path}` });
+});
+
 // Setup Vite or static serving
 async function startServer() {
   if (!isProduction) {

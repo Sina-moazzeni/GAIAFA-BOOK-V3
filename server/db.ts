@@ -120,6 +120,7 @@ export interface SystemSettings {
       merchantId: string;
       isSandbox: boolean;
       currency?: 'IRT' | 'IRR';
+      refererDomain?: string;
     };
     zibal: {
       enabled: boolean;
@@ -247,6 +248,7 @@ const DEFAULT_SETTINGS: SystemSettings = {
       merchantId: '00000000-0000-0000-0000-000000000000',
       isSandbox: true,
       currency: 'IRT',
+      refererDomain: 'https://gaiafa.ir/',
     },
     zibal: {
       enabled: true,

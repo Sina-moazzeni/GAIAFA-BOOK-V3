@@ -646,7 +646,7 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
         <div class="meta">
           ${fullBook.originalTitle ? `<p>عنوان زبان اصلی: ${fullBook.originalTitle}</p>` : ''}
           ${fullBook.author ? `<p>نویسنده: ${fullBook.author}</p>` : ''}
-          <p>خروجی رسمی مترجم هوش مصنوعی | تاریخ: ${new Date().toLocaleDateString('fa-IR')}</p>
+          <p>خروجی رسمی مترجم هوش مصنوعی | تاریخ: ${new Date().toLocaleDateString('fa-IR-u-nu-latn')}</p>
         </div>
         <hr/>
         ${chaptersHtml}
@@ -970,7 +970,7 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
       });
       if (res.ok) {
         fetchUsers();
-        alert(`مبلغ ${amount.toLocaleString('fa-IR')} تومان با موفقیت به کیف پول کاربر اضافه شد.`);
+        alert(`مبلغ ${amount.toLocaleString('en-US')} تومان با موفقیت به کیف پول کاربر اضافه شد.`);
       }
     } catch (e) {}
   };
@@ -1539,7 +1539,7 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
                   کل کلمات ترجمه شده
                 </div>
                 <div className="text-3xl font-black text-amber-400">
-                  {(overview?.totalWords || 0).toLocaleString('fa-IR')}
+                  {(overview?.totalWords || 0).toLocaleString('en-US')}
                 </div>
                 <div className="text-[11px] text-slate-500 mt-1">در قالب {overview?.totalBooks || 0} پروژه کتاب</div>
               </div>
@@ -1550,7 +1550,7 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
                   مجموع درآمد کل پلتفرم
                 </div>
                 <div className="text-3xl font-black text-emerald-400">
-                  {(overview?.totalRevenue || 0).toLocaleString('fa-IR')} <span className="text-xs font-normal text-slate-400">تومان</span>
+                  {(overview?.totalRevenue || 0).toLocaleString('en-US')} <span className="text-xs font-normal text-slate-400">تومان</span>
                 </div>
                 <div className="text-[11px] text-slate-500 mt-1">از درگاه‌های زرین‌پال، نکست‌پی و مستقیم</div>
               </div>
@@ -1650,11 +1650,11 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
                   <DollarSign className="w-4 h-4 text-emerald-400" />
                 </div>
                 <div className="text-2xl font-black text-white font-mono">
-                  {monthlyAnalytics?.currentMonth.revenue.toLocaleString('fa-IR')}
+                  {monthlyAnalytics?.currentMonth.revenue.toLocaleString('en-US')}
                   <span className="text-xs text-slate-400 font-normal mr-1">تومان</span>
                 </div>
                 <div className="flex items-center justify-between mt-3 pt-3 border-t border-slate-800/80 text-[11px]">
-                  <span className="text-slate-400">ماه قبل: {monthlyAnalytics?.previousMonth.revenue.toLocaleString('fa-IR')}</span>
+                  <span className="text-slate-400">ماه قبل: {monthlyAnalytics?.previousMonth.revenue.toLocaleString('en-US')}</span>
                   <span
                     className={`font-bold flex items-center gap-0.5 ${
                       (monthlyAnalytics?.growth.revenuePercent || 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'
@@ -1678,7 +1678,7 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
                   <BookOpen className="w-4 h-4 text-amber-400" />
                 </div>
                 <div className="text-2xl font-black text-amber-400 font-mono">
-                  {monthlyAnalytics?.currentMonth.booksTranslated.toLocaleString('fa-IR')}
+                  {monthlyAnalytics?.currentMonth.booksTranslated.toLocaleString('en-US')}
                   <span className="text-xs text-slate-400 font-normal mr-1">جلد</span>
                 </div>
                 <div className="flex items-center justify-between mt-3 pt-3 border-t border-slate-800/80 text-[11px]">
@@ -1706,11 +1706,11 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
                   <FileText className="w-4 h-4 text-blue-400" />
                 </div>
                 <div className="text-2xl font-black text-blue-400 font-mono">
-                  {monthlyAnalytics?.currentMonth.wordsTranslated.toLocaleString('fa-IR')}
+                  {monthlyAnalytics?.currentMonth.wordsTranslated.toLocaleString('en-US')}
                   <span className="text-xs text-slate-400 font-normal mr-1">کلمه</span>
                 </div>
                 <div className="flex items-center justify-between mt-3 pt-3 border-t border-slate-800/80 text-[11px]">
-                  <span className="text-slate-400">ماه قبل: {monthlyAnalytics?.previousMonth.wordsTranslated.toLocaleString('fa-IR')}</span>
+                  <span className="text-slate-400">ماه قبل: {monthlyAnalytics?.previousMonth.wordsTranslated.toLocaleString('en-US')}</span>
                   <span
                     className={`font-bold flex items-center gap-0.5 ${
                       (monthlyAnalytics?.growth.wordsPercent || 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'
@@ -1734,11 +1734,11 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
                   <Cpu className="w-4 h-4 text-purple-400" />
                 </div>
                 <div className="text-2xl font-black text-purple-400 font-mono">
-                  {monthlyAnalytics?.currentMonth.tokensConsumed.toLocaleString('fa-IR')}
+                  {monthlyAnalytics?.currentMonth.tokensConsumed.toLocaleString('en-US')}
                   <span className="text-xs text-slate-400 font-normal mr-1">توکن</span>
                 </div>
                 <div className="flex items-center justify-between mt-3 pt-3 border-t border-slate-800/80 text-[11px]">
-                  <span className="text-slate-400">ماه قبل: {monthlyAnalytics?.previousMonth.tokensConsumed.toLocaleString('fa-IR')}</span>
+                  <span className="text-slate-400">ماه قبل: {monthlyAnalytics?.previousMonth.tokensConsumed.toLocaleString('en-US')}</span>
                   <span
                     className={`font-bold flex items-center gap-0.5 ${
                       (monthlyAnalytics?.growth.tokensPercent || 0) >= 0 ? 'text-purple-400' : 'text-slate-400'
@@ -1757,7 +1757,7 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
                   <Users className="w-4 h-4 text-cyan-400" />
                 </div>
                 <div className="text-2xl font-black text-cyan-400 font-mono">
-                  {monthlyAnalytics?.currentMonth.newUsers.toLocaleString('fa-IR')}
+                  {monthlyAnalytics?.currentMonth.newUsers.toLocaleString('en-US')}
                   <span className="text-xs text-slate-400 font-normal mr-1">عضو</span>
                 </div>
                 <div className="flex items-center justify-between mt-3 pt-3 border-t border-slate-800/80 text-[11px]">
@@ -1801,10 +1801,10 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
                     <tr className="hover:bg-slate-850">
                       <td className="py-3 px-4 font-sans font-bold text-slate-200">درآمد حاصل از شارژ و پرداخت‌ها</td>
                       <td className="py-3 px-4 text-emerald-400 font-bold">
-                        {monthlyAnalytics?.currentMonth.revenue.toLocaleString('fa-IR')} تومان
+                        {monthlyAnalytics?.currentMonth.revenue.toLocaleString('en-US')} تومان
                       </td>
                       <td className="py-3 px-4 text-slate-400">
-                        {monthlyAnalytics?.previousMonth.revenue.toLocaleString('fa-IR')} تومان
+                        {monthlyAnalytics?.previousMonth.revenue.toLocaleString('en-US')} تومان
                       </td>
                       <td className="py-3 px-4 font-bold text-emerald-400">
                         +{monthlyAnalytics?.growth.revenuePercent}%
@@ -1833,10 +1833,10 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
                     <tr className="hover:bg-slate-850">
                       <td className="py-3 px-4 font-sans font-bold text-slate-200">حجم کلمات ترجمه شده</td>
                       <td className="py-3 px-4 text-blue-400 font-bold">
-                        {monthlyAnalytics?.currentMonth.wordsTranslated.toLocaleString('fa-IR')} کلمه
+                        {monthlyAnalytics?.currentMonth.wordsTranslated.toLocaleString('en-US')} کلمه
                       </td>
                       <td className="py-3 px-4 text-slate-400">
-                        {monthlyAnalytics?.previousMonth.wordsTranslated.toLocaleString('fa-IR')} کلمه
+                        {monthlyAnalytics?.previousMonth.wordsTranslated.toLocaleString('en-US')} کلمه
                       </td>
                       <td className="py-3 px-4 font-bold text-blue-400">
                         +{monthlyAnalytics?.growth.wordsPercent}%
@@ -1849,10 +1849,10 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
                     <tr className="hover:bg-slate-850">
                       <td className="py-3 px-4 font-sans font-bold text-slate-200">مصرف توکن‌های هوش مصنوعی</td>
                       <td className="py-3 px-4 text-purple-400 font-bold">
-                        {monthlyAnalytics?.currentMonth.tokensConsumed.toLocaleString('fa-IR')} توکن
+                        {monthlyAnalytics?.currentMonth.tokensConsumed.toLocaleString('en-US')} توکن
                       </td>
                       <td className="py-3 px-4 text-slate-400">
-                        {monthlyAnalytics?.previousMonth.tokensConsumed.toLocaleString('fa-IR')} توکن
+                        {monthlyAnalytics?.previousMonth.tokensConsumed.toLocaleString('en-US')} توکن
                       </td>
                       <td className="py-3 px-4 font-bold text-purple-400">
                         +{monthlyAnalytics?.growth.tokensPercent}%
@@ -1906,8 +1906,8 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
                         <td className="py-3 px-4 font-sans font-bold text-slate-200">{k.name}</td>
                         <td className="py-3 px-4 font-sans text-amber-400 uppercase text-[11px] font-bold">{k.provider}</td>
                         <td className="py-3 px-4 text-slate-300">{k.model}</td>
-                        <td className="py-3 px-4 text-slate-300">{k.requests.toLocaleString('fa-IR')}</td>
-                        <td className="py-3 px-4 text-purple-400 font-bold">{k.tokensUsed.toLocaleString('fa-IR')} توکن</td>
+                        <td className="py-3 px-4 text-slate-300">{k.requests.toLocaleString('en-US')}</td>
+                        <td className="py-3 px-4 text-purple-400 font-bold">{k.tokensUsed.toLocaleString('en-US')} توکن</td>
                       </tr>
                     ))}
                   </tbody>
@@ -1925,7 +1925,7 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
               <div className="flex flex-wrap items-center gap-6 font-mono text-xs">
                 <div>
                   <span className="text-slate-400 block text-[10px]">کل درآمد تاریخچه:</span>
-                  <span className="font-bold text-emerald-400 text-base">{monthlyAnalytics?.totals.allTimeRevenue.toLocaleString('fa-IR')} تومان</span>
+                  <span className="font-bold text-emerald-400 text-base">{monthlyAnalytics?.totals.allTimeRevenue.toLocaleString('en-US')} تومان</span>
                 </div>
                 <div>
                   <span className="text-slate-400 block text-[10px]">کل کتاب‌های ثبت شده:</span>
@@ -1933,11 +1933,11 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
                 </div>
                 <div>
                   <span className="text-slate-400 block text-[10px]">کل کلمات تاریخچه:</span>
-                  <span className="font-bold text-amber-400 text-base">{monthlyAnalytics?.totals.allTimeWords.toLocaleString('fa-IR')} کلمه</span>
+                  <span className="font-bold text-amber-400 text-base">{monthlyAnalytics?.totals.allTimeWords.toLocaleString('en-US')} کلمه</span>
                 </div>
                 <div>
                   <span className="text-slate-400 block text-[10px]">کل توکن‌های مصرفی:</span>
-                  <span className="font-bold text-purple-400 text-base">{monthlyAnalytics?.totals.allTimeTokens.toLocaleString('fa-IR')}</span>
+                  <span className="font-bold text-purple-400 text-base">{monthlyAnalytics?.totals.allTimeTokens.toLocaleString('en-US')}</span>
                 </div>
               </div>
             </div>
@@ -2020,7 +2020,7 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
                 <div>
                   <span className="text-[11px] text-slate-400">کتاب‌های ترجمه‌شده آماده:</span>
                   <div className="text-xl font-bold text-emerald-400 font-mono mt-0.5">
-                    {completedBooksCount.toLocaleString('fa-IR')} <span className="text-xs text-slate-400 font-normal">عنوان</span>
+                    {completedBooksCount.toLocaleString('en-US')} <span className="text-xs text-slate-400 font-normal">عنوان</span>
                   </div>
                 </div>
                 <BookCheck className="w-8 h-8 text-emerald-500/30" />
@@ -2084,7 +2084,7 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
                             </div>
                           </td>
                           <td className="py-4 px-4 font-mono font-bold text-amber-400">
-                            {(b.wordCount || 0).toLocaleString('fa-IR')} <span className="text-[10px] text-slate-400 font-normal">کلمه</span>
+                            {(b.wordCount || 0).toLocaleString('en-US')} <span className="text-[10px] text-slate-400 font-normal">کلمه</span>
                           </td>
                           <td className="py-4 px-4 font-mono">
                             <span className="text-emerald-400 font-bold">{b.completedChunks || 0}</span>
@@ -2362,10 +2362,10 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
                             <div className="text-[10px] text-slate-500 font-mono" dir="ltr">{b.user?.phone || b.user?.email || b.userId}</div>
                           </td>
                           <td className="py-3.5 px-4 font-mono font-bold text-amber-400">
-                            {(b.wordCount || 0).toLocaleString('fa-IR')} <span className="text-[10px] text-slate-400 font-normal">کلمه</span>
+                            {(b.wordCount || 0).toLocaleString('en-US')} <span className="text-[10px] text-slate-400 font-normal">کلمه</span>
                           </td>
                           <td className="py-3.5 px-4 font-mono font-bold text-emerald-400">
-                            {(b.estimatedCost || 0).toLocaleString('fa-IR')} <span className="text-[10px] text-slate-400 font-normal">تومان</span>
+                            {(b.estimatedCost || 0).toLocaleString('en-US')} <span className="text-[10px] text-slate-400 font-normal">تومان</span>
                           </td>
                           <td className="py-3.5 px-4 font-mono">
                             <span className="text-white font-bold">{b.completedChunks || 0}</span>
@@ -2500,12 +2500,12 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
                         </td>
                         <td className="py-3.5 px-4 font-bold text-emerald-400 font-mono">
                           <span className="bg-emerald-500/10 px-2 py-1 rounded-lg border border-emerald-500/20">
-                            {(u.walletBalance || 0).toLocaleString('fa-IR')} <span className="text-[10px] text-emerald-300 font-normal">تومان</span>
+                            {(u.walletBalance || 0).toLocaleString('en-US')} <span className="text-[10px] text-emerald-300 font-normal">تومان</span>
                           </span>
                         </td>
                         <td className="py-3.5 px-4 font-bold text-purple-400 font-mono">
                           <span className="bg-purple-500/10 px-2 py-1 rounded-lg border border-purple-500/20">
-                            {(u.totalSpent || 0).toLocaleString('fa-IR')} <span className="text-[10px] text-purple-300 font-normal">تومان</span>
+                            {(u.totalSpent || 0).toLocaleString('en-US')} <span className="text-[10px] text-purple-300 font-normal">تومان</span>
                           </span>
                         </td>
                         <td className="py-3.5 px-4">
@@ -2514,7 +2514,7 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
                             className="px-2.5 py-1 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 font-bold border border-amber-500/20 text-[11px] flex items-center gap-1"
                           >
                             <BookOpen className="w-3 h-3" />
-                            <span>{u.booksCount || 0} کتاب ({(u.translatedWords || 0).toLocaleString('fa-IR')} کلمه)</span>
+                            <span>{u.booksCount || 0} کتاب ({(u.translatedWords || 0).toLocaleString('en-US')} کلمه)</span>
                           </button>
                         </td>
                         <td className="py-3.5 px-4">
@@ -2737,7 +2737,7 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
                           </div>
 
                           <div className="grid grid-cols-3 gap-2 text-xs text-slate-400 bg-slate-900/60 p-2.5 rounded-xl border border-slate-800 mb-2">
-                            <div>کلمات: <b className="text-white">{(b.wordCount || 0).toLocaleString('fa-IR')}</b></div>
+                            <div>کلمات: <b className="text-white">{(b.wordCount || 0).toLocaleString('en-US')}</b></div>
                             <div>تعداد بخش‌ها: <b className="text-white">{b.chunks?.length || 0} فصل</b></div>
                             <div>لحن: <b className="text-amber-400">{b.tone}</b></div>
                           </div>
@@ -2773,7 +2773,7 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
                   <div className="p-3 bg-slate-950 rounded-2xl border border-slate-800/80 mb-4 flex items-center justify-between text-xs">
                     <span className="text-slate-400">موجودی فعلی کاربر:</span>
                     <span className="font-bold font-mono text-emerald-400 text-sm">
-                      {(adjustWalletModal.user.walletBalance || 0).toLocaleString('fa-IR')} تومان
+                      {(adjustWalletModal.user.walletBalance || 0).toLocaleString('en-US')} تومان
                     </span>
                   </div>
 
@@ -2787,42 +2787,42 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
                           onClick={() => setAdjustWalletModal({ ...adjustWalletModal, amount: 50000, description: 'شارژ تشویقی ۵۰ هزار تومان' })}
                           className="py-1.5 rounded-lg bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/30 font-bold"
                         >
-                          +۵۰,۰۰۰
+                          +50,000
                         </button>
                         <button
                           type="button"
                           onClick={() => setAdjustWalletModal({ ...adjustWalletModal, amount: 100000, description: 'شارژ تشویقی ۱۰۰ هزار تومان' })}
                           className="py-1.5 rounded-lg bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/30 font-bold"
                         >
-                          +۱۰۰,۰۰۰
+                          +100,000
                         </button>
                         <button
                           type="button"
                           onClick={() => setAdjustWalletModal({ ...adjustWalletModal, amount: 200000, description: 'شارژ تشویقی ۲۰۰ هزار تومان' })}
                           className="py-1.5 rounded-lg bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/30 font-bold"
                         >
-                          +۲۰۰,۰۰۰
+                          +200,000
                         </button>
                         <button
                           type="button"
                           onClick={() => setAdjustWalletModal({ ...adjustWalletModal, amount: -20000, description: 'کسر ۲۰ هزار تومان توسط مدیر' })}
                           className="py-1.5 rounded-lg bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 border border-rose-500/30 font-bold"
                         >
-                          -۲۰,۰۰۰
+                          -20,000
                         </button>
                         <button
                           type="button"
                           onClick={() => setAdjustWalletModal({ ...adjustWalletModal, amount: -50000, description: 'کسر ۵۰ هزار تومان توسط مدیر' })}
                           className="py-1.5 rounded-lg bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 border border-rose-500/30 font-bold"
                         >
-                          -۵۰,۰۰۰
+                          -50,000
                         </button>
                         <button
                           type="button"
                           onClick={() => setAdjustWalletModal({ ...adjustWalletModal, amount: -100000, description: 'کسر ۱۰۰ هزار تومان توسط مدیر' })}
                           className="py-1.5 rounded-lg bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 border border-rose-500/30 font-bold"
                         >
-                          -۱۰۰,۰۰۰
+                          -100,000
                         </button>
                       </div>
                     </div>
@@ -2848,7 +2848,7 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
                           ? 'text-white'
                           : 'text-rose-400'
                       }`}>
-                        {Math.max(0, adjustWalletModal.user.walletBalance + adjustWalletModal.amount).toLocaleString('fa-IR')} تومان
+                        {Math.max(0, adjustWalletModal.user.walletBalance + adjustWalletModal.amount).toLocaleString('en-US')} تومان
                       </span>
                     </div>
 
@@ -2870,7 +2870,7 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
                         onClick={handleSaveWalletAdjustment}
                         className="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 text-white font-bold text-xs shadow-md transition"
                       >
-                        {adjustWalletModal.amount >= 0 ? `شارژ +${adjustWalletModal.amount.toLocaleString('fa-IR')} تومان` : `کسر ${Math.abs(adjustWalletModal.amount).toLocaleString('fa-IR')} تومان`}
+                        {adjustWalletModal.amount >= 0 ? `شارژ +${adjustWalletModal.amount.toLocaleString('en-US')} تومان` : `کسر ${Math.abs(adjustWalletModal.amount).toLocaleString('en-US')} تومان`}
                       </button>
                       <button
                         onClick={() => setAdjustWalletModal(null)}
@@ -3349,7 +3349,7 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
                             <span className="text-white font-bold">{k.successfulRequests || 0}</span> موفق / <span className="text-rose-400">{k.failedRequests || 0}</span> خطا
                           </td>
                           <td className="py-3.5 px-4 font-mono text-amber-400 font-bold">
-                            {(k.totalTokensUsed || 0).toLocaleString('fa-IR')}
+                            {(k.totalTokensUsed || 0).toLocaleString('en-US')}
                           </td>
                           <td className="py-3.5 px-4 font-mono text-slate-300">
                             {k.lastLatencyMs ? `${k.lastLatencyMs} ms` : '-'}
@@ -3953,6 +3953,35 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
                       </p>
                     </div>
 
+                    {/* Referer Header Domain (Mandatory for subdomains like book.gaiafa.ir using gaiafa.ir merchant) */}
+                    <div>
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="text-xs font-semibold text-slate-300">
+                          دامنه ریفرر درگاه زرین‌پال (Referer / Origin Header):
+                        </label>
+                        <span className="text-[10px] text-amber-400 font-mono">الزامی برای زیردامنه‌ها</span>
+                      </div>
+                      <input
+                        type="text"
+                        dir="ltr"
+                        placeholder="https://gaiafa.ir/"
+                        value={(settings.gateways.zarinpal as any).refererDomain ?? 'https://gaiafa.ir/'}
+                        onChange={(e) =>
+                          setSettings({
+                            ...settings,
+                            gateways: {
+                              ...settings.gateways,
+                              zarinpal: { ...settings.gateways.zarinpal, refererDomain: e.target.value } as any,
+                            },
+                          })
+                        }
+                        className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-white font-mono text-xs focus:border-amber-500 focus:outline-none text-left"
+                      />
+                      <p className="text-[10px] text-slate-400 mt-1 leading-relaxed">
+                        چون مرچنت کد برای دامنه اصلی <code className="text-amber-400">gaiafa.ir</code> صادر شده است، برای فعالیت روی زیردامنه <code className="text-amber-400">book.gaiafa.ir</code> این هدر به زرین‌پال ارسال می‌شود تا تراکنش مسدود نگردد.
+                      </p>
+                    </div>
+
                     {/* Currency & Mode */}
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <div>
@@ -4019,6 +4048,7 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
                                   merchantId: settings.gateways.zarinpal.merchantId,
                                   isSandbox: settings.gateways.zarinpal.isSandbox,
                                   currency: (settings.gateways.zarinpal as any).currency || 'IRT',
+                                  referer: (settings.gateways.zarinpal as any).refererDomain || 'https://gaiafa.ir/',
                                 }),
                               });
                               const data = await res.json();
@@ -4318,7 +4348,7 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
                     </div>
                     <div className="text-left font-mono font-bold">
                       <span className={tx.amount >= 0 ? 'text-emerald-400' : 'text-rose-400'}>
-                        {tx.amount >= 0 ? '+' : ''}{tx.amount.toLocaleString('fa-IR')} تومان
+                        {tx.amount >= 0 ? '+' : ''}{tx.amount.toLocaleString('en-US')} تومان
                       </span>
                     </div>
                   </div>
@@ -4405,7 +4435,7 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
                       </div>
 
                       <div className="flex items-center justify-between pt-2.5 mt-2.5 border-t border-slate-800/60 text-[10px] text-slate-400">
-                        <span>بروزرسانی: {new Date(page.updatedAt).toLocaleDateString('fa-IR')}</span>
+                        <span>بروزرسانی: {new Date(page.updatedAt).toLocaleDateString('fa-IR-u-nu-latn')}</span>
                         <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
                           <button
                             type="button"
@@ -5977,7 +6007,7 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
                         <tr key={c.id} className="hover:bg-slate-850">
                           <td className="py-2.5 font-mono text-amber-300 font-bold">{c.code}</td>
                           <td className="py-2.5 text-emerald-400">
-                            {c.creditBonus > 0 ? `${c.creditBonus.toLocaleString('fa-IR')} تومان هدیه` : `${c.discountPercent}% تخفیف`}
+                            {c.creditBonus > 0 ? `${c.creditBonus.toLocaleString('en-US')} تومان هدیه` : `${c.discountPercent}% تخفیف`}
                           </td>
                           <td className="py-2.5 font-mono text-slate-300">{c.timesUsed}</td>
                           <td className="py-2.5 font-mono text-slate-400">{c.maxUses}</td>

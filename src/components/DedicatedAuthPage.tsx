@@ -301,21 +301,7 @@ export function DedicatedAuthPage({ onAuthSuccess, onBackToHome, seoConfig }: De
           {/* Subtle Accent Glow */}
           <div className="absolute top-0 right-0 left-0 h-1 bg-gradient-to-r from-amber-500 via-amber-400 to-amber-500" />
 
-          {/* Security Badge */}
-          <div className="mb-6 flex items-center justify-between pb-4 border-b border-slate-800">
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 flex items-center justify-center">
-                <ShieldCheck className="w-4 h-4" />
-              </div>
-              <div>
-                <span className="text-xs font-bold text-white block">احراز هویت ایمن ۲۵۶ بیتی SSL</span>
-                <span className="text-[10px] text-slate-400">سامانه ملی‌پیامک و نشست‌های رمزنگاری شده</span>
-              </div>
-            </div>
-            <span className="text-[10px] px-2.5 py-1 rounded-full bg-amber-500/10 text-amber-300 border border-amber-500/20">
-              حفاظت ۲۴/۷
-            </span>
-          </div>
+
 
           {/* Mode Switcher Tabs */}
           <div className="grid grid-cols-3 gap-1.5 p-1 bg-slate-950 rounded-2xl border border-slate-800 mb-6 text-xs font-semibold">
@@ -420,18 +406,7 @@ export function DedicatedAuthPage({ onAuthSuccess, onBackToHome, seoConfig }: De
                     />
                   </div>
 
-                  {previewOtp && (
-                    <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/25 flex items-center justify-between text-xs">
-                      <span className="text-slate-300">کد جهت تست فوری:</span>
-                      <button
-                        type="button"
-                        onClick={() => setOtpCode(previewOtp)}
-                        className="font-mono font-bold text-amber-400 hover:underline"
-                      >
-                        درج خودکار ({previewOtp})
-                      </button>
-                    </div>
-                  )}
+
 
                   <div className="flex items-center justify-between text-xs text-slate-400">
                     <span>
@@ -583,11 +558,6 @@ export function DedicatedAuthPage({ onAuthSuccess, onBackToHome, seoConfig }: De
                     onChange={(e) => setRegOtpCode(e.target.value)}
                     className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-amber-500/40 text-amber-300 font-mono text-center text-xs focus:outline-none"
                   />
-                  {regPreviewOtp && (
-                    <div className="mt-1 text-[11px] text-slate-400">
-                      کد تستی: <button type="button" onClick={() => setRegOtpCode(regPreviewOtp)} className="text-amber-400 font-bold underline">{regPreviewOtp}</button>
-                    </div>
-                  )}
                 </div>
               )}
 
@@ -635,15 +605,6 @@ export function DedicatedAuthPage({ onAuthSuccess, onBackToHome, seoConfig }: De
             </form>
           )}
 
-          {/* Footer Direct Share Info */}
-          <div className="mt-6 pt-4 border-t border-slate-800 text-center">
-            <p className="text-[11px] text-slate-400">
-              لینک مستقیم این صفحه:{' '}
-              <span className="font-mono text-amber-400/90 select-all">
-                {typeof window !== 'undefined' ? `${window.location.origin}/?page=login` : '/?page=login'}
-              </span>
-            </p>
-          </div>
         </div>
       </main>
 

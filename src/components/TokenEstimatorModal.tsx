@@ -73,7 +73,7 @@ export const TokenEstimatorModal: React.FC<TokenEstimatorModalProps> = ({
             <div className="bg-slate-800/80 p-3.5 rounded-xl border border-slate-700">
               <div className="text-[11px] text-slate-400 mb-1">کلمات کل کتاب</div>
               <div className="text-lg font-bold text-white font-mono">
-                {totalWords.toLocaleString('fa-IR')}
+                {totalWords.toLocaleString('en-US')}
               </div>
               <div className="text-[10px] text-slate-500 mt-0.5">English Words</div>
             </div>
@@ -81,7 +81,7 @@ export const TokenEstimatorModal: React.FC<TokenEstimatorModalProps> = ({
             <div className="bg-slate-800/80 p-3.5 rounded-xl border border-slate-700">
               <div className="text-[11px] text-slate-400 mb-1">توکن‌های ورودی (Input)</div>
               <div className="text-lg font-bold text-blue-400 font-mono">
-                ~{estimatedInputTokens.toLocaleString('fa-IR')}
+                ~{estimatedInputTokens.toLocaleString('en-US')}
               </div>
               <div className="text-[10px] text-slate-500 mt-0.5">متن منبع + پرامپت و واژه‌نامه</div>
             </div>
@@ -89,7 +89,7 @@ export const TokenEstimatorModal: React.FC<TokenEstimatorModalProps> = ({
             <div className="bg-slate-800/80 p-3.5 rounded-xl border border-slate-700">
               <div className="text-[11px] text-slate-400 mb-1">توکن‌های خروجی (Output)</div>
               <div className="text-lg font-bold text-purple-400 font-mono">
-                ~{estimatedOutputTokens.toLocaleString('fa-IR')}
+                ~{estimatedOutputTokens.toLocaleString('en-US')}
               </div>
               <div className="text-[10px] text-slate-500 mt-0.5">ترجمه فارسی HTML کامل</div>
             </div>
@@ -97,7 +97,7 @@ export const TokenEstimatorModal: React.FC<TokenEstimatorModalProps> = ({
             <div className="bg-slate-800/80 p-3.5 rounded-xl border border-slate-700">
               <div className="text-[11px] text-slate-400 mb-1">مجموع کل توکن‌ها</div>
               <div className="text-lg font-bold text-emerald-400 font-mono">
-                ~{totalTokens.toLocaleString('fa-IR')}
+                ~{totalTokens.toLocaleString('en-US')}
               </div>
               <div className="text-[10px] text-slate-500 mt-0.5">Total Tokens</div>
             </div>

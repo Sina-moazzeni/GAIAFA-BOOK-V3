@@ -72,7 +72,7 @@ export default function App() {
       if (p === 'success') {
         return {
           type: 'success',
-          message: `پرداخت با موفقیت انجام شد و مبلغ ${Number(amount || 0).toLocaleString('fa-IR')} تومان به موجودی کیف پول افزوده گردید. کد پیگیری شاپرک: ${tracking || 'ثبت شده'}`,
+          message: `پرداخت با موفقیت انجام شد و مبلغ ${Number(amount || 0).toLocaleString('en-US')} تومان به موجودی کیف پول افزوده گردید. کد پیگیری شاپرک: ${tracking || 'ثبت شده'}`,
         };
       } else if (p === 'canceled') {
         return {

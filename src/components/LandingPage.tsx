@@ -326,7 +326,7 @@ export function LandingPage({
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-center">
               <div>
                 <label className="block text-sm font-semibold text-slate-300 mb-2">
-                  تعداد کلمات کتاب: <span className="text-amber-400 font-bold text-lg">{calcWords.toLocaleString('fa-IR')}</span> کلمه
+                  تعداد کلمات کتاب: <span className="text-amber-400 font-bold text-lg">{calcWords.toLocaleString('en-US')}</span> کلمه
                 </label>
                 <input
                   type="range"
@@ -338,9 +338,9 @@ export function LandingPage({
                   className="w-full h-2.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-amber-500 mb-4"
                 />
                 <div className="flex justify-between text-[11px] text-slate-500 font-mono mb-6">
-                  <span>۱,۰۰۰ کلمه (مقاله)</span>
-                  <span>۲۵,۰۰۰ کلمه (کتاب کوتاه)</span>
-                  <span>۱۲۰,۰۰۰ کلمه (کتاب قطور)</span>
+                  <span>1,000 کلمه (مقاله)</span>
+                  <span>25,000 کلمه (کتاب کوتاه)</span>
+                  <span>120,000 کلمه (کتاب قطور)</span>
                 </div>
 
                 <label className="block text-sm font-semibold text-slate-300 mb-2">نوع و سبک تخصصی کتاب:</label>
@@ -373,7 +373,7 @@ export function LandingPage({
 
                 <div className="flex items-center gap-2 text-xs text-slate-400 bg-slate-950/60 p-3 rounded-xl border border-slate-800">
                   <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-                  <span>تخفیف ۲۵,۰۰۰ تومانی شارژ اولیه به ازای ثبت‌نام اعمال خواهد شد.</span>
+                  <span>تخفیف 25,000 تومانی شارژ اولیه به ازای ثبت‌نام اعمال خواهد شد.</span>
                 </div>
               </div>
 
@@ -382,10 +382,10 @@ export function LandingPage({
                 <div>
                   <div className="text-xs text-slate-400">برآورد کل هزینه ترجمه</div>
                   <div className="text-3xl sm:text-4xl font-black text-amber-400 mt-1">
-                    {totalPrice.toLocaleString('fa-IR')} <span className="text-sm font-normal text-slate-300">تومان</span>
+                    {totalPrice.toLocaleString('en-US')} <span className="text-sm font-normal text-slate-300">تومان</span>
                   </div>
                   <div className="text-xs text-amber-400/90 mt-1 font-medium">
-                    نرخ محاسبه: {costPerWord.toLocaleString('fa-IR')} تومان به ازای هر کلمه (نرخ مصوب سیستم)
+                    نرخ محاسبه: {costPerWord.toLocaleString('en-US')} تومان به ازای هر کلمه (نرخ مصوب سیستم)
                   </div>
                 </div>
 

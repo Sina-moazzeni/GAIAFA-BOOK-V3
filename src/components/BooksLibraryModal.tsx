@@ -170,7 +170,7 @@ export const BooksLibraryModal: React.FC<BooksLibraryModalProps> = ({
 
                       <div className="flex items-center justify-between pt-1">
                         <span className="text-[10px] text-slate-500 font-mono">
-                          {totalWords.toLocaleString('fa-IR')} کلمه
+                          {totalWords.toLocaleString('en-US')} کلمه
                         </span>
                         
                         <div className="flex items-center gap-2">

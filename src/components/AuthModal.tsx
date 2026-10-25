@@ -437,12 +437,6 @@ export function AuthModal({ isOpen, onClose, onAuthSuccess, initialTab = 'login'
                       <span>{isOtpSent ? 'ارسال مجدد' : 'دریافت پیامک'}</span>
                     </button>
                   </div>
-                  {previewOtp && (
-                    <div className="p-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[11px] flex items-center justify-between">
-                      <span>کد تایید ارسال‌شده (آزمایشی):</span>
-                      <strong className="font-mono text-sm tracking-widest">{previewOtp}</strong>
-                    </div>
-                  )}
                 </div>
               )}
 
@@ -562,12 +556,6 @@ export function AuthModal({ isOpen, onClose, onAuthSuccess, initialTab = 'login'
                   className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-white font-mono text-center text-xs focus:border-amber-500 focus:outline-none tracking-widest"
                   required
                 />
-                {regPreviewOtp && (
-                  <div className="mt-1.5 p-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[11px] flex items-center justify-between">
-                    <span>کد تایید پیامکی ارسالی:</span>
-                    <strong className="font-mono text-sm tracking-widest">{regPreviewOtp}</strong>
-                  </div>
-                )}
               </div>
 
               <div>

@@ -16,6 +16,7 @@ export interface ZarinpalRequestOptions {
   mobile?: string;
   email?: string;
   orderId?: string;
+  referer?: string;
 }
 
 export interface ZarinpalRequestResult {
@@ -34,6 +35,19 @@ export interface ZarinpalVerifyOptions {
   isSandbox?: boolean;
   currency?: 'IRT' | 'IRR';
   authority: string;
+  referer?: string;
+}
+
+export function resolveRefererHeaders(customReferer?: string): { referer: string; origin: string } {
+  let ref = (customReferer || 'https://gaiafa.ir/').trim();
+  if (!ref.startsWith('http://') && !ref.startsWith('https://')) {
+    ref = `https://${ref}`;
+  }
+  if (!ref.endsWith('/')) {
+    ref = `${ref}/`;
+  }
+  const origin = ref.replace(/\/+$/, '');
+  return { referer: ref, origin };
 }
 
 export interface ZarinpalVerifyResult {
@@ -117,6 +131,8 @@ export class ZarinpalService {
       },
     };
 
+    const { referer: refererHeader, origin: originHeader } = resolveRefererHeaders(options.referer);
+
     try {
       const response = await fetch(requestEndpoint, {
         method: 'POST',
@@ -124,6 +140,8 @@ export class ZarinpalService {
           'Content-Type': 'application/json',
           'Accept': 'application/json',
           'User-Agent': 'SmartBookTranslator/1.0',
+          'Referer': refererHeader,
+          'Origin': originHeader,
         },
         body: JSON.stringify(payload),
       });
@@ -187,6 +205,7 @@ export class ZarinpalService {
       isSandbox = false,
       currency = 'IRT',
       authority,
+      referer,
     } = options;
 
     if (!merchantId || !authority) {
@@ -207,6 +226,8 @@ export class ZarinpalService {
       authority: authority.trim(),
     };
 
+    const { referer: refererHeader, origin: originHeader } = resolveRefererHeaders(referer);
+
     try {
       const response = await fetch(verifyEndpoint, {
         method: 'POST',
@@ -214,6 +235,8 @@ export class ZarinpalService {
           'Content-Type': 'application/json',
           'Accept': 'application/json',
           'User-Agent': 'SmartBookTranslator/1.0',
+          'Referer': refererHeader,
+          'Origin': originHeader,
         },
         body: JSON.stringify(payload),
       });
@@ -268,7 +291,7 @@ export class ZarinpalService {
   /**
    * Health-check / ping test for admin gateway configuration
    */
-  async testConnection(merchantId: string, isSandbox = false): Promise<{ success: boolean; message: string; details?: any }> {
+  async testConnection(merchantId: string, isSandbox = false, currency: 'IRT' | 'IRR' = 'IRT', referer = 'https://gaiafa.ir/'): Promise<{ success: boolean; message: string; details?: any }> {
     if (!merchantId || merchantId.trim().length < 10) {
       return {
         success: false,
@@ -276,14 +299,15 @@ export class ZarinpalService {
       };
     }
 
-    // Attempt test request of 1,000 Tomans
+    // Attempt test request of 1,000 Tomans with Referer & Origin header
     const result = await this.requestPayment({
       merchantId,
       amountTomans: 1000,
       isSandbox,
-      currency: 'IRT',
+      currency,
       description: 'تست اتصال سامانه ترجمه کتاب به درگاه زرین‌پال',
-      callbackUrl: 'https://example.com/test-callback',
+      callbackUrl: 'https://gaiafa.ir/test-callback',
+      referer,
     });
 
     if (result.success) {

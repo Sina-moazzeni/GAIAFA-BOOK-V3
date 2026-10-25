@@ -126,7 +126,7 @@ export async function sendRealOtpSms(
           if (isSuccessMeliPayamakResult(val2)) {
             return {
               success: true,
-              message: `پیامک تایید با الگوی خدماتی ملی‌پیامک (متد دوم) ارسال شد. شناسه رهگیری: ${val2}`,
+              message: 'کد تأیید ورود به شماره موبایل شما پیامک شد.',
               provider: 'melipayamak_pattern_method2',
               gatewayRaw: { recId: val2, raw: rawText2 },
             };
@@ -167,7 +167,7 @@ export async function sendRealOtpSms(
           if (isSuccessMeliPayamakResult(val1)) {
             return {
               success: true,
-              message: `پیامک تایید با الگوی خدماتی ملی‌پیامک (متد اول) ارسال گردید. شناسه ارسال: ${val1}`,
+              message: 'کد تأیید ورود به شماره موبایل شما پیامک شد.',
               provider: 'melipayamak_pattern_method1',
               gatewayRaw: data1,
             };
@@ -204,7 +204,7 @@ export async function sendRealOtpSms(
         if (otpResp.ok && (otpData?.status === 'success' || otpData?.recId || otpData?.message?.includes('موفق'))) {
           return {
             success: true,
-            message: 'پیامک تایید ورود با موفقیت از طریق سامانه ملی‌پیامک ارسال گردید.',
+            message: 'کد تأیید ورود به شماره موبایل شما پیامک شد.',
             provider: 'melipayamak_console_otp',
             gatewayRaw: otpData,
           };
@@ -237,7 +237,7 @@ export async function sendRealOtpSms(
           if (isSuccessMeliPayamakResult(asmxVal)) {
             return {
               success: true,
-              message: `پیامک با موفقیت از خط ${sender} ارسال گردید. شناسه ارسال: ${asmxVal}`,
+              message: 'کد تأیید ورود به شماره موبایل شما پیامک شد.',
               provider: 'melipayamak_sendsimplesms2',
               gatewayRaw: { asmxVal, asmxText },
             };
@@ -275,7 +275,7 @@ export async function sendRealOtpSms(
           if (isSuccessMeliPayamakResult(val)) {
             return {
               success: true,
-              message: `پیامک ارسال شد. شناسه: ${val}`,
+              message: 'کد تأیید ورود به شماره موبایل شما پیامک شد.',
               provider: 'melipayamak_rest_sendsms',
               gatewayRaw: data,
             };

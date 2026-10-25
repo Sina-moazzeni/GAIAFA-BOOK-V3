@@ -201,10 +201,8 @@ export function setupSaasRoutes(app: express.Express) {
 
     return res.json({
       success: true,
-      message: smsResult.message || `کد تایید ۶ رقمی به شماره ${cleanPhone} ارسال شد.`,
-      previewCode: otpCode, // Provided for instant test validation
+      message: smsResult.message || 'کد تایید ورود به شماره موبایل شما پیامک شد.',
       gatewaySuccess: smsResult.success,
-      gatewayRaw: smsResult.gatewayRaw,
       expiresInSeconds: 180,
     });
   });
@@ -801,6 +799,7 @@ export function setupSaasRoutes(app: express.Express) {
         mobile: user.phone,
         email: user.email || undefined,
         orderId: tx.id,
+        referer: zpConfig.refererDomain || 'https://gaiafa.ir/',
       });
 
       if (!zpResult.success) {
@@ -872,6 +871,7 @@ export function setupSaasRoutes(app: express.Express) {
       isSandbox: zpConfig.isSandbox,
       currency: zpConfig.currency || 'IRT',
       authority,
+      referer: zpConfig.refererDomain || 'https://gaiafa.ir/',
     });
 
     if (verifyResult.success) {
@@ -1471,12 +1471,14 @@ export function setupSaasRoutes(app: express.Express) {
 
   // Admin Test Zarinpal Web-Service Connection
   app.post('/api/admin/gateways/test-zarinpal', requireAdmin, async (req, res) => {
-    const { merchantId, isSandbox } = req.body;
+    const { merchantId, isSandbox, currency, referer } = req.body;
     const settings = db.getSettings();
     const effectiveMerchant = (merchantId || settings.gateways.zarinpal.merchantId || '').trim();
     const effectiveSandbox = isSandbox !== undefined ? isSandbox : settings.gateways.zarinpal.isSandbox;
+    const effectiveCurrency = currency || settings.gateways.zarinpal.currency || 'IRT';
+    const effectiveReferer = referer || settings.gateways.zarinpal.refererDomain || 'https://gaiafa.ir/';
 
-    const result = await zarinpalService.testConnection(effectiveMerchant, effectiveSandbox);
+    const result = await zarinpalService.testConnection(effectiveMerchant, effectiveSandbox, effectiveCurrency, effectiveReferer);
     return res.json(result);
   });
 
@@ -1580,6 +1582,18 @@ export function setupSaasRoutes(app: express.Express) {
   app.get('/api/public/header-footer', (_req, res) => {
     const config = db.getHeaderFooter();
     return res.json({ headerFooter: config });
+  });
+
+  // Admin: Get header & footer HTML
+  app.get('/api/admin/header-footer', requireAdmin, (_req, res) => {
+    const config = db.getHeaderFooter();
+    return res.json({ headerFooter: config });
+  });
+
+  // Admin: Get all custom pages
+  app.get('/api/admin/custom-pages', requireAdmin, (_req, res) => {
+    const pages = db.getCustomPages(false);
+    return res.json({ pages });
   });
 
   // Admin: Update header & footer HTML

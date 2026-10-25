@@ -170,9 +170,9 @@ export const ProjectHeader: React.FC<ProjectHeaderProps> = ({
           <div className="flex items-center gap-1.5">
             <Languages className="w-3.5 h-3.5 text-blue-400 shrink-0" />
             <span className="text-slate-400">کلمات:</span>
-            <strong className="text-white font-mono">{completedWords.toLocaleString('fa-IR')}</strong>
+            <strong className="text-white font-mono">{completedWords.toLocaleString('en-US')}</strong>
             <span className="text-slate-500">از</span>
-            <strong className="text-white font-mono">{totalWords.toLocaleString('fa-IR')}</strong>
+            <strong className="text-white font-mono">{totalWords.toLocaleString('en-US')}</strong>
           </div>
           <div className="hidden lg:flex items-center gap-1 text-emerald-400/90 text-[11px]">
             <ShieldCheck className="w-3.5 h-3.5 text-emerald-400 shrink-0" />

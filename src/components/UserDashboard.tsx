@@ -172,7 +172,7 @@ export function UserDashboard({
                 <Wallet className="w-4 h-4 text-amber-400 group-hover:scale-110 transition-transform shrink-0" />
                 <div className="text-right">
                   <span className="text-slate-400 text-[9px] sm:text-[10px] block leading-none">موجودی:</span>
-                  <span className="font-bold text-white text-xs">{user.walletBalance.toLocaleString('fa-IR')} <span className="text-[9px] sm:text-[10px] font-normal text-slate-400">تومان</span></span>
+                  <span className="font-bold text-white text-xs">{user.walletBalance.toLocaleString('en-US')} <span className="text-[9px] sm:text-[10px] font-normal text-slate-400">تومان</span></span>
                 </div>
               </div>
               <Plus className="w-3.5 h-3.5 text-amber-400 mr-1" />
@@ -284,7 +284,7 @@ export function UserDashboard({
               <FileText className="w-4 h-4 text-blue-400" />
               کلمات ترجمه‌شده شما
             </div>
-            <div className="text-2xl font-black text-amber-400">{totalWordsTranslated.toLocaleString('fa-IR')}</div>
+            <div className="text-2xl font-black text-amber-400">{totalWordsTranslated.toLocaleString('en-US')}</div>
             <div className="text-[11px] text-slate-500 mt-1">کلمه با کیفیت ادبی و فصیح</div>
           </div>
 
@@ -293,7 +293,7 @@ export function UserDashboard({
               <Coins className="w-4 h-4 text-emerald-400" />
               هزینه مصرفی کتاب‌ها
             </div>
-            <div className="text-2xl font-black text-emerald-400">{totalUserSpentOnBooks.toLocaleString('fa-IR')} <span className="text-xs font-normal text-slate-400">تومان</span></div>
+            <div className="text-2xl font-black text-emerald-400">{totalUserSpentOnBooks.toLocaleString('en-US')} <span className="text-xs font-normal text-slate-400">تومان</span></div>
             <div className="text-[11px] text-emerald-400/80 mt-1">کسر شده متناسب با کلمات</div>
           </div>
 
@@ -303,7 +303,7 @@ export function UserDashboard({
                 <Wallet className="w-4 h-4 text-amber-400" />
                 مانده کیف پول
               </div>
-              <div className="text-2xl font-black text-white">{user.walletBalance.toLocaleString('fa-IR')} <span className="text-xs font-normal text-slate-400">تومان</span></div>
+              <div className="text-2xl font-black text-white">{user.walletBalance.toLocaleString('en-US')} <span className="text-xs font-normal text-slate-400">تومان</span></div>
             </div>
             <button
               onClick={onOpenWallet}
@@ -403,7 +403,7 @@ export function UserDashboard({
                 <h3 className="font-bold text-base text-white">تراز تفکیکی کلمات ترجمه‌شده و مبالغ کسر شده هر کتاب</h3>
               </div>
               <span className="text-xs text-slate-400">
-                مجموع کلمات پردازش شده: <b className="text-amber-400 font-mono">{totalWordsTranslated.toLocaleString('fa-IR')}</b> | مجموع هزینه: <b className="text-emerald-400 font-mono">{totalUserSpentOnBooks.toLocaleString('fa-IR')} تومان</b>
+                مجموع کلمات پردازش شده: <b className="text-amber-400 font-mono">{totalWordsTranslated.toLocaleString('en-US')}</b> | مجموع هزینه: <b className="text-emerald-400 font-mono">{totalUserSpentOnBooks.toLocaleString('en-US')} تومان</b>
               </span>
             </div>
 
@@ -440,11 +440,11 @@ export function UserDashboard({
                         </td>
                         <td className="py-3.5 px-4">
                           <span className="font-bold font-mono text-amber-400 text-sm">
-                            {usage.completedWords.toLocaleString('fa-IR')}
+                            {usage.completedWords.toLocaleString('en-US')}
                           </span>
                         </td>
                         <td className="py-3.5 px-4 font-mono text-slate-400">
-                          {usage.totalWords.toLocaleString('fa-IR')}
+                          {usage.totalWords.toLocaleString('en-US')}
                         </td>
                         <td className="py-3.5 px-4">
                           <div className="flex items-center gap-2">
@@ -462,7 +462,7 @@ export function UserDashboard({
                         </td>
                         <td className="py-3.5 px-4">
                           <span className="font-bold font-mono text-emerald-400 text-sm">
-                            {usage.incurredCost.toLocaleString('fa-IR')} تومان
+                            {usage.incurredCost.toLocaleString('en-US')} تومان
                           </span>
                         </td>
                         <td className="py-3.5 px-4">
@@ -578,13 +578,13 @@ export function UserDashboard({
                         <div>
                           <span className="text-slate-500 block">کلمات ترجمه‌شده این کتاب:</span>
                           <span className="text-amber-400 font-bold block text-xs">
-                            {usage.completedWords.toLocaleString('fa-IR')} <span className="text-[10px] text-slate-500 font-normal">از {usage.totalWords.toLocaleString('fa-IR')} کلمه</span>
+                            {usage.completedWords.toLocaleString('en-US')} <span className="text-[10px] text-slate-500 font-normal">از {usage.totalWords.toLocaleString('en-US')} کلمه</span>
                           </span>
                         </div>
                         <div className="text-left">
                           <span className="text-slate-500 block">هزینه ایجاد شده:</span>
                           <span className="text-emerald-400 font-bold block text-xs font-mono">
-                            {usage.incurredCost.toLocaleString('fa-IR')} تومان
+                            {usage.incurredCost.toLocaleString('en-US')} تومان
                           </span>
                         </div>
                       </div>

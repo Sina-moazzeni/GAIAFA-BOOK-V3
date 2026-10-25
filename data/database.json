@@ -97,6 +97,162 @@
       "description": "هدیه ثبت نام اولیه در سامانه ترجمه کتاب",
       "status": "success",
       "createdAt": 1792771055099
+    },
+    {
+      "id": "tx_seed_1",
+      "userId": "usr_regular_default",
+      "amount": 500000,
+      "type": "deposit",
+      "description": "شارژ آنلاین کیف پول از طریق درگاه زرین‌پال",
+      "gateway": "zarinpal",
+      "status": "success",
+      "trackingCode": "ZP-984321",
+      "cardPan": "603799******1234",
+      "refId": "109823451",
+      "createdAt": 1792842435930
+    },
+    {
+      "id": "tx_seed_2",
+      "userId": "usr_regular_default",
+      "amount": -65250,
+      "type": "charge",
+      "description": "کسر هزینه ترجمه کتاب قدرت حال (فصل‌های اول تا سوم)",
+      "status": "success",
+      "createdAt": 1792846035930
+    },
+    {
+      "id": "tx_seed_3",
+      "userId": "usr_admin_default",
+      "amount": 1200000,
+      "type": "deposit",
+      "description": "شارژ آنلاین کیف پول از طریق درگاه زیبال",
+      "gateway": "zibal",
+      "status": "success",
+      "trackingCode": "ZIBAL-765432",
+      "cardPan": "589210******4589",
+      "refId": "98451230",
+      "createdAt": 1792766835930
+    },
+    {
+      "id": "tx_seed_4",
+      "userId": "usr_regular_default",
+      "amount": 250000,
+      "type": "deposit",
+      "description": "شارژ آنلاین حساب کاربری از طریق زرین‌پال",
+      "gateway": "zarinpal",
+      "status": "success",
+      "trackingCode": "ZP-871234",
+      "cardPan": "610433******8901",
+      "createdAt": 1792684035930
+    },
+    {
+      "id": "tx_seed_5",
+      "userId": "usr_regular_default",
+      "amount": -120000,
+      "type": "charge",
+      "description": "کسر هزینه ترجمه تخصصی رمان ۱۹۸۴ جورج اورول",
+      "status": "success",
+      "createdAt": 1792589635930
+    },
+    {
+      "id": "tx_seed_6",
+      "userId": "usr_demo_1",
+      "amount": 750000,
+      "type": "deposit",
+      "description": "افزایش اعتبار کیف پول از طریق درگاه نکست‌پِی",
+      "gateway": "nextpay",
+      "status": "success",
+      "trackingCode": "NX-451298",
+      "refId": "45129870",
+      "createdAt": 1792513235930
+    },
+    {
+      "id": "tx_seed_7",
+      "userId": "usr_regular_default",
+      "amount": 150000,
+      "type": "deposit",
+      "description": "تلاش ناموفق برای پرداخت آنلاین",
+      "gateway": "zarinpal",
+      "status": "failed",
+      "trackingCode": "ZP-FAIL-102",
+      "createdAt": 1792414835930
+    },
+    {
+      "id": "tx_seed_8",
+      "userId": "usr_demo_1",
+      "amount": 900000,
+      "type": "deposit",
+      "description": "شارژ آنلاین کیف پول از طریق درگاه زرین‌پال",
+      "gateway": "zarinpal",
+      "status": "success",
+      "trackingCode": "ZP-664422",
+      "refId": "77889901",
+      "createdAt": 1792246035930
+    },
+    {
+      "id": "tx_seed_9",
+      "userId": "usr_regular_default",
+      "amount": 400000,
+      "type": "deposit",
+      "description": "شارژ آنلاین حساب کاربری از طریق زیبال",
+      "gateway": "zibal",
+      "status": "success",
+      "trackingCode": "ZIB-991122",
+      "createdAt": 1791989835930
+    },
+    {
+      "id": "tx_seed_10",
+      "userId": "usr_demo_1",
+      "amount": 350000,
+      "type": "deposit",
+      "description": "شارژ حساب از طریق درگاه نکست‌پِی",
+      "gateway": "nextpay",
+      "status": "success",
+      "trackingCode": "NX-883344",
+      "createdAt": 1791724635930
+    },
+    {
+      "id": "tx_seed_11",
+      "userId": "usr_regular_default",
+      "amount": 1500000,
+      "type": "deposit",
+      "description": "شارژ پکیج سازمانی ترجمه کتاب از طریق زرین‌پال شاپرک",
+      "gateway": "zarinpal",
+      "status": "success",
+      "trackingCode": "ZP-332211",
+      "refId": "33221100",
+      "createdAt": 1791386035930
+    },
+    {
+      "id": "tx_seed_12",
+      "userId": "usr_demo_1",
+      "amount": 600000,
+      "type": "deposit",
+      "description": "شارژ آنلاین کیف پول از طریق زیبال",
+      "gateway": "zibal",
+      "status": "success",
+      "trackingCode": "ZIB-554433",
+      "createdAt": 1791035435930
+    },
+    {
+      "id": "tx_seed_13",
+      "userId": "usr_regular_default",
+      "amount": -50000,
+      "type": "refund",
+      "description": "استرداد وجه بابت توقف ترجمه و فصول باقی‌مانده",
+      "status": "success",
+      "createdAt": 1790778235930
+    },
+    {
+      "id": "tx_seed_14",
+      "userId": "usr_regular_default",
+      "amount": 850000,
+      "type": "deposit",
+      "description": "شارژ آنلاین کیف پول از طریق زرین‌پال",
+      "gateway": "zarinpal",
+      "status": "success",
+      "trackingCode": "ZP-110099",
+      "createdAt": 1790523035930
     }
   ],
   "apiKeys": [
@@ -175,7 +331,9 @@
       "zarinpal": {
         "enabled": true,
         "merchantId": "00000000-0000-0000-0000-000000000000",
-        "isSandbox": true
+        "isSandbox": true,
+        "currency": "IRT",
+        "refererDomain": "https://gaiafa.ir/"
       },
       "zibal": {
         "enabled": true,

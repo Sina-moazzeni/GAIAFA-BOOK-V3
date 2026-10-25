@@ -88,7 +88,7 @@ export function WalletModal({ isOpen, onClose, user, onBalanceUpdated }: WalletM
 
   const handleRecharge = async () => {
     if (!amount || amount < 10000) {
-      setStatusMessage({ type: 'error', text: 'حداقل مبلغ شارژ ۱۰,۰۰۰ تومان است.' });
+      setStatusMessage({ type: 'error', text: 'حداقل مبلغ شارژ 10,000 تومان است.' });
       return;
     }
 
@@ -132,7 +132,7 @@ export function WalletModal({ isOpen, onClose, user, onBalanceUpdated }: WalletM
             <div>
               <h3 className="font-bold text-sm sm:text-base text-white">مدیریت کیف پول و تراکنش‌ها</h3>
               <p className="text-xs text-slate-400">
-                موجودی فعلی: <span className="font-bold text-amber-400">{user.walletBalance.toLocaleString('fa-IR')} تومان</span>
+                موجودی فعلی: <span className="font-bold text-amber-400">{user.walletBalance.toLocaleString('en-US')} تومان</span>
               </p>
             </div>
           </div>
@@ -207,7 +207,7 @@ export function WalletModal({ isOpen, onClose, user, onBalanceUpdated }: WalletM
                           : 'bg-slate-950 border-slate-800 text-slate-300 hover:border-slate-700'
                       }`}
                     >
-                      {q.toLocaleString('fa-IR')}
+                      {q.toLocaleString('en-US')}
                     </button>
                   ))}
                 </div>
@@ -323,7 +323,7 @@ export function WalletModal({ isOpen, onClose, user, onBalanceUpdated }: WalletM
                 className="w-full py-3.5 rounded-xl bg-gradient-to-r from-emerald-600 via-emerald-500 to-teal-500 hover:from-emerald-500 hover:to-teal-400 text-white font-bold text-sm shadow-lg shadow-emerald-500/20 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
               >
                 {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <CreditCard className="w-4 h-4" />}
-                <span>اتصال به درگاه بانکی شاپرک و پرداخت {amount.toLocaleString('fa-IR')} تومان</span>
+                <span>اتصال به درگاه بانکی شاپرک و پرداخت {amount.toLocaleString('en-US')} تومان</span>
               </button>
             </div>
           ) : (
@@ -357,14 +357,14 @@ export function WalletModal({ isOpen, onClose, user, onBalanceUpdated }: WalletM
                         <div className="font-semibold text-white">{tx.description}</div>
                         <div className="text-[10px] text-slate-500 font-mono mt-0.5">
                           {tx.trackingCode ? `پیگیری: ${tx.trackingCode} • ` : ''}
-                          {new Date(tx.createdAt).toLocaleDateString('fa-IR')}
+                          {new Date(tx.createdAt).toLocaleDateString('fa-IR-u-nu-latn')}
                         </div>
                       </div>
                     </div>
 
                     <div className="text-left font-mono font-bold">
                       <span className={tx.amount >= 0 ? 'text-emerald-400' : 'text-rose-400'}>
-                        {tx.amount >= 0 ? '+' : ''}{tx.amount.toLocaleString('fa-IR')} تومان
+                        {tx.amount >= 0 ? '+' : ''}{tx.amount.toLocaleString('en-US')} تومان
                       </span>
                     </div>
                   </div>

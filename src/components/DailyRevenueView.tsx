@@ -313,7 +313,7 @@ export const DailyRevenueView: React.FC<DailyRevenueViewProps> = ({ token, onRef
               </div>
             </div>
             <div className="text-xl sm:text-2xl font-black text-emerald-400">
-              {data.kpis.totalRevenue.toLocaleString('fa-IR')}
+              {data.kpis.totalRevenue.toLocaleString('en-US')}
               <span className="text-xs text-slate-400 font-sans mr-1">تومان</span>
             </div>
             <div className="text-[11px] font-sans text-slate-400 mt-2 flex items-center justify-between">
@@ -331,12 +331,12 @@ export const DailyRevenueView: React.FC<DailyRevenueViewProps> = ({ token, onRef
               </div>
             </div>
             <div className="text-xl sm:text-2xl font-black text-teal-300">
-              {data.kpis.netRevenue.toLocaleString('fa-IR')}
+              {data.kpis.netRevenue.toLocaleString('en-US')}
               <span className="text-xs text-slate-400 font-sans mr-1">تومان</span>
             </div>
             <div className="text-[11px] font-sans text-slate-400 mt-2 flex items-center justify-between">
               <span>کسر استردادها:</span>
-              <span className="text-rose-400 font-bold">-{data.kpis.totalRefunds.toLocaleString('fa-IR')} تومان</span>
+              <span className="text-rose-400 font-bold">-{data.kpis.totalRefunds.toLocaleString('en-US')} تومان</span>
             </div>
           </div>
 
@@ -349,12 +349,12 @@ export const DailyRevenueView: React.FC<DailyRevenueViewProps> = ({ token, onRef
               </div>
             </div>
             <div className="text-xl sm:text-2xl font-black text-amber-400">
-              {Math.round(data.kpis.totalRevenue / Math.max(1, dailyData.length)).toLocaleString('fa-IR')}
+              {Math.round(data.kpis.totalRevenue / Math.max(1, dailyData.length)).toLocaleString('en-US')}
               <span className="text-xs text-slate-400 font-sans mr-1">تومان/روز</span>
             </div>
             <div className="text-[11px] font-sans text-slate-400 mt-2 flex items-center justify-between">
               <span>میانگین هر تراکنش:</span>
-              <span className="font-bold text-slate-200">{data.kpis.averageDeposit.toLocaleString('fa-IR')} تومان</span>
+              <span className="font-bold text-slate-200">{data.kpis.averageDeposit.toLocaleString('en-US')} تومان</span>
             </div>
           </div>
 
@@ -367,7 +367,7 @@ export const DailyRevenueView: React.FC<DailyRevenueViewProps> = ({ token, onRef
               </div>
             </div>
             <div className="text-xl sm:text-2xl font-black text-purple-300">
-              {data.kpis.peakDay.amount.toLocaleString('fa-IR')}
+              {data.kpis.peakDay.amount.toLocaleString('en-US')}
               <span className="text-xs text-slate-400 font-sans mr-1">تومان</span>
             </div>
             <div className="text-[11px] font-sans text-slate-400 mt-2 flex items-center justify-between">
@@ -447,7 +447,7 @@ export const DailyRevenueView: React.FC<DailyRevenueViewProps> = ({ token, onRef
             <div className="flex items-center gap-4 font-mono">
               <div>
                 <span className="text-slate-400">درآمد روز: </span>
-                <span className="text-emerald-400 font-bold">{hoveredDay.depositIncome.toLocaleString('fa-IR')} تومان</span>
+                <span className="text-emerald-400 font-bold">{hoveredDay.depositIncome.toLocaleString('en-US')} تومان</span>
               </div>
               <div>
                 <span className="text-slate-400">تراکنش‌ها: </span>
@@ -456,7 +456,7 @@ export const DailyRevenueView: React.FC<DailyRevenueViewProps> = ({ token, onRef
               {hoveredDay.chargeExpense > 0 && (
                 <div>
                   <span className="text-slate-400">مصرف ترجمه: </span>
-                  <span className="text-amber-400 font-bold">-{hoveredDay.chargeExpense.toLocaleString('fa-IR')} تومان</span>
+                  <span className="text-amber-400 font-bold">-{hoveredDay.chargeExpense.toLocaleString('en-US')} تومان</span>
                 </div>
               )}
             </div>
@@ -505,7 +505,7 @@ export const DailyRevenueView: React.FC<DailyRevenueViewProps> = ({ token, onRef
                       textAnchor="end"
                       fontFamily="Vazirmatn, sans-serif"
                     >
-                      {val.toLocaleString('fa-IR')}
+                      {val.toLocaleString('en-US')}
                     </text>
                   </g>
                 );
@@ -615,7 +615,7 @@ export const DailyRevenueView: React.FC<DailyRevenueViewProps> = ({ token, onRef
                         <span className="font-bold text-white">{gw.title}</span>
                       </div>
                       <div className="font-mono text-emerald-400 font-bold">
-                        {gw.amount.toLocaleString('fa-IR')} تومان ({gw.percentage}%)
+                        {gw.amount.toLocaleString('en-US')} تومان ({gw.percentage}%)
                       </div>
                     </div>
                     <div className="w-full bg-slate-800 rounded-full h-2 overflow-hidden">
@@ -811,7 +811,7 @@ export const DailyRevenueView: React.FC<DailyRevenueViewProps> = ({ token, onRef
                       <td className="py-3.5 px-4 font-bold text-sm">
                         <span className={tx.amount >= 0 ? 'text-emerald-400' : 'text-rose-400'}>
                           {tx.amount >= 0 ? '+' : ''}
-                          {tx.amount.toLocaleString('fa-IR')}
+                          {tx.amount.toLocaleString('en-US')}
                         </span>
                         <span className="text-[10px] text-slate-500 font-sans mr-1">تومان</span>
                       </td>
@@ -867,8 +867,8 @@ export const DailyRevenueView: React.FC<DailyRevenueViewProps> = ({ token, onRef
 
                       {/* Date & Time */}
                       <td className="py-3.5 px-4 font-sans text-slate-400 text-[11px]">
-                        <div>{tx.dateFa || new Date(tx.createdAt).toLocaleDateString('fa-IR')}</div>
-                        <div className="text-[10px] text-slate-500 font-mono">{tx.timeFa || new Date(tx.createdAt).toLocaleTimeString('fa-IR')}</div>
+                        <div>{tx.dateFa || new Date(tx.createdAt).toLocaleDateString('fa-IR-u-nu-latn')}</div>
+                        <div className="text-[10px] text-slate-500 font-mono">{tx.timeFa || new Date(tx.createdAt).toLocaleTimeString('fa-IR-u-nu-latn')}</div>
                       </td>
                     </tr>
                   );
