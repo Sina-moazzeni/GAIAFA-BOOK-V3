@@ -333,7 +333,8 @@
         "merchantId": "00000000-0000-0000-0000-000000000000",
         "isSandbox": true,
         "currency": "IRT",
-        "refererDomain": "https://gaiafa.ir/"
+        "refererDomain": "https://gaiafa.ir/",
+        "callbackDomain": ""
       },
       "zibal": {
         "enabled": true,

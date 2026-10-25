@@ -309,6 +309,8 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
   // System Settings (Finance, CMS, Security, SMS, SEO)
   const [settings, setSettings] = useState<SystemSettings | null>(null);
   const [saveSettingsSuccess, setSaveSettingsSuccess] = useState(false);
+  const [isSavingSettings, setIsSavingSettings] = useState(false);
+  const [settingsToast, setSettingsToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [seoSaveSuccess, setSeoSaveSuccess] = useState(false);
 
   // All Transactions
@@ -1001,20 +1003,46 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
   // Save Settings
   const handleSaveSettings = async () => {
     if (!settings) return;
+    setIsSavingSettings(true);
+    setSettingsToast(null);
     try {
+      const currentToken = localStorage.getItem('auth_token') || token;
       const res = await fetch('/api/admin/settings', {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
+          Authorization: `Bearer ${currentToken}`,
         },
         body: JSON.stringify(settings),
       });
-      if (res.ok) {
+      const data = await res.json();
+      if (res.ok && data.success) {
+        if (data.settings) {
+          setSettings(data.settings);
+        }
         setSaveSettingsSuccess(true);
-        setTimeout(() => setSaveSettingsSuccess(false), 3000);
+        setSettingsToast({
+          type: 'success',
+          message: 'تنظیمات مالی، تعرفه کلمه‌ای و درگاه‌های پرداخت با موفقیت در پایگاه داده سرور ذخیره شدند.',
+        });
+        setTimeout(() => {
+          setSaveSettingsSuccess(false);
+          setSettingsToast(null);
+        }, 4000);
+      } else {
+        setSettingsToast({
+          type: 'error',
+          message: data.error || 'خطا در ذخیره تنظیمات روی سرور. لطفاً مجدداً وارد شوید.',
+        });
       }
-    } catch (e) {}
+    } catch (e: any) {
+      setSettingsToast({
+        type: 'error',
+        message: `خطای برقراری ارتباط با سرور: ${e.message}`,
+      });
+    } finally {
+      setIsSavingSettings(false);
+    }
   };
 
   // Test SMS
@@ -3769,13 +3797,41 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
               </div>
 
               <button
+                type="button"
                 onClick={handleSaveSettings}
-                className="px-5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs shadow-md transition-all flex items-center gap-1.5"
+                disabled={isSavingSettings}
+                className="px-5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs shadow-md transition-all flex items-center gap-1.5 disabled:opacity-50"
               >
-                {saveSettingsSuccess ? <Check className="w-4 h-4" /> : <Settings className="w-4 h-4" />}
-                <span>{saveSettingsSuccess ? 'ذخیره شد!' : 'ذخیره تنظیمات مالی'}</span>
+                {isSavingSettings ? <RefreshCw className="w-4 h-4 animate-spin" /> : saveSettingsSuccess ? <Check className="w-4 h-4" /> : <Settings className="w-4 h-4" />}
+                <span>{isSavingSettings ? 'در حال ذخیره...' : saveSettingsSuccess ? 'ذخیره شد!' : 'ذخیره تنظیمات مالی'}</span>
               </button>
             </div>
+
+            {settingsToast && (
+              <div
+                className={`p-4 rounded-2xl border text-xs font-bold flex items-center justify-between shadow-lg transition-all animate-in fade-in ${
+                  settingsToast.type === 'success'
+                    ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-300 shadow-emerald-500/10'
+                    : 'bg-rose-500/20 border-rose-500/40 text-rose-300 shadow-rose-500/10'
+                }`}
+              >
+                <div className="flex items-center gap-2.5">
+                  {settingsToast.type === 'success' ? (
+                    <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
+                  ) : (
+                    <AlertCircle className="w-5 h-5 text-rose-400 shrink-0" />
+                  )}
+                  <span>{settingsToast.message}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setSettingsToast(null)}
+                  className="p-1 rounded-lg hover:bg-slate-900/60 text-slate-400 hover:text-white"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            )}
 
             {/* Quick banner to Daily Revenue & Filterable Payments */}
             <div className="bg-gradient-to-r from-emerald-950/40 via-slate-900 to-indigo-950/40 border border-emerald-500/20 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -3881,6 +3937,21 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
                   <p className="text-[11px] text-slate-500 mt-1">کف مبلغ واریزی کاربران</p>
                 </div>
               </div>
+
+              <div className="mt-5 pt-4 border-t border-slate-800 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                <span className="text-[11px] text-slate-400">
+                  تغییر نرخ کلمه‌ای بلافاصله روی تمام فاکتورها، محاسبه‌های پیش‌نمایش و کیف پول اعمال می‌شود.
+                </span>
+                <button
+                  type="button"
+                  onClick={handleSaveSettings}
+                  disabled={isSavingSettings}
+                  className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs flex items-center gap-1.5 shadow-md shadow-amber-500/20 transition disabled:opacity-50"
+                >
+                  {isSavingSettings ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : saveSettingsSuccess ? <Check className="w-3.5 h-3.5" /> : <Save className="w-3.5 h-3.5" />}
+                  <span>{isSavingSettings ? 'در حال ذخیره...' : saveSettingsSuccess ? 'ذخیره شد!' : 'ذخیره نرخ و تعرفه کلمات'}</span>
+                </button>
+              </div>
             </div>
 
             {/* Payment Gateways Config */}
@@ -3979,6 +4050,35 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
                       />
                       <p className="text-[10px] text-slate-400 mt-1 leading-relaxed">
                         چون مرچنت کد برای دامنه اصلی <code className="text-amber-400">gaiafa.ir</code> صادر شده است، برای فعالیت روی زیردامنه <code className="text-amber-400">book.gaiafa.ir</code> این هدر به زرین‌پال ارسال می‌شود تا تراکنش مسدود نگردد.
+                      </p>
+                    </div>
+
+                    {/* Callback Domain (Fixes Error -14) */}
+                    <div>
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="text-xs font-semibold text-slate-300">
+                          دامنه پایه بازگشت از درگاه (Callback Base URL):
+                        </label>
+                        <span className="text-[10px] text-emerald-400 font-mono">حل خطای -14</span>
+                      </div>
+                      <input
+                        type="text"
+                        dir="ltr"
+                        placeholder="https://book.gaiafa.ir (یا https://gaiafa.ir)"
+                        value={(settings.gateways.zarinpal as any).callbackDomain || ''}
+                        onChange={(e) =>
+                          setSettings({
+                            ...settings,
+                            gateways: {
+                              ...settings.gateways,
+                              zarinpal: { ...settings.gateways.zarinpal, callbackDomain: e.target.value } as any,
+                            },
+                          })
+                        }
+                        className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-white font-mono text-xs focus:border-amber-500 focus:outline-none text-left"
+                      />
+                      <p className="text-[10px] text-slate-400 mt-1 leading-relaxed">
+                        زرین‌پال برای تایید تراکنش، دامنه بازگشت را با ترمینال تطبیق می‌دهد. اگر در دمو با خطای -14 روبه‌رو می‌شوید، یا دامنه رسمی خود را اینجا وارد کنید یا تیک Sandbox را بزنید.
                       </p>
                     </div>
 
@@ -4334,6 +4434,28 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
                   </div>
                 </div>
               </div>
+            </div>
+
+            {/* Quick Save Bar for Gateways & Pricing */}
+            <div className="bg-slate-900 border border-slate-800 rounded-3xl p-5 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-xl">
+              <div className="flex items-center gap-3 text-xs text-slate-300">
+                <div className="w-9 h-9 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 flex items-center justify-center shrink-0">
+                  <ShieldCheck className="w-5 h-5 text-amber-400" />
+                </div>
+                <div>
+                  <div className="font-bold text-white text-sm">ثبت نهایی تنظیمات درگاه‌ها و تعرفه‌ها</div>
+                  <div className="text-[11px] text-slate-400 mt-0.5">مرچنت‌کدها، وضعیت فعال/غیرفعال بودن درگاه‌ها و دامنه‌های ریفرر بلافاصله در دیتابیس سرور ذخیره می‌شوند.</div>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={handleSaveSettings}
+                disabled={isSavingSettings}
+                className="w-full sm:w-auto px-6 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-400 hover:from-amber-400 text-slate-950 font-bold text-xs shadow-md shadow-amber-500/20 flex items-center justify-center gap-2 transition disabled:opacity-50 shrink-0"
+              >
+                {isSavingSettings ? <RefreshCw className="w-4 h-4 animate-spin" /> : saveSettingsSuccess ? <Check className="w-4 h-4" /> : <Save className="w-4 h-4" />}
+                <span>{isSavingSettings ? 'در حال ذخیره‌سازی...' : saveSettingsSuccess ? 'ذخیره شد!' : 'ذخیره تنظیمات درگاه‌های پرداخت'}</span>
+              </button>
             </div>
 
             {/* Transactions Log */}

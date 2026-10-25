@@ -121,6 +121,7 @@ export interface SystemSettings {
       isSandbox: boolean;
       currency?: 'IRT' | 'IRR';
       refererDomain?: string;
+      callbackDomain?: string;
     };
     zibal: {
       enabled: boolean;
@@ -249,6 +250,7 @@ const DEFAULT_SETTINGS: SystemSettings = {
       isSandbox: true,
       currency: 'IRT',
       refererDomain: 'https://gaiafa.ir/',
+      callbackDomain: '',
     },
     zibal: {
       enabled: true,
@@ -518,12 +520,32 @@ class Database {
           settings: {
             ...DEFAULT_SETTINGS,
             ...(parsed.settings || {}),
+            pricing: {
+              ...DEFAULT_SETTINGS.pricing,
+              ...(parsed.settings?.pricing || {}),
+            },
             gateways: {
               ...DEFAULT_SETTINGS.gateways,
               ...(parsed.settings?.gateways || {}),
+              zarinpal: {
+                ...DEFAULT_SETTINGS.gateways.zarinpal,
+                ...(parsed.settings?.gateways?.zarinpal || {}),
+              },
               zibal: {
                 ...DEFAULT_SETTINGS.gateways.zibal,
                 ...(parsed.settings?.gateways?.zibal || {}),
+              },
+              nextpay: {
+                ...DEFAULT_SETTINGS.gateways.nextpay,
+                ...(parsed.settings?.gateways?.nextpay || {}),
+              },
+              idpay: {
+                ...DEFAULT_SETTINGS.gateways.idpay,
+                ...(parsed.settings?.gateways?.idpay || {}),
+              },
+              stripe: {
+                ...DEFAULT_SETTINGS.gateways.stripe,
+                ...(parsed.settings?.gateways?.stripe || {}),
               },
             },
             seo: {
@@ -1177,17 +1199,44 @@ class Database {
   }
 
   public updateSettings(updates: Partial<SystemSettings>): SystemSettings {
+    const currentSettings = this.data.settings;
     this.data.settings = {
-      ...this.data.settings,
+      ...currentSettings,
       ...updates,
-      pricing: { ...this.data.settings.pricing, ...(updates.pricing || {}) },
-      gateways: { ...this.data.settings.gateways, ...(updates.gateways || {}) },
-      sms: { ...this.data.settings.sms, ...(updates.sms || {}) },
+      pricing: {
+        ...currentSettings.pricing,
+        ...(updates.pricing || {}),
+      },
+      gateways: {
+        ...currentSettings.gateways,
+        ...(updates.gateways || {}),
+        zarinpal: {
+          ...currentSettings.gateways.zarinpal,
+          ...(updates.gateways?.zarinpal || {}),
+        },
+        zibal: {
+          ...currentSettings.gateways.zibal,
+          ...(updates.gateways?.zibal || {}),
+        },
+        nextpay: {
+          ...currentSettings.gateways.nextpay,
+          ...(updates.gateways?.nextpay || {}),
+        },
+        idpay: {
+          ...currentSettings.gateways.idpay,
+          ...(updates.gateways?.idpay || {}),
+        },
+        stripe: {
+          ...currentSettings.gateways.stripe,
+          ...(updates.gateways?.stripe || {}),
+        },
+      },
+      sms: { ...currentSettings.sms, ...(updates.sms || {}) },
       security: {
-        ...this.data.settings.security,
+        ...currentSettings.security,
         ...(updates.security || {}),
         captcha: {
-          ...(this.data.settings.security?.captcha || {
+          ...(currentSettings.security?.captcha || {
             enabled: false,
             provider: 'math',
             siteKey: '',
@@ -1198,8 +1247,8 @@ class Database {
           ...(updates.security?.captcha || {}),
         },
       },
-      cms: { ...this.data.settings.cms, ...(updates.cms || {}) },
-      coupons: updates.coupons || this.data.settings.coupons || [],
+      cms: { ...currentSettings.cms, ...(updates.cms || {}) },
+      coupons: updates.coupons || currentSettings.coupons || [],
     };
     this.saveData(this.data);
     return this.data.settings;

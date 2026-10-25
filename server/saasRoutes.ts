@@ -50,10 +50,11 @@ export function setupSaasRoutes(app: express.Express) {
       seo: settings.seo,
       pricing: settings.pricing,
       gateways: {
-        zarinpal: settings.gateways.zarinpal.enabled,
-        nextpay: settings.gateways.nextpay.enabled,
-        idpay: settings.gateways.idpay.enabled,
-        stripe: settings.gateways.stripe.enabled,
+        zarinpal: Boolean(settings.gateways?.zarinpal?.enabled),
+        zibal: Boolean(settings.gateways?.zibal?.enabled),
+        nextpay: Boolean(settings.gateways?.nextpay?.enabled),
+        idpay: Boolean(settings.gateways?.idpay?.enabled),
+        stripe: Boolean(settings.gateways?.stripe?.enabled),
       },
       headerFooter: db.getHeaderFooter(),
       customPages: db.getCustomPages(true).map(p => ({
@@ -788,7 +789,10 @@ export function setupSaasRoutes(app: express.Express) {
         });
       }
 
-      const callbackUrl = `${protocol}://${host}/api/payment/zarinpal/callback?txId=${tx.id}`;
+      const baseCallback = (zpConfig as any).callbackDomain?.trim()
+        ? (zpConfig as any).callbackDomain.trim().replace(/\/+$/, '')
+        : `${protocol}://${host}`;
+      const callbackUrl = `${baseCallback}/api/payment/zarinpal/callback?txId=${tx.id}`;
       const zpResult = await zarinpalService.requestPayment({
         merchantId: merchant,
         amountTomans: cleanAmount,
@@ -805,8 +809,13 @@ export function setupSaasRoutes(app: express.Express) {
       if (!zpResult.success) {
         tx.status = 'failed';
         db.saveDatabase();
+        let errorMsg = zpResult.error || 'خطا در ارتباط با وب‌سرویس زرین‌پال';
+        if (zpResult.code === -14 || (zpResult.error && zpResult.error.includes('-14'))) {
+          errorMsg = 'خطای -14 زرین‌پال: دامنه Callback URL با ترمینال ثبت شده مطابقت ندارد. در محیط دمو به دلیل موقت بودن آدرس این خطا ایجاد می‌شود. در هاست لینوکسی اصلی روی دامنه ثبت شده در زرین‌پال (مانند book.gaiafa.ir یا gaiafa.ir) بدون خطا انجام خواهد شد. برای تست در محیط پیش‌نمایش، حالت Sandbox را در پنل درگاه‌ها فعال فرمایید.';
+        }
         return res.status(400).json({
-          error: zpResult.error || 'خطا در ارتباط با وب‌سرویس زرین‌پال',
+          error: errorMsg,
+          code: zpResult.code,
           details: zpResult,
         });
       }

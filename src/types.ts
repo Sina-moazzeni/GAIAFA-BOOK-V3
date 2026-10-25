@@ -76,6 +76,8 @@ export interface SystemSettings {
       merchantId: string;
       isSandbox: boolean;
       currency?: 'IRT' | 'IRR';
+      refererDomain?: string;
+      callbackDomain?: string;
     };
     zibal: {
       enabled: boolean;

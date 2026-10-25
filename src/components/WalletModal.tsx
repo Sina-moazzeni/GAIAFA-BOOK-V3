@@ -25,6 +25,19 @@ export function WalletModal({ isOpen, onClose, user, onBalanceUpdated }: WalletM
   const [activeTab, setActiveTab] = useState<'recharge' | 'history'>('recharge');
   const [amount, setAmount] = useState<number>(100000);
   const [gateway, setGateway] = useState<'zarinpal' | 'zibal' | 'nextpay' | 'idpay'>('zarinpal');
+  const [activeGateways, setActiveGateways] = useState<{
+    zarinpal: boolean;
+    zibal: boolean;
+    nextpay: boolean;
+    idpay: boolean;
+    stripe: boolean;
+  }>({
+    zarinpal: true,
+    zibal: true,
+    nextpay: false,
+    idpay: false,
+    stripe: false,
+  });
   const [transactions, setTransactions] = useState<TransactionRecord[]>([]);
   const [loading, setLoading] = useState(false);
   const [statusMessage, setStatusMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -34,8 +47,33 @@ export function WalletModal({ isOpen, onClose, user, onBalanceUpdated }: WalletM
   useEffect(() => {
     if (isOpen) {
       fetchTransactions();
+      fetchActiveGateways();
     }
   }, [isOpen]);
+
+  const fetchActiveGateways = async () => {
+    try {
+      const res = await fetch('/api/public/config');
+      if (res.ok) {
+        const data = await res.json();
+        if (data.gateways) {
+          setActiveGateways(data.gateways);
+          // Auto-select first enabled gateway
+          if (data.gateways.zarinpal) {
+            setGateway('zarinpal');
+          } else if (data.gateways.zibal) {
+            setGateway('zibal');
+          } else if (data.gateways.nextpay) {
+            setGateway('nextpay');
+          } else if (data.gateways.idpay) {
+            setGateway('idpay');
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('Could not fetch active gateways');
+    }
+  };
 
   const fetchTransactions = async () => {
     try {
@@ -231,59 +269,85 @@ export function WalletModal({ isOpen, onClose, user, onBalanceUpdated }: WalletM
                 <label className="block text-xs font-semibold text-slate-300 mb-2">
                   درگاه پرداخت بانکی:
                 </label>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setGateway('zarinpal')}
-                    className={`p-2.5 rounded-xl border text-right transition-all ${
-                      gateway === 'zarinpal'
-                        ? 'bg-amber-500/10 border-amber-500 text-amber-400'
-                        : 'bg-slate-950 border-slate-800 text-slate-300'
-                    }`}
-                  >
-                    <div className="font-bold text-xs">زرین‌پال</div>
-                    <div className="text-[10px] text-slate-400">شاپرک / کارت شتاب</div>
-                  </button>
+                {(!activeGateways.zarinpal && !activeGateways.zibal && !activeGateways.nextpay && !activeGateways.idpay) ? (
+                  <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs text-center">
+                    در حال حاضر هیچ درگاه پرداختی توسط مدیریت فعال نشده است. لطفاً با پشتیبانی سامانه تماس حاصل فرمایید.
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5">
+                    {activeGateways.zarinpal && (
+                      <button
+                        type="button"
+                        onClick={() => setGateway('zarinpal')}
+                        className={`p-3 rounded-xl border text-right transition-all flex items-center justify-between ${
+                          gateway === 'zarinpal'
+                            ? 'bg-amber-500/15 border-amber-500 text-amber-400 shadow-md shadow-amber-500/10'
+                            : 'bg-slate-950 border-slate-800 text-slate-300 hover:border-slate-700'
+                        }`}
+                      >
+                        <div>
+                          <div className="font-bold text-xs text-white">زرین‌پال (ZarinPal)</div>
+                          <div className="text-[10px] text-slate-400 mt-0.5">شبکه شاپرک و کارت‌های شتاب</div>
+                        </div>
+                        <CreditCard className="w-4 h-4 text-amber-400" />
+                      </button>
+                    )}
 
-                  <button
-                    type="button"
-                    onClick={() => setGateway('zibal')}
-                    className={`p-2.5 rounded-xl border text-right transition-all ${
-                      gateway === 'zibal'
-                        ? 'bg-amber-500/10 border-amber-500 text-amber-400'
-                        : 'bg-slate-950 border-slate-800 text-slate-300'
-                    }`}
-                  >
-                    <div className="font-bold text-xs">زیبال (Zibal)</div>
-                    <div className="text-[10px] text-slate-400">درگاه هوشمند</div>
-                  </button>
+                    {activeGateways.zibal && (
+                      <button
+                        type="button"
+                        onClick={() => setGateway('zibal')}
+                        className={`p-3 rounded-xl border text-right transition-all flex items-center justify-between ${
+                          gateway === 'zibal'
+                            ? 'bg-amber-500/15 border-amber-500 text-amber-400 shadow-md shadow-amber-500/10'
+                            : 'bg-slate-950 border-slate-800 text-slate-300 hover:border-slate-700'
+                        }`}
+                      >
+                        <div>
+                          <div className="font-bold text-xs text-white">زیبال (Zibal)</div>
+                          <div className="text-[10px] text-slate-400 mt-0.5">درگاه پرداخت هوشمند</div>
+                        </div>
+                        <CreditCard className="w-4 h-4 text-emerald-400" />
+                      </button>
+                    )}
 
-                  <button
-                    type="button"
-                    onClick={() => setGateway('nextpay')}
-                    className={`p-2.5 rounded-xl border text-right transition-all ${
-                      gateway === 'nextpay'
-                        ? 'bg-amber-500/10 border-amber-500 text-amber-400'
-                        : 'bg-slate-950 border-slate-800 text-slate-300'
-                    }`}
-                  >
-                    <div className="font-bold text-xs">نکست‌پی</div>
-                    <div className="text-[10px] text-slate-400">سریع چندبانکی</div>
-                  </button>
+                    {activeGateways.nextpay && (
+                      <button
+                        type="button"
+                        onClick={() => setGateway('nextpay')}
+                        className={`p-3 rounded-xl border text-right transition-all flex items-center justify-between ${
+                          gateway === 'nextpay'
+                            ? 'bg-amber-500/15 border-amber-500 text-amber-400 shadow-md shadow-amber-500/10'
+                            : 'bg-slate-950 border-slate-800 text-slate-300 hover:border-slate-700'
+                        }`}
+                      >
+                        <div>
+                          <div className="font-bold text-xs text-white">نکست‌پی (NextPay)</div>
+                          <div className="text-[10px] text-slate-400 mt-0.5">سریع و چندبانکی</div>
+                        </div>
+                        <CreditCard className="w-4 h-4 text-blue-400" />
+                      </button>
+                    )}
 
-                  <button
-                    type="button"
-                    onClick={() => setGateway('idpay')}
-                    className={`p-2.5 rounded-xl border text-right transition-all ${
-                      gateway === 'idpay'
-                        ? 'bg-amber-500/10 border-amber-500 text-amber-400'
-                        : 'bg-slate-950 border-slate-800 text-slate-300'
-                    }`}
-                  >
-                    <div className="font-bold text-xs">آیدی‌پی</div>
-                    <div className="text-[10px] text-slate-400">پرداخت مستقیم</div>
-                  </button>
-                </div>
+                    {activeGateways.idpay && (
+                      <button
+                        type="button"
+                        onClick={() => setGateway('idpay')}
+                        className={`p-3 rounded-xl border text-right transition-all flex items-center justify-between ${
+                          gateway === 'idpay'
+                            ? 'bg-amber-500/15 border-amber-500 text-amber-400 shadow-md shadow-amber-500/10'
+                            : 'bg-slate-950 border-slate-800 text-slate-300 hover:border-slate-700'
+                        }`}
+                      >
+                        <div>
+                          <div className="font-bold text-xs text-white">آیدی‌پی (IDPay)</div>
+                          <div className="text-[10px] text-slate-400 mt-0.5">پرداخت مستقیم شاپرک</div>
+                        </div>
+                        <CreditCard className="w-4 h-4 text-purple-400" />
+                      </button>
+                    )}
+                  </div>
+                )}
               </div>
 
               {/* Coupon / Promo Code Form */}

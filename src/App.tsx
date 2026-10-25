@@ -319,20 +319,22 @@ export default function App() {
     fetchActiveJobs(token);
   };
 
-  // Handle Logout
-  const handleLogout = async () => {
-    if (authToken) {
-      try {
-        await fetch('/api/auth/logout', {
-          method: 'POST',
-          headers: { Authorization: `Bearer ${authToken}` },
-        });
-      } catch (e) {}
-    }
+  // Handle Logout (Instant client-side clear & background server invalidate)
+  const handleLogout = () => {
+    const tokenToClear = authToken || localStorage.getItem(STORAGE_KEY_AUTH_TOKEN);
     localStorage.removeItem(STORAGE_KEY_AUTH_TOKEN);
     setAuthToken(null);
     setCurrentUser(null);
     setCurrentView('dashboard');
+    setActiveAuthPage(false);
+    window.history.pushState({}, '', '/');
+
+    if (tokenToClear) {
+      fetch('/api/auth/logout', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${tokenToClear}` },
+      }).catch(() => {});
+    }
   };
 
   // Create Book & Optionally Launch Background Cloud Translation
