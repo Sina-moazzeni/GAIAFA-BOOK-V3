@@ -1,0 +1,206 @@
+@import "tailwindcss";
+
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
+
+  body {
+    font-family: 'Vazirmatn', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+}
+
+/* Custom Scrollbars */
+::-webkit-scrollbar {
+  width: 7px;
+  height: 7px;
+}
+
+::-webkit-scrollbar-track {
+  background: #0f172a;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #334155;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #475569;
+}
+
+/* Book Preview Styling matching system instructions & custom color overrides */
+.book-render-content h1 {
+  color: var(--theme-h1-color, #1a365d);
+  font-size: 22pt;
+  font-weight: 800;
+  margin-bottom: 22px;
+  margin-top: 18px;
+  text-align: center;
+  line-height: 1.45;
+}
+
+.book-render-content h2 {
+  color: var(--theme-h2-color, #2b6cb0);
+  font-size: 16.5pt;
+  font-weight: 700;
+  margin-top: 28px;
+  margin-bottom: 14px;
+  line-height: 1.45;
+  border-bottom: 1px solid rgba(226, 232, 240, 0.7);
+  padding-bottom: 8px;
+}
+
+.book-render-content h3 {
+  color: var(--theme-h3-color, #2c5282);
+  font-size: 13.5pt;
+  font-weight: 600;
+  margin-top: 20px;
+  margin-bottom: 12px;
+  line-height: 1.4;
+}
+
+.book-render-content p {
+  line-height: 2.2;
+  font-size: 12.5pt;
+  text-align: justify;
+  margin-bottom: 24px; /* Distinct spacing between paragraphs for high readability */
+  color: var(--theme-text-color, #1e293b);
+  text-justify: inter-word;
+  letter-spacing: -0.01em;
+  word-spacing: 0.03em;
+}
+
+/* Configurable paragraph spacing presets */
+.p-spacing-compact p {
+  margin-bottom: 16px !important;
+}
+
+.p-spacing-normal p {
+  margin-bottom: 24px !important;
+}
+
+.p-spacing-relaxed p {
+  margin-bottom: 32px !important;
+}
+
+.p-spacing-generous p {
+  margin-bottom: 42px !important;
+}
+
+.book-render-content blockquote {
+  border-right: 4px solid #3182ce;
+  border-left: none;
+  padding: 12px 20px;
+  margin: 18px 0;
+  background: #f8fafc;
+  color: #334155;
+  font-style: italic;
+  border-radius: 0 6px 6px 0;
+}
+
+.book-render-content span[style*="color: #9b2c2c"],
+.book-render-content .glossary-term {
+  color: #9b2c2c !important;
+  font-weight: 700;
+  background-color: #fff5f5;
+  padding: 1px 4px;
+  border-radius: 4px;
+}
+
+/* Embedded illustrations & images styling */
+.book-embedded-image,
+.book-illustration-wrap img,
+.english-book-view img {
+  max-width: 88% !important;
+  height: auto !important;
+  margin: 1.5rem auto !important;
+  display: block !important;
+  border-radius: 0.75rem;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.14);
+  page-break-inside: avoid;
+  break-inside: avoid;
+}
+
+.book-illustration-wrap {
+  text-align: center;
+  margin: 1.5rem 0;
+  page-break-inside: avoid;
+  break-inside: avoid;
+}
+
+.english-book-view p {
+  margin-bottom: 1rem;
+}
+
+/* Print / PDF generation styles */
+@page {
+  size: A4 portrait;
+  margin: 0; /* Setting margin to 0 completely removes browser URL, title, date and timestamps */
+}
+
+@media print {
+  *, *:before, *:after {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    color-adjust: exact !important;
+  }
+
+  html, body {
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 100% !important;
+    min-height: 100% !important;
+    background-color: var(--print-page-bg, #faf8f5) !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  .no-print {
+    display: none !important;
+  }
+
+  .print-only {
+    display: block !important;
+    width: 100% !important;
+    min-height: 100vh !important;
+    background-color: var(--print-page-bg, #faf8f5) !important;
+    padding: 14mm 16mm 14mm 16mm !important;
+    box-sizing: border-box !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  .book-page {
+    page-break-after: always;
+    break-after: page;
+  }
+
+  .book-chapter-break {
+    page-break-before: always;
+    break-before: page;
+  }
+
+  table.print-doc-table {
+    width: 100% !important;
+    border-collapse: collapse !important;
+  }
+
+  thead.print-table-header {
+    display: table-header-group !important;
+  }
+
+  tfoot.print-table-footer {
+    display: table-footer-group !important;
+  }
+
+  tbody.print-table-body tr {
+    page-break-inside: auto !important;
+  }
+}
+
+@media screen {
+  .print-only {
+    display: none !important;
+  }
+}
