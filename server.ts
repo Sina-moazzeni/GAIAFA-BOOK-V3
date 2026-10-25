@@ -4,8 +4,8 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import dns from 'node:dns';
 
+import fs from 'fs';
 dns.setDefaultResultOrder('ipv4first');
-import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI, ThinkingLevel } from '@google/genai';
 import { Document, Paragraph, TextRun, ImageRun, HeadingLevel, AlignmentType, Packer, BorderStyle, Header, Footer, PageNumber } from 'docx';
 import mammoth from 'mammoth';
@@ -1997,21 +1997,27 @@ app.all('/api/*', (req, res) => {
 // Setup Vite or static serving
 async function startServer() {
   if (!isProduction) {
+    const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: 'spa',
     });
     app.use(vite.middlewares);
   } else {
-    app.use(express.static(path.resolve(__dirname, 'dist')));
+    const distPath = [
+      path.resolve(process.cwd(), 'dist'),
+      path.resolve(__dirname, 'dist'),
+      __dirname,
+    ].find(p => fs.existsSync(path.resolve(p, 'index.html'))) || path.resolve(__dirname, 'dist');
+
+    app.use(express.static(distPath));
     app.get('*', (req, res) => {
-      res.sendFile(path.resolve(__dirname, 'dist', 'index.html'));
+      res.sendFile(path.resolve(distPath, 'index.html'));
     });
   }
 
-  const port = Number(PORT) || 3000;
-  app.listen(port, '0.0.0.0', () => {
-    console.log(`Book Translator server listening on http://0.0.0.0:${port} (mode: ${isProduction ? 'prod' : 'dev'})`);
+  app.listen(PORT, () => {
+    console.log(`Book Translator server listening on ${PORT} (mode: ${isProduction ? 'prod' : 'dev'})`);
   });
 }
 
