@@ -23,7 +23,7 @@ import {
   Paintbrush
 } from 'lucide-react';
 import { BookProject, BookDesignConfig, BookThemeId, BorderStyleId, BackgroundPatternId, CustomColorPalette } from '../types.ts';
-import { BOOK_THEMES, BORDER_STYLES, BACKGROUND_PATTERNS, DEFAULT_DESIGN_CONFIG } from '../constants/themes.ts';
+import { BOOK_THEMES, BORDER_STYLES, BACKGROUND_PATTERNS, DEFAULT_DESIGN_CONFIG, BOOK_TRIM_SIZES } from '../constants/themes.ts';
 import { downloadDocx, downloadWordHtml, downloadStyledHtml, downloadPlainText } from '../utils/exporter.ts';
 
 interface ExportDesignModalProps {
@@ -81,6 +81,7 @@ export const ExportDesignModal: React.FC<ExportDesignModalProps> = ({
   const [backgroundPattern, setBackgroundPattern] = useState<BackgroundPatternId>(initialConfig.backgroundPattern || 'none');
   const [watermarkText, setWatermarkText] = useState(initialConfig.watermarkText || '');
   const [pageMargin, setPageMargin] = useState<'compact' | 'normal' | 'generous'>(initialConfig.pageMargin || 'normal');
+  const [trimSize, setTrimSize] = useState<'ruqai' | 'vaziri' | 'rahli' | 'pocket'>(initialConfig.trimSize || 'ruqai');
   const [customColors, setCustomColors] = useState<CustomColorPalette>(initialConfig.customColors || {});
 
   const [activeTab, setActiveTab] = useState<'themes' | 'colors' | 'headers' | 'typography'>('themes');
@@ -110,6 +111,7 @@ export const ExportDesignModal: React.FC<ExportDesignModalProps> = ({
     backgroundPattern,
     watermarkText,
     pageMargin,
+    trimSize,
     customColors,
   };
 
@@ -1113,6 +1115,48 @@ export const ExportDesignModal: React.FC<ExportDesignModalProps> = ({
                         <option value="generous">عریض و لوکس (42px)</option>
                       </select>
                     </div>
+                  </div>
+                </div>
+
+                {/* 2. Iranian Book Trim Sizes (قطع استاندارد چاپ کتاب) */}
+                <div className="bg-slate-850 p-4 rounded-2xl border border-slate-750 space-y-3 text-xs">
+                  <div className="flex items-center justify-between border-b border-slate-750 pb-2">
+                    <span className="font-bold text-white flex items-center gap-1.5">
+                      <BookOpen className="w-3.5 h-3.5 text-amber-400" />
+                      <span>قطع استاندارد چاپ کتاب (ابعاد فیزیکی ناشران ایران):</span>
+                    </span>
+                    <span className="text-[10px] bg-amber-500/20 text-amber-300 px-2 py-0.5 rounded-full font-bold">
+                      {BOOK_TRIM_SIZES.find(s => s.id === trimSize)?.name}
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                    {BOOK_TRIM_SIZES.map((size) => (
+                      <button
+                        key={size.id}
+                        type="button"
+                        onClick={() => setTrimSize(size.id)}
+                        className={`p-3 rounded-xl border text-right transition flex flex-col justify-between ${
+                          trimSize === size.id
+                            ? 'bg-amber-500/10 border-amber-500/60 shadow-sm'
+                            : 'bg-slate-900 border-slate-750 hover:border-slate-600'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between mb-1">
+                          <span className={`font-bold ${trimSize === size.id ? 'text-amber-400' : 'text-slate-200'}`}>
+                            {size.name}
+                          </span>
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 font-mono">
+                            {size.dimensions}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-slate-400 leading-relaxed mb-2">{size.description}</p>
+                        <div className="flex items-center justify-between text-[10px] text-slate-500 pt-1 border-t border-slate-800/80">
+                          <span className="bg-slate-800 px-1.5 py-0.5 rounded text-amber-300/80">{size.tag}</span>
+                          {trimSize === size.id && <span className="text-amber-400 font-bold flex items-center gap-1"><Check className="w-3 h-3" /> انتخاب شده</span>}
+                        </div>
+                      </button>
+                    ))}
                   </div>
                 </div>
 

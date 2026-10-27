@@ -30,6 +30,8 @@ interface NewBookModalProps {
   defaultModel: string;
   walletBalance?: number;
   costPerWord?: number;
+  tierLabel?: string;
+  discountPercent?: number;
   onOpenWallet?: () => void;
 }
 
@@ -40,6 +42,8 @@ export const NewBookModal: React.FC<NewBookModalProps> = ({
   defaultModel,
   walletBalance = 0,
   costPerWord = 45,
+  tierLabel,
+  discountPercent,
   onOpenWallet,
 }) => {
   const [title, setTitle] = useState('');
@@ -58,6 +62,7 @@ export const NewBookModal: React.FC<NewBookModalProps> = ({
   const [preChunkedData, setPreChunkedData] = useState<BookChunk[] | null>(null);
   const [extractedImagesCount, setExtractedImagesCount] = useState<number>(0);
   const [detectedFileType, setDetectedFileType] = useState<'txt' | 'docx' | 'pdf' | 'epub' | 'json'>('txt');
+  const [scannedPdfError, setScannedPdfError] = useState<string | null>(null);
 
   if (!isOpen) return null;
 
@@ -174,9 +179,17 @@ export const NewBookModal: React.FC<NewBookModalProps> = ({
 
           const data = await res.json();
           if (!res.ok || !data.success) {
+            if (data.isScannedPdf) {
+              setScannedPdfError(data.error);
+              setFileName(null);
+              setRawText('');
+              setPreChunkedData(null);
+              return;
+            }
             throw new Error(data.error || 'خطا در پردازش فایل');
           }
 
+          setScannedPdfError(null);
           setPreChunkedData(data.chunks);
           setExtractedImagesCount(data.totalImagesCount || 0);
 
@@ -222,7 +235,9 @@ export const NewBookModal: React.FC<NewBookModalProps> = ({
   };
 
   const toneMultiplier = (tone === 'academic' || tone === 'aerospace' || tone === 'mathematics') ? 1.25 : 1.0;
-  const unitCost = Math.round(costPerWord * toneMultiplier);
+  const rawUnitCost = Math.round(costPerWord * toneMultiplier);
+  const discount = discountPercent ? Math.min(100, Math.max(0, discountPercent)) : 0;
+  const unitCost = discount > 0 ? Math.round(rawUnitCost * (1 - discount / 100)) : rawUnitCost;
   const totalTranslationCost = Math.round(wordsCount * unitCost);
   const hasEnoughBalance = walletBalance >= totalTranslationCost;
 
@@ -304,6 +319,57 @@ export const NewBookModal: React.FC<NewBookModalProps> = ({
         {/* Form Body */}
         <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-6 space-y-4">
           
+          {/* Scanned PDF Critical Alert Banner (shown when a scanned/image PDF is uploaded) */}
+          {scannedPdfError && (
+            <div className="bg-rose-500/15 border-2 border-rose-500/50 p-4 rounded-2xl flex items-start justify-between gap-3 text-xs text-rose-200 animate-in fade-in shadow-lg">
+              <div className="flex items-start gap-3">
+                <AlertCircle className="w-6 h-6 text-rose-400 shrink-0 mt-0.5" />
+                <div className="space-y-1.5">
+                  <strong className="text-rose-300 font-bold block text-sm">
+                    🚫 خطا: فایل ارسالی یک PDF اسکن‌شده (عکس از صفحات کتاب) است!
+                  </strong>
+                  <p className="leading-relaxed text-[11px] text-slate-200">
+                    {scannedPdfError}
+                  </p>
+                  <div className="flex flex-wrap items-center gap-2 pt-1">
+                    <span className="text-[10px] bg-rose-500/20 text-rose-300 px-2.5 py-1 rounded-lg border border-rose-500/30 font-medium">
+                      راهکار: فایل Word (.docx) یا نسخه PDF متنی کتاب را آپلود نمایید.
+                    </span>
+                  </div>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setScannedPdfError(null)}
+                className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 shrink-0 transition"
+                title="بستن اخطار"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          )}
+
+          {/* Permanent Guidance for Text PDF vs Scanned PDF */}
+          <div className="bg-gradient-to-r from-amber-500/10 via-slate-900 to-indigo-950/20 border border-amber-500/30 rounded-2xl p-4 flex items-start gap-3 text-xs">
+            <div className="p-2 rounded-xl bg-amber-500/20 text-amber-400 shrink-0">
+              <AlertCircle className="w-5 h-5" />
+            </div>
+            <div className="space-y-1 flex-1">
+              <div className="font-bold text-amber-300 text-xs flex flex-wrap items-center gap-2">
+                <span>توجه الزامی: لطفاً فقط فایل PDF متنی (تایپ‌شده دیجیتال) ارسال فرمایید</span>
+                <span className="text-[10px] bg-rose-500/20 text-rose-300 px-2 py-0.5 rounded-full border border-rose-500/30 font-semibold">
+                  نه اسکن تصویری
+                </span>
+              </div>
+              <p className="text-slate-300 text-[11px] leading-relaxed">
+                کتاب‌هایی که به‌صورت <strong>اسکن تصویری</strong> (عکس از صفحات کتاب کاغذی) هستند، فاقد لایه متن دیجیتال بوده و موتور ترجمه نمی‌تواند متون را شناسایی کند و استخراج متن در آن‌ها ناقص یا ناممکن خواهد بود. لطفاً از <strong>PDF متنی استاندارد، فایل Word (.docx) یا EPUB</strong> استفاده نمایید.
+              </p>
+              <div className="text-[10px] text-emerald-300/90 font-mono pt-0.5">
+                💡 نحوه تشخیص سریع: با ماوس روی کلمات کتاب بکشید؛ اگر متن آبی شد و توانستید آن را کپی کنید، متنی است و ترجمه بی‌نقص انجام خواهد شد!
+              </div>
+            </div>
+          </div>
+
           {/* File Upload Box supporting DOCX, PDF, TXT, JSON */}
           <div className="border-2 border-dashed border-indigo-500/40 hover:border-indigo-400 bg-slate-950/60 p-5 rounded-2xl text-center transition group">
             <label className="cursor-pointer flex flex-col items-center justify-center gap-2.5">
@@ -332,7 +398,7 @@ export const NewBookModal: React.FC<NewBookModalProps> = ({
                     سند ورد (.docx)
                   </span>
                   <span className="text-[10px] bg-red-500/10 text-red-300 px-2 py-0.5 rounded-full border border-red-500/30 font-semibold">
-                    کتاب الکترونیک (.pdf)
+                    کتاب الکترونیک (.pdf متنی)
                   </span>
                   <span className="text-[10px] bg-slate-700/50 text-slate-300 px-2 py-0.5 rounded-full border border-slate-600 font-semibold">
                     متن ساده (.txt)
@@ -412,8 +478,14 @@ export const NewBookModal: React.FC<NewBookModalProps> = ({
 
                 <div className="bg-slate-950/60 p-3 rounded-xl border border-slate-800">
                   <span className="text-slate-400 block text-[11px]">تعرفه هر کلمه:</span>
-                  <strong className="text-amber-400 font-mono text-base">{unitCost.toLocaleString('en-US')}</strong>
-                  <span className="text-[10px] text-slate-500 block">تومان / کلمه</span>
+                  <div className="flex items-center gap-1.5 mt-0.5">
+                    <strong className="text-amber-400 font-mono text-base">{unitCost.toLocaleString('en-US')}</strong>
+                    <span className="text-[10px] text-slate-500">تومان</span>
+                  </div>
+                  <span className="text-[10px] text-amber-300/80 block mt-0.5 truncate">
+                    {tierLabel || 'نرخ رسمی سیستم'}
+                    {discount > 0 && <span className="mr-1 text-emerald-400 font-bold">({discount}٪ تخفیف)</span>}
+                  </span>
                 </div>
 
                 <div className="bg-slate-950/60 p-3 rounded-xl border border-slate-800">
@@ -594,16 +666,28 @@ export const NewBookModal: React.FC<NewBookModalProps> = ({
                 انصراف
               </button>
               {!hasEnoughBalance && totalTranslationCost > 0 ? (
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (onOpenWallet) onOpenWallet();
-                  }}
-                  className="px-4 py-2.5 rounded-xl text-xs font-bold bg-rose-500 hover:bg-rose-600 text-white transition flex items-center gap-1.5 shadow-lg shadow-rose-500/20"
-                >
-                  <AlertCircle className="w-3.5 h-3.5" />
-                  <span>شارژ کیف پول برای ورود (کسری: {(totalTranslationCost - walletBalance).toLocaleString('en-US')} ت)</span>
-                </button>
+                <>
+                  <button
+                    type="button"
+                    onClick={() => handleExecute(false)}
+                    disabled={isProcessingFile}
+                    className="px-3.5 py-2.5 rounded-xl text-xs font-bold bg-slate-800 hover:bg-slate-750 text-amber-300 border border-amber-500/30 transition flex items-center gap-1.5"
+                    title="ایجاد پروژه به عنوان پیش‌نویس جهت تست و بررسی کیفیت"
+                  >
+                    <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                    <span>ثبت پیش‌نویس (تست رایگان)</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (onOpenWallet) onOpenWallet();
+                    }}
+                    className="px-4 py-2.5 rounded-xl text-xs font-bold bg-rose-500 hover:bg-rose-600 text-white transition flex items-center gap-1.5 shadow-lg shadow-rose-500/20"
+                  >
+                    <AlertCircle className="w-3.5 h-3.5" />
+                    <span>شارژ کیف پول (کسری: {(totalTranslationCost - walletBalance).toLocaleString('en-US')} ت)</span>
+                  </button>
+                </>
               ) : (
                 <button
                   type="button"

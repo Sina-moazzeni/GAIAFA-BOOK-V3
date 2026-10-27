@@ -737,9 +737,10 @@ export default function App() {
   }
 
   // ========================================================
-  // VIEW: ADMIN PANEL
   // ========================================================
-  if (currentView === 'admin' && currentUser.role === 'admin') {
+  // VIEW: ADMIN & STAFF PANEL
+  // ========================================================
+  if (currentView === 'admin' && (currentUser.role === 'admin' || currentUser.role === 'staff')) {
     return (
       <AdminPanel
         currentUser={currentUser}
@@ -748,6 +749,14 @@ export default function App() {
       />
     );
   }
+
+  // Calculate user personalized effective rate
+  const userEffectiveRate = currentUser.customCostPerWord || (currentUser.role === 'publisher' ? Math.round(costPerWord * 0.65) : costPerWord);
+  const userTierLabel = currentUser.customCostPerWord
+    ? `نرخ اختصاصی شما (${currentUser.customCostPerWord} ت)`
+    : currentUser.role === 'publisher'
+    ? `نرخ همکار ناشر (${Math.round(costPerWord * 0.65)} ت)`
+    : `نرخ عمومی (${costPerWord} ت)`;
 
   // ========================================================
   // VIEW: USER DASHBOARD (میز کاربری)
@@ -778,7 +787,7 @@ export default function App() {
           user={currentUser}
           books={books}
           activeJobs={activeJobs}
-          costPerWord={costPerWord}
+          costPerWord={userEffectiveRate}
           onOpenNewBook={() => setIsNewBookModalOpen(true)}
           onSelectBook={(selected) => {
             setActiveBookId(selected.id);
@@ -788,7 +797,7 @@ export default function App() {
             setCurrentView('workspace');
           }}
           onOpenWallet={() => setIsWalletModalOpen(true)}
-          onOpenAdmin={currentUser.role === 'admin' ? () => setCurrentView('admin') : undefined}
+          onOpenAdmin={(currentUser.role === 'admin' || currentUser.role === 'staff') ? () => setCurrentView('admin') : undefined}
           onLogout={handleLogout}
           onDeleteBook={handleDeleteBook}
           onStartTranslation={handleStartDraftTranslation}
@@ -818,7 +827,9 @@ export default function App() {
           onCreateProject={handleCreateBook}
           defaultModel="gemini-3.8-flash"
           walletBalance={currentUser.walletBalance}
-          costPerWord={costPerWord}
+          costPerWord={userEffectiveRate}
+          tierLabel={userTierLabel}
+          discountPercent={currentUser.discountPercent}
           onOpenWallet={() => setIsWalletModalOpen(true)}
         />
 
@@ -839,7 +850,7 @@ export default function App() {
   const currentIndex = project.chunks.findIndex((c) => c.id === activeChunkId);
   const currentChunk = project.chunks[currentIndex] || project.chunks[0] || null;
 
-  const isUserAdmin = currentUser?.role === 'admin';
+  const isUserAdmin = currentUser?.role === 'admin' || currentUser?.role === 'staff';
   const isCloudTranslating = project.status === 'translating' || activeJobs.some(
     (j) => j.bookId === project.id && (j.status === 'queued' || j.status === 'processing')
   );
@@ -969,9 +980,11 @@ export default function App() {
         isOpen={isNewBookModalOpen}
         onClose={() => setIsNewBookModalOpen(false)}
         onCreateProject={handleCreateBook}
-        defaultModel="gemini-3.5-flash-lite"
+        defaultModel="gemini-3.8-flash"
         walletBalance={currentUser.walletBalance}
-        costPerWord={costPerWord}
+        costPerWord={userEffectiveRate}
+        tierLabel={userTierLabel}
+        discountPercent={currentUser.discountPercent}
         onOpenWallet={() => setIsWalletModalOpen(true)}
       />
 

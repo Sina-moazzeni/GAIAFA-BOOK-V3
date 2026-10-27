@@ -10,9 +10,11 @@ import {
   ArrowDownLeft,
   ArrowUpRight,
   Sparkles,
-  ShieldCheck
+  ShieldCheck,
+  FileText
 } from 'lucide-react';
 import { TransactionRecord, User } from '../types.ts';
+import { InvoiceModal } from './InvoiceModal.tsx';
 
 interface WalletModalProps {
   isOpen: boolean;
@@ -43,6 +45,7 @@ export function WalletModal({ isOpen, onClose, user, onBalanceUpdated }: WalletM
   const [statusMessage, setStatusMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [couponCode, setCouponCode] = useState('');
   const [applyingCoupon, setApplyingCoupon] = useState(false);
+  const [selectedInvoiceTx, setSelectedInvoiceTx] = useState<TransactionRecord | null>(null);
 
   useEffect(() => {
     if (isOpen) {
@@ -426,10 +429,22 @@ export function WalletModal({ isOpen, onClose, user, onBalanceUpdated }: WalletM
                       </div>
                     </div>
 
-                    <div className="text-left font-mono font-bold">
-                      <span className={tx.amount >= 0 ? 'text-emerald-400' : 'text-rose-400'}>
-                        {tx.amount >= 0 ? '+' : ''}{tx.amount.toLocaleString('en-US')} تومان
-                      </span>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setSelectedInvoiceTx(tx)}
+                        className="px-2 py-1 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/20 text-[10px] font-bold flex items-center gap-1 transition"
+                        title="مشاهده و چاپ صورت‌حساب رسمی الکترونیک"
+                      >
+                        <FileText className="w-3 h-3 text-amber-400" />
+                        <span>فاکتور رسمی</span>
+                      </button>
+
+                      <div className="text-left font-mono font-bold">
+                        <span className={tx.amount >= 0 ? 'text-emerald-400' : 'text-rose-400'}>
+                          {tx.amount >= 0 ? '+' : ''}{tx.amount.toLocaleString('en-US')} تومان
+                        </span>
+                      </div>
                     </div>
                   </div>
                 ))
@@ -438,6 +453,15 @@ export function WalletModal({ isOpen, onClose, user, onBalanceUpdated }: WalletM
           )}
         </div>
       </div>
+
+      {selectedInvoiceTx && (
+        <InvoiceModal
+          isOpen={Boolean(selectedInvoiceTx)}
+          onClose={() => setSelectedInvoiceTx(null)}
+          transaction={selectedInvoiceTx}
+          currentUser={user}
+        />
+      )}
     </div>
   );
 }

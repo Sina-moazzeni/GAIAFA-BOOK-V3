@@ -99,6 +99,60 @@
   border-radius: 0 6px 6px 0;
 }
 
+/* Rich Book Publishing Callouts Suite */
+.book-callout {
+  padding: 14px 18px;
+  margin: 22px 0;
+  border-radius: 12px;
+  transition: all 0.2s ease;
+  page-break-inside: avoid;
+  break-inside: avoid;
+}
+
+.book-callout-tip {
+  background: #fffbeb;
+  border-right: 4px solid #f59e0b;
+  color: #78350f;
+}
+
+.book-callout-quote {
+  background: #f0fdf4;
+  border-right: 4px solid #10b981;
+  color: #064e3b;
+}
+
+.book-callout-warning {
+  background: #fef2f2;
+  border-right: 4px solid #ef4444;
+  color: #7f1d1d;
+}
+
+.book-callout-question {
+  background: #f0f9ff;
+  border-right: 4px solid #0284c7;
+  color: #0c4a6e;
+}
+
+.book-fleuron-divider {
+  text-align: center;
+  margin: 28px auto;
+  font-size: 15pt;
+  color: #b45309;
+  letter-spacing: 6px;
+  opacity: 0.85;
+  user-select: none;
+}
+
+.book-footnote {
+  display: block;
+  margin-top: 18px;
+  padding-top: 10px;
+  border-top: 1px dashed rgba(203, 213, 225, 0.8);
+  font-size: 9.5pt;
+  color: #64748b;
+  line-height: 1.8;
+}
+
 .book-render-content span[style*="color: #9b2c2c"],
 .book-render-content .glossary-term {
   color: #9b2c2c !important;

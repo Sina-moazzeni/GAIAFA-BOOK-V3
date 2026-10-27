@@ -171,6 +171,48 @@ export const BACKGROUND_PATTERNS: { id: BackgroundPatternId; name: string; descr
   { id: 'parchment', name: 'بافت کاغذ کهن و ابر و باد', description: 'گرما و بافت سنتی کاغذهای دست‌ساز عتیق' },
 ];
 
+export const BOOK_TRIM_SIZES: {
+  id: 'ruqai' | 'vaziri' | 'rahli' | 'pocket';
+  name: string;
+  dimensions: string;
+  description: string;
+  tag: string;
+  aspectRatio: string;
+}[] = [
+  {
+    id: 'ruqai',
+    name: 'قطع رقعی (استاندارد ناشران)',
+    dimensions: '۱۴.۵ × ۲۱.۵ سانتی‌متر',
+    description: 'محبوب‌ترین قطع چاپ در ایران؛ ایده‌آل برای رمان، ادبیات، روانشناسی، مدیریت و توسعه فردی',
+    tag: 'پرفروش‌ترین',
+    aspectRatio: '145 / 215',
+  },
+  {
+    id: 'vaziri',
+    name: 'قطع وزیری (دانشگاهی و رسمی)',
+    dimensions: '۱۷.۵ × ۲۵ سانتی‌متر',
+    description: 'قطع رسمی کتب دانشگاهی، کتاب‌های درسی و فنی، دانشنامه‌ها، فلسفه و علوم انسانی',
+    tag: 'دانشگاهی',
+    aspectRatio: '175 / 250',
+  },
+  {
+    id: 'rahli',
+    name: 'قطع رحلی (A4 بزرگ و نفیس)',
+    dimensions: '۲۱ × ۲۹.۷ سانتی‌متر',
+    description: 'کتاب‌های مصور، هنری، کتب نفیس، مجلات پژوهشی و سالنامه‌ها با کادربندی وسیع',
+    tag: 'نفیس و مصور',
+    aspectRatio: '210 / 297',
+  },
+  {
+    id: 'pocket',
+    name: 'قطع جیبی (همراه و فشرده)',
+    dimensions: '۱۱.۵ × ۱۶.۵ سانتی‌متر',
+    description: 'کتاب‌های کوچک همراه، چکیده فصول، دیوان اشعار و کتابچه‌های آموزشی فشرده',
+    tag: 'کوچک و همراه',
+    aspectRatio: '115 / 165',
+  },
+];
+
 export const DEFAULT_DESIGN_CONFIG: BookDesignConfig = {
   themeId: 'spiritual',
   headerText: '',
@@ -189,4 +231,5 @@ export const DEFAULT_DESIGN_CONFIG: BookDesignConfig = {
   backgroundPattern: 'none',
   watermarkText: '',
   pageMargin: 'normal',
+  trimSize: 'ruqai',
 };

@@ -26,7 +26,13 @@ import {
   Heading,
   Quote,
   CheckCircle2,
-  AlertCircle
+  AlertCircle,
+  Sliders,
+  Palette,
+  Sun,
+  Moon,
+  Type,
+  ChevronDown
 } from 'lucide-react';
 import { BookChunk, BookProject, APIServerEndpoint } from '../types.ts';
 import { cleanChapterTitle, groupChunksIntoChapters, htmlToPlainText, plainTextToHtml, formatToDistinctParagraphs } from '../utils/exporter.ts';
@@ -97,6 +103,54 @@ export const TranslationWorkspace: React.FC<TranslationWorkspaceProps> = ({
   const [copiedEn, setCopiedEn] = useState(false);
   const [copiedFa, setCopiedFa] = useState(false);
   const [fullBookMode, setFullBookMode] = useState(false);
+
+  // Reading Comfort Suite (Sepia, Slate, Midnight, Paper + Font Size & Line Height)
+  const [readerTheme, setReaderTheme] = useState<'paper' | 'sepia' | 'slate' | 'midnight'>('paper');
+  const [readerFontSize, setReaderFontSize] = useState<number>(15);
+  const [readerLineHeight, setReaderLineHeight] = useState<number>(2.2);
+  const [showReaderSettings, setShowReaderSettings] = useState<boolean>(false);
+
+  const getThemeStyles = () => {
+    switch (readerTheme) {
+      case 'sepia':
+        return {
+          bg: '#fdf6e2',
+          text: '#433422',
+          border: '#e6dcbf',
+          h1: '#7c4a03',
+          h2: '#935805',
+          h3: '#ab6606',
+        };
+      case 'slate':
+        return {
+          bg: '#0f172a',
+          text: '#e2e8f0',
+          border: '#334155',
+          h1: '#fbbf24',
+          h2: '#38bdf8',
+          h3: '#818cf8',
+        };
+      case 'midnight':
+        return {
+          bg: '#000000',
+          text: '#cbd5e1',
+          border: '#27272a',
+          h1: '#f59e0b',
+          h2: '#60a5fa',
+          h3: '#a78bfa',
+        };
+      case 'paper':
+      default:
+        return {
+          bg: '#ffffff',
+          text: '#1e293b',
+          border: '#e2e8f0',
+          h1: '#1a365d',
+          h2: '#2b6cb0',
+          h3: '#3182ce',
+        };
+    }
+  };
 
   // Sync plain text state when current chunk changes or when translatedHtml updates
   useEffect(() => {
@@ -169,6 +223,32 @@ export const TranslationWorkspace: React.FC<TranslationWorkspaceProps> = ({
 
   const handleInsertQuote = () => {
     setPlainTextValue(prev => `> ${prev}`);
+  };
+
+  const [showElementsMenu, setShowElementsMenu] = useState(false);
+
+  const handleInsertElement = (type: 'tip' | 'quote' | 'warning' | 'question' | 'fleuron' | 'footnote') => {
+    setShowElementsMenu(false);
+    switch (type) {
+      case 'tip':
+        setPlainTextValue(prev => `${prev}\n\n💡 نکته کلیدی: [مهم‌ترین نتیجه‌گیری یا پیام اصلی این بخش را در اینجا بنویسید]\n\n`);
+        break;
+      case 'quote':
+        setPlainTextValue(prev => `${prev}\n\n📜 نقل‌قول: «متن سخن بزرگان یا نقل‌قول تاثیرگذار نویسنده در اینجا قرار می‌گیرد.»\n\n`);
+        break;
+      case 'warning':
+        setPlainTextValue(prev => `${prev}\n\n⚠️ توجه مهم: [هشدار مفهومی حساس یا تذکر مهم برای خواننده]\n\n`);
+        break;
+      case 'question':
+        setPlainTextValue(prev => `${prev}\n\n❓ پرسش برای تامل: [پرسشی که خواننده را به تفکر عمیق‌تر وا می‌دارد]\n\n`);
+        break;
+      case 'fleuron':
+        setPlainTextValue(prev => `${prev}\n\n✤ ───── ❦ ───── ✤\n\n`);
+        break;
+      case 'footnote':
+        setPlainTextValue(prev => `${prev}\n\n[پانویس: توضیح تخصصی اصطلاح یا ارجاع به منبع توسط مترجم]\n\n`);
+        break;
+    }
   };
 
   const handleAutoParagraphFormat = () => {
@@ -675,17 +755,97 @@ export const TranslationWorkspace: React.FC<TranslationWorkspaceProps> = ({
                         </button>
                       </div>
 
+                      {/* Reading Comfort & Theme Customizer Bar */}
+                      <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-2.5 flex flex-wrap items-center justify-between gap-2 text-xs">
+                        {/* Theme Buttons */}
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-slate-400 text-[11px] ml-1">تم مطالعه:</span>
+                          <button
+                            type="button"
+                            onClick={() => setReaderTheme('paper')}
+                            className={`px-2 py-1 rounded-lg border text-[11px] font-bold transition flex items-center gap-1 ${
+                              readerTheme === 'paper' ? 'bg-white text-slate-900 border-white shadow-sm' : 'bg-slate-800 text-slate-300 border-slate-700 hover:text-white'
+                            }`}
+                          >
+                            <Sun className="w-3 h-3 text-amber-500" />
+                            <span>کاغذ</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setReaderTheme('sepia')}
+                            className={`px-2 py-1 rounded-lg border text-[11px] font-bold transition flex items-center gap-1 ${
+                              readerTheme === 'sepia' ? 'bg-[#fdf6e2] text-[#433422] border-[#e6dcbf] shadow-sm' : 'bg-slate-800 text-slate-300 border-slate-700 hover:text-white'
+                            }`}
+                          >
+                            <span>📜 کرم</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setReaderTheme('slate')}
+                            className={`px-2 py-1 rounded-lg border text-[11px] font-bold transition flex items-center gap-1 ${
+                              readerTheme === 'slate' ? 'bg-slate-800 text-amber-400 border-amber-500/40 shadow-sm' : 'bg-slate-800 text-slate-300 border-slate-700 hover:text-white'
+                            }`}
+                          >
+                            <Moon className="w-3 h-3 text-indigo-400" />
+                            <span>تاریک</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setReaderTheme('midnight')}
+                            className={`px-2 py-1 rounded-lg border text-[11px] font-bold transition flex items-center gap-1 ${
+                              readerTheme === 'midnight' ? 'bg-black text-amber-300 border-amber-500 shadow-sm' : 'bg-slate-800 text-slate-300 border-slate-700 hover:text-white'
+                            }`}
+                          >
+                            <span>🖤 شب</span>
+                          </button>
+                        </div>
+
+                        {/* Font Size & Line Height */}
+                        <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-lg border border-slate-800">
+                            <button
+                              type="button"
+                              onClick={() => setReaderFontSize(Math.max(12, readerFontSize - 2))}
+                              className="px-1.5 py-0.5 rounded text-[10px] text-slate-300 hover:bg-slate-800 font-bold"
+                              title="کاهش اندازه قلم"
+                            >
+                              A-
+                            </button>
+                            <span className="text-[11px] font-mono text-amber-400 px-1">{readerFontSize}px</span>
+                            <button
+                              type="button"
+                              onClick={() => setReaderFontSize(Math.min(24, readerFontSize + 2))}
+                              className="px-1.5 py-0.5 rounded text-[10px] text-slate-300 hover:bg-slate-800 font-bold"
+                              title="افزایش اندازه قلم"
+                            >
+                              A+
+                            </button>
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() => setReaderLineHeight(readerLineHeight === 1.8 ? 2.2 : readerLineHeight === 2.2 ? 2.6 : 1.8)}
+                            className="px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 text-[10px] font-mono"
+                            title="تغییر فاصله بین خطوط"
+                          >
+                            فاصله: {readerLineHeight}x
+                          </button>
+                        </div>
+                      </div>
+
                       <div
-                        className={`p-5 sm:p-10 rounded-2xl shadow-xl border book-page ${paragraphSpacingClass}`}
+                        className={`p-5 sm:p-10 rounded-2xl shadow-xl border book-page transition-colors duration-300 ${paragraphSpacingClass}`}
                         style={{
-                          ['--theme-h1-color' as any]: customColors.heading1Color || '#1a365d',
-                          ['--theme-h2-color' as any]: customColors.heading2Color || '#2b6cb0',
-                          ['--theme-h3-color' as any]: customColors.heading3Color || '#3182ce',
-                          ['--theme-text-color' as any]: customColors.textColor || '#2d3748',
+                          ['--theme-h1-color' as any]: getThemeStyles().h1,
+                          ['--theme-h2-color' as any]: getThemeStyles().h2,
+                          ['--theme-h3-color' as any]: getThemeStyles().h3,
+                          ['--theme-text-color' as any]: getThemeStyles().text,
                           ['--theme-accent-color' as any]: customColors.accentColor || '#c5a059',
-                          backgroundColor: customColors.pageBgColor || '#ffffff',
-                          color: customColors.textColor || '#1e293b',
-                          borderColor: customColors.borderColor || '#e2e8f0',
+                          backgroundColor: getThemeStyles().bg,
+                          color: getThemeStyles().text,
+                          borderColor: getThemeStyles().border,
+                          fontSize: `${readerFontSize}px`,
+                          lineHeight: readerLineHeight,
                         }}
                       >
                         <div
@@ -726,6 +886,94 @@ export const TranslationWorkspace: React.FC<TranslationWorkspaceProps> = ({
                             <Sparkles className="w-3 h-3 text-indigo-400" />
                             <span>پاراگراف‌بندی خودکار</span>
                           </button>
+
+                          {/* Rich Book Publishing Elements Dropdown */}
+                          <div className="relative">
+                            <button
+                              type="button"
+                              onClick={() => setShowElementsMenu(!showElementsMenu)}
+                              className="px-2.5 py-1 rounded-lg bg-gradient-to-r from-amber-500/15 to-amber-400/10 hover:from-amber-500/25 text-amber-300 border border-amber-500/30 flex items-center gap-1.5 transition font-bold"
+                              title="درج جعبه‌های زیبا، نقل‌قول، نکات کلیدی و گل‌بوته"
+                            >
+                              <span>✨</span>
+                              <span>المان‌های نفیس کتاب</span>
+                              <ChevronDown className="w-3 h-3" />
+                            </button>
+
+                            {showElementsMenu && (
+                              <div className="absolute top-full right-0 mt-1 w-60 bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl p-2 z-50 space-y-1 animate-in fade-in">
+                                <div className="text-[10px] font-bold text-slate-400 px-2 py-1 border-b border-slate-800">
+                                  درج کادرها و المان‌های استاندارد نشر:
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => handleInsertElement('tip')}
+                                  className="w-full text-right px-2.5 py-1.5 rounded-xl hover:bg-amber-500/10 text-amber-300 text-xs flex items-center gap-2 transition"
+                                >
+                                  <span>💡</span>
+                                  <div>
+                                    <div className="font-bold">جعبه نکته کلیدی</div>
+                                    <div className="text-[10px] text-slate-400">خلاصه پیام اصلی یا جمع‌بندی</div>
+                                  </div>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleInsertElement('quote')}
+                                  className="w-full text-right px-2.5 py-1.5 rounded-xl hover:bg-emerald-500/10 text-emerald-300 text-xs flex items-center gap-2 transition"
+                                >
+                                  <span>📜</span>
+                                  <div>
+                                    <div className="font-bold">نقل‌قول و کلام بزرگان</div>
+                                    <div className="text-[10px] text-slate-400">کادر شکیل سخنان تاثیرگذار</div>
+                                  </div>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleInsertElement('warning')}
+                                  className="w-full text-right px-2.5 py-1.5 rounded-xl hover:bg-rose-500/10 text-rose-300 text-xs flex items-center gap-2 transition"
+                                >
+                                  <span>⚠️</span>
+                                  <div>
+                                    <div className="font-bold">جعبه توجه و هشدار مهم</div>
+                                    <div className="text-[10px] text-slate-400">نکته حیاتی و تمایز مفهومی</div>
+                                  </div>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleInsertElement('question')}
+                                  className="w-full text-right px-2.5 py-1.5 rounded-xl hover:bg-sky-500/10 text-sky-300 text-xs flex items-center gap-2 transition"
+                                >
+                                  <span>❓</span>
+                                  <div>
+                                    <div className="font-bold">پرسش برای تامل</div>
+                                    <div className="text-[10px] text-slate-400">تمرین تفکر و درک عمیق‌تر</div>
+                                  </div>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleInsertElement('fleuron')}
+                                  className="w-full text-right px-2.5 py-1.5 rounded-xl hover:bg-amber-500/10 text-amber-400 text-xs flex items-center gap-2 transition"
+                                >
+                                  <span>❦</span>
+                                  <div>
+                                    <div className="font-bold">گل‌بوته و جداکننده نفیس</div>
+                                    <div className="text-[10px] text-slate-400">نشان خطی اسلیمی میان‌بندی</div>
+                                  </div>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleInsertElement('footnote')}
+                                  className="w-full text-right px-2.5 py-1.5 rounded-xl hover:bg-slate-800 text-slate-300 text-xs flex items-center gap-2 transition"
+                                >
+                                  <span>📝</span>
+                                  <div>
+                                    <div className="font-bold">پانویس مترجم</div>
+                                    <div className="text-[10px] text-slate-400">توضیح واژه یا منبع در پاورقی</div>
+                                  </div>
+                                </button>
+                              </div>
+                            )}
+                          </div>
                         </div>
 
                         <div className="flex items-center gap-2">

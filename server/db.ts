@@ -8,17 +8,23 @@ const __dirname = path.dirname(__filename);
 const DATA_DIR = path.resolve(__dirname, '../data');
 const DB_FILE = path.resolve(DATA_DIR, 'database.json');
 
+export type UserRole = 'admin' | 'staff' | 'publisher' | 'user';
+
 export interface User {
   id: string;
   name: string;
   phone: string;
   email: string;
   passwordHash: string;
-  role: 'admin' | 'user';
+  role: UserRole;
   walletBalance: number; // in Tomans
   status: 'active' | 'banned';
   createdAt: number;
   lastLoginAt?: number;
+  customCostPerWord?: number; // نرخ اختصاصی هر کلمه به تومان برای این کاربر خاص
+  discountPercent?: number; // درصد تخفیف ویژه اختصاصی (مثلا ۲۰ درصد)
+  organizationName?: string; // نام انتشارات یا موسسه
+  notes?: string; // یادداشت پرسنل پشتیبانی یا مدیر
 }
 
 export interface BookChunkRecord {
@@ -110,6 +116,7 @@ export interface ApiKeyConfig {
 export interface SystemSettings {
   pricing: {
     costPerWord: number; // e.g. 45 Tomans per word
+    publisherCostPerWord?: number; // نرخ ویژه ناشران (مثلا ۳۰ تومان)
     specializedMultiplier: number; // 1.25x for academic/aerospace
     freeWelcomeGift: number; // 20,000 Tomans
     minDepositAmount: number; // 50,000 Tomans
@@ -178,6 +185,19 @@ export interface SystemSettings {
     createdAt: number;
   }>;
   headerFooter?: HeaderFooterConfig;
+  aiGlossaryConfig?: {
+    enabled: boolean;
+    maxSampleChars: number;
+    maxTerms: number;
+    fallbackHeuristicEnabled: boolean;
+  };
+  announcementBar?: {
+    enabled: boolean;
+    text: string;
+    type: 'info' | 'warning' | 'success' | 'urgent';
+    linkUrl?: string;
+    linkText?: string;
+  };
   seo?: {
     siteTitle: string;
     metaDescription: string;
@@ -403,6 +423,19 @@ const DEFAULT_SETTINGS: SystemSettings = {
       },
     ],
   },
+  aiGlossaryConfig: {
+    enabled: true,
+    maxSampleChars: 1200, // strictly throttles token input to ~200 words (~250 tokens)
+    maxTerms: 8,          // extracts 6 to 8 key terms
+    fallbackHeuristicEnabled: true,
+  },
+  announcementBar: {
+    enabled: true,
+    text: '🎉 تخفیف ویژه چاپ و ترجمه: هزینه ترجمه هر کلمه فقط ۴۵ تومان همراه با استخراج هوشمند واژه‌نامه تخصصی و صفحه‌بندی کتاب.',
+    type: 'info',
+    linkUrl: '/page/pricing',
+    linkText: 'مشاهده تعرفه‌ها',
+  },
   seo: {
     siteTitle: 'مترجم و ویراستار هوشمند کتاب | Smart Persian Book Translator',
     metaDescription: 'سامانه پیشرفته ترجمه، ویرایش ساختاریافته و صفحه‌بندی کتاب‌های انگلیسی به فارسی با هوش مصنوعی جمینای، پشتیبانی از واژه‌نامه تخصصی، لحن‌های سفارشی و خروجی Word و PDF.',
@@ -607,7 +640,67 @@ class Database {
       });
     }
 
-    // 2. Permanent Regular Customer User
+    // 2. Permanent Staff User (پشتیبانی / کارمند سامانه - بدون دسترسی به آمار مالی)
+    const staffIndex = schema.users.findIndex(
+      (u) => u.email === 'staff@translator.ir' || u.phone === '09122222222' || u.role === 'staff'
+    );
+    if (staffIndex !== -1) {
+      schema.users[staffIndex].email = 'staff@translator.ir';
+      schema.users[staffIndex].phone = '09122222222';
+      schema.users[staffIndex].passwordHash = hashPassword('Staff@123456');
+      schema.users[staffIndex].role = 'staff';
+      schema.users[staffIndex].name = 'کارمند و پشتیبان سامانه';
+      schema.users[staffIndex].status = 'active';
+      if ((schema.users[staffIndex].walletBalance || 0) < 500000) {
+        schema.users[staffIndex].walletBalance = 1000000;
+      }
+    } else {
+      schema.users.splice(1, 0, {
+        id: 'usr_staff_default',
+        name: 'کارمند و پشتیبان سامانه',
+        phone: '09122222222',
+        email: 'staff@translator.ir',
+        passwordHash: hashPassword('Staff@123456'),
+        role: 'staff',
+        walletBalance: 1000000,
+        status: 'active',
+        createdAt: Date.now() - 45 * 86400000,
+      });
+    }
+
+    // 3. Permanent Publisher User (ناشر طرف قرارداد با نرخ ویژه سازمانی)
+    const pubIndex = schema.users.findIndex(
+      (u) => u.email === 'publisher@translator.ir' || u.phone === '09123333333' || u.role === 'publisher'
+    );
+    if (pubIndex !== -1) {
+      schema.users[pubIndex].email = 'publisher@translator.ir';
+      schema.users[pubIndex].phone = '09123333333';
+      schema.users[pubIndex].passwordHash = hashPassword('Publisher@123456');
+      schema.users[pubIndex].role = 'publisher';
+      schema.users[pubIndex].name = 'انتشارات ققنوس / اندیشه نو';
+      schema.users[pubIndex].organizationName = 'انتشارات ققنوس';
+      schema.users[pubIndex].customCostPerWord = 28; // نرخ اختصاصی هر کلمه ۲۸ تومان
+      schema.users[pubIndex].status = 'active';
+      if ((schema.users[pubIndex].walletBalance || 0) < 500000) {
+        schema.users[pubIndex].walletBalance = 3500000;
+      }
+    } else {
+      schema.users.splice(2, 0, {
+        id: 'usr_publisher_default',
+        name: 'انتشارات ققنوس / اندیشه نو',
+        phone: '09123333333',
+        email: 'publisher@translator.ir',
+        passwordHash: hashPassword('Publisher@123456'),
+        role: 'publisher',
+        organizationName: 'انتشارات ققنوس',
+        customCostPerWord: 28,
+        walletBalance: 3500000,
+        status: 'active',
+        createdAt: Date.now() - 40 * 86400000,
+      });
+    }
+
+    // 4. Permanent Regular Customer User
     const userIndex = schema.users.findIndex(
       (u) => u.email === 'user@translator.ir' || u.phone === '09121111111' || u.id === 'usr_demo_1'
     );
@@ -930,6 +1023,14 @@ class Database {
       const adm = this.data.users.find(u => u.role === 'admin' || u.email === 'admin@translator.ir');
       if (adm) return adm;
     }
+    if (clean === 'staff' || clean === 'staff@translator.ir' || clean === '09122222222') {
+      const stf = this.data.users.find(u => u.role === 'staff' || u.email === 'staff@translator.ir');
+      if (stf) return stf;
+    }
+    if (clean === 'publisher' || clean === 'publisher@translator.ir' || clean === '09123333333') {
+      const pub = this.data.users.find(u => u.role === 'publisher' || u.email === 'publisher@translator.ir');
+      if (pub) return pub;
+    }
     if (clean === 'user' || clean === 'user@translator.ir' || clean === '09121111111') {
       const usr = this.data.users.find(u => u.email === 'user@translator.ir' || u.phone === '09121111111');
       if (usr) return usr;
@@ -942,8 +1043,12 @@ class Database {
     phone: string;
     email?: string;
     password?: string;
-    role?: 'admin' | 'user';
+    role?: UserRole;
     walletBalance?: number;
+    customCostPerWord?: number;
+    discountPercent?: number;
+    organizationName?: string;
+    notes?: string;
   }): User {
     const defaultGift = this.data.settings.pricing.freeWelcomeGift || 25000;
     const initialWallet = userData.walletBalance !== undefined ? userData.walletBalance : defaultGift;
@@ -959,6 +1064,10 @@ class Database {
       walletBalance: initialWallet,
       status: 'active',
       createdAt: Date.now(),
+      customCostPerWord: userData.customCostPerWord !== undefined && userData.customCostPerWord > 0 ? Number(userData.customCostPerWord) : undefined,
+      discountPercent: userData.discountPercent !== undefined && userData.discountPercent > 0 ? Number(userData.discountPercent) : undefined,
+      organizationName: userData.organizationName ? userData.organizationName.trim() : undefined,
+      notes: userData.notes ? userData.notes.trim() : undefined,
     };
 
     // Add welcome transaction if gift > 0
@@ -990,9 +1099,68 @@ class Database {
     if (updates.walletBalance !== undefined) user.walletBalance = updates.walletBalance;
     if (updates.status !== undefined) user.status = updates.status;
     if (updates.lastLoginAt !== undefined) user.lastLoginAt = updates.lastLoginAt;
+    if (updates.customCostPerWord !== undefined) {
+      user.customCostPerWord = updates.customCostPerWord && updates.customCostPerWord > 0 ? Number(updates.customCostPerWord) : undefined;
+    }
+    if (updates.discountPercent !== undefined) {
+      user.discountPercent = updates.discountPercent !== undefined && updates.discountPercent > 0 ? Number(updates.discountPercent) : undefined;
+    }
+    if (updates.organizationName !== undefined) user.organizationName = updates.organizationName ? updates.organizationName.trim() : undefined;
+    if (updates.notes !== undefined) user.notes = updates.notes ? updates.notes.trim() : undefined;
 
     this.saveData(this.data);
     return user;
+  }
+
+  /**
+   * محاسبه هوشمند نرخ کلمه‌ای هر کاربر بر اساس نرخ اختصاصی، نرخ ناشر و تخفیفات
+   */
+  public getUserEffectiveCostPerWord(userIdOrUser: string | User | undefined | null, tone?: string): {
+    baseCostPerWord: number;
+    effectiveCostPerWord: number;
+    multiplier: number;
+    tier: 'custom' | 'publisher' | 'general';
+    discountPercent: number;
+    tierLabel: string;
+  } {
+    const user = typeof userIdOrUser === 'string' ? this.getUserById(userIdOrUser) : (userIdOrUser || undefined);
+    const settings = this.getSettings().pricing;
+    const defaultRate = settings.costPerWord || 45;
+    const publisherRate = settings.publisherCostPerWord || Math.round(defaultRate * 0.65); // تخفیف ۳۵٪ ناشران
+
+    let multiplier = 1.0;
+    if (tone === 'academic' || tone === 'aerospace' || tone === 'mathematics') {
+      multiplier = settings.specializedMultiplier || 1.25;
+    }
+
+    let rate = defaultRate;
+    let tier: 'custom' | 'publisher' | 'general' = 'general';
+    let tierLabel = `نرخ عمومی (${defaultRate} ت)`;
+
+    if (user?.customCostPerWord && user.customCostPerWord > 0) {
+      rate = user.customCostPerWord;
+      tier = 'custom';
+      tierLabel = `نرخ اختصاصی کاربر (${rate} ت)`;
+    } else if (user?.role === 'publisher') {
+      rate = publisherRate;
+      tier = 'publisher';
+      tierLabel = `نرخ همکار ناشر (${rate} ت)`;
+    }
+
+    const discount = user?.discountPercent ? Math.min(100, Math.max(0, user.discountPercent)) : 0;
+    let effective = Math.round(rate * multiplier);
+    if (discount > 0) {
+      effective = Math.round(effective * (1 - discount / 100));
+    }
+
+    return {
+      baseCostPerWord: rate,
+      effectiveCostPerWord: Math.max(1, effective),
+      multiplier,
+      tier,
+      discountPercent: discount,
+      tierLabel,
+    };
   }
 
   public verifyPassword(user: User, passwordAttempt: string): boolean {

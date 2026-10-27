@@ -1312,6 +1312,19 @@ app.post('/api/import/file', async (req, res) => {
         });
         globalChunkCounter++;
       }
+
+      // تشخیص هوشمند فایل‌های PDF اسکن‌شده (Scanned PDF Detection)
+      // اگر فایل پی‌دی‌اف چندین صفحه دارد ولی در کل فایل کلمات استخراج‌شده زیر ۲۰ کلمه است، فایل اسکن شده است
+      const totalPdfExtractedWords = chunks.reduce((sum, c) => sum + (c.wordCount || 0), 0);
+      if (pdfDoc.numPages >= 1 && (chunks.length === 0 || totalPdfExtractedWords < Math.min(25, pdfDoc.numPages * 3))) {
+        return res.status(400).json({
+          success: false,
+          isScannedPdf: true,
+          numPages: pdfDoc.numPages,
+          totalWords: totalPdfExtractedWords,
+          error: `فایل PDF انتخابی شما به صورت «اسکن تصویری» (عکس بدون لایه متنی دیجیتال) تشخیص داده شد! در تمامی ${pdfDoc.numPages} صفحه این سند هیچ متن قابل انتخابی یافت نشد. موتور ترجمه سامانه برای جلوگیری از اتلاف اعتبار شما و تضمین کیفیت ترجمه، فقط فایل‌های PDF متنی استاندارد، Word (.docx) یا EPUB را پردازش می‌کند. لطفاً فایل متنی کتاب را آپلود فرمایید.`,
+        });
+      }
     } else if (detectedType === 'epub') {
       const zip = await JSZip.loadAsync(buffer);
       const containerXml = await zip.file('META-INF/container.xml')?.async('text');

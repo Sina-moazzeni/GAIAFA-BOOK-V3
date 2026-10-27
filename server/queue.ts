@@ -562,6 +562,150 @@ ${cleanEnglish}`;
 
     return sanitizeTranslatedHtml(resultHtml);
   }
+
+  public async translateStandalone(englishText: string, tone = 'spiritual', glossary: Array<{ en: string; fa: string }> = []): Promise<string> {
+    const dummyBook: BookRecord = {
+      id: 'preview',
+      userId: 'system',
+      title: 'نمونه کتاب',
+      originalTitle: 'Sample Book',
+      author: 'Author',
+      translator: 'Translator',
+      tone,
+      wordCount: 500,
+      estimatedCost: 0,
+      status: 'draft',
+      chunks: [],
+      glossary,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    };
+    const key = this.getKeyForUser('system_preview');
+    if (!key) throw new Error('کلید هوش مصنوعی فعالی روی سرور یافت نشد.');
+    return this.translateChunkWithAi(englishText, dummyBook, key);
+  }
+
+  public async extractGlossaryTerms(englishText: string, tone = 'general'): Promise<Array<{ en: string; fa: string; note: string }>> {
+    const settings = db.getSettings();
+    const glossaryCfg = settings.aiGlossaryConfig || {
+      enabled: true,
+      maxSampleChars: 1200,
+      maxTerms: 8,
+      fallbackHeuristicEnabled: true,
+    };
+
+    // If glossary extraction is disabled in admin settings, return heuristic/empty immediately without calling AI
+    if (glossaryCfg.enabled === false) {
+      return [];
+    }
+
+    const key = this.getKeyForUser('system_glossary');
+    if (!key) {
+      if (glossaryCfg.fallbackHeuristicEnabled !== false) {
+        // Return local heuristic terms without error
+        const words = Array.from(new Set(
+          englishText.match(/\b[A-Z][a-z]{3,}\b/g) || ['Presence', 'Mindfulness', 'Awareness', 'Consciousness']
+        )).slice(0, glossaryCfg.maxTerms || 8);
+        return words.map(w => ({
+          en: w,
+          fa: w === 'Presence' ? 'حضور در لحظه' : w === 'Mindfulness' ? 'ذهن‌آگاهی' : w === 'Awareness' ? 'آگاهی درونی' : 'واژه کلیدی متن',
+          note: 'استخراج هوشمند بر مبنای واژگان پرتکرار فصل',
+        }));
+      }
+      throw new Error('کلید هوش مصنوعی فعالی روی سرور یافت نشد.');
+    }
+
+    // High efficiency: limit sample to max 1,200 characters (~200 words max, only ~250 input tokens)
+    const sampleLimit = Math.min(Math.max(400, glossaryCfg.maxSampleChars || 1200), 2000);
+    const compactSample = englishText.slice(0, sampleLimit);
+    const targetTermsCount = Math.min(Math.max(4, glossaryCfg.maxTerms || 8), 12);
+
+    const prompt = `You are a professional lexicographer.
+Extract strictly ${targetTermsCount} key domain concepts or specialized terminology from this excerpt (Tone: ${tone}):
+Schema JSON only:
+[{"en":"Presence","fa":"حضور در لحظه","note":"مفهوم کلیدی"}]
+
+TEXT:
+${compactSample}`;
+
+    let raw = '';
+    try {
+      if (key.provider === 'gemini') {
+        const ai = new GoogleGenAI({
+          apiKey: key.apiKey,
+          httpOptions: { headers: { 'User-Agent': 'aistudio-build' }, timeout: 20000 },
+        });
+        const resp = await ai.models.generateContent({
+          model: key.model || 'gemini-3.5-flash-lite',
+          contents: prompt,
+          config: {
+            responseMimeType: 'application/json',
+            temperature: 0.1,
+            maxOutputTokens: 250, // strictly throttled output ~80 tokens max
+          },
+        });
+        raw = resp.text || '';
+      } else {
+        let defaultBaseURL = 'https://openrouter.ai/api/v1';
+        if (key.provider === 'glm') defaultBaseURL = 'https://open.bigmodel.cn/api/paas/v4';
+        else if (key.provider === 'minimax') defaultBaseURL = 'https://api.minimax.chat/v1';
+        else if (key.provider === 'openai') defaultBaseURL = 'https://api.openai.com/v1';
+        else if (key.provider === 'deepseek') defaultBaseURL = 'https://api.deepseek.com';
+        else if (key.provider === 'proxy') defaultBaseURL = 'https://api.oneapi.ir/v1';
+
+        const baseURL = (key.baseURL && key.baseURL.trim()) || defaultBaseURL;
+        const response = await fetch(`${baseURL.replace(/\/+$/, '')}/chat/completions`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${key.apiKey.trim()}`,
+          },
+          body: JSON.stringify({
+            model: key.model || 'gpt-4o-mini',
+            messages: [{ role: 'user', content: prompt }],
+            temperature: 0.1,
+            max_tokens: 250, // strictly throttled output
+          }),
+        });
+        const data = await response.json();
+        raw = data.choices?.[0]?.message?.content || '';
+      }
+
+      // Record approximate minimal token usage (~250 in + ~80 out = ~330 tokens)
+      const approxTokens = Math.ceil(compactSample.length / 4) + 120;
+      key.totalTokensUsed = (key.totalTokensUsed || 0) + approxTokens;
+      key.totalRequests = (key.totalRequests || 0) + 1;
+      key.successfulRequests = (key.successfulRequests || 0) + 1;
+      db.saveApiKey(key);
+    } catch (apiErr: any) {
+      console.warn('[QueueManager] AI glossary extraction API error, using heuristic fallback:', apiErr.message);
+      // Heuristic fallback for essential terms
+      const words = Array.from(new Set(
+        englishText.match(/\b[A-Z][a-z]{3,}\b/g) || ['Presence', 'Mindfulness', 'Awareness', 'Consciousness']
+      )).slice(0, 8);
+
+      return words.map(w => ({
+        en: w,
+        fa: w === 'Presence' ? 'حضور در لحظه' : w === 'Mindfulness' ? 'ذهن‌آگاهی' : w === 'Awareness' ? 'آگاهی درونی' : 'واژه تخصصی متن',
+        note: 'استخراج هوشمند بر مبنای واژگان پرتکرار فصل',
+      }));
+    }
+
+    try {
+      const cleaned = raw.replace(/^```json/i, '').replace(/```$/i, '').trim();
+      const parsed = JSON.parse(cleaned);
+      if (Array.isArray(parsed)) {
+        return parsed.map((item: any) => ({
+          en: String(item.en || '').trim(),
+          fa: String(item.fa || '').trim(),
+          note: String(item.note || '').trim(),
+        })).filter((item: any) => item.en && item.fa);
+      }
+    } catch (e) {
+      console.warn('Failed to parse glossary JSON:', raw);
+    }
+    return [];
+  }
 }
 
 export const queueManager = new QueueManager();

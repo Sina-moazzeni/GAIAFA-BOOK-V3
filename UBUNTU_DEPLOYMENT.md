@@ -1,71 +1,153 @@
-# راهنمای اجرای سامانه روی سرور لینوکس اوبونتو (Ubuntu Linux Guide)
+# راهنمای جامع و تضمینی استقرار سامانه تجاری ترجمه کتاب روی سرور مجازی لینوکس (VPS Guide)
 
-این سامانه به دو روش روی سرور لینوکس اوبونتو قابل اجراست:
+این راهنما ویژه بالا آوردن بدون خطای سامانه روی **سرور مجازی اختصاصی (VPS)** مجهز به اوبونتو (Ubuntu 20.04 / 22.04 / 24.04) یا دبیان (Debian) تهیه شده است.
 
 ---
 
-## روش اول (پیشنهادی / فول‌استک با Nginx و PM2):
-اگر مایلید بک‌اند Node.js روی سرور شما اجرا شود و درخواست‌ها از طریق سرور ارسال شوند:
+## 🚀 روش فوق‌سریع و اتوماتیک (پیشنهادی با اسکریپت ۱-کلیکه `deploy.sh`)
 
-### مرحله ۱: بیلد پروژه
+پروژه به اسکریپت خودکار و هوشمند `deploy.sh` مجهز است که تمام مراحل (بررسی و نصب Node.js 20 LTS، ایجاد پوشه‌ها، نصب پکیج‌ها، بیلد دوگانه کلاینت و سرور، تنظیم PM2، و تست سلامت پورت ۳۰۰۰) را بدون نیاز به تایپ دستی دستورات انجام می‌دهد:
+
 ```bash
+# وارد پوشه پروژه روی سرور مجازی شوید:
+cd /var/www/book-translator
+
+# دسترسی اجرا به اسکریپت را بدهید و آن را اجرا کنید:
+chmod +x deploy.sh
+./deploy.sh
+```
+
+اسکریپت پس از چند ثانیه خروجی سبز رنگ موفقیت را نمایش داده و سامانه را روی پورت ۳۰۰۰ بالا می‌آورد.
+
+---
+
+## 🛠 روش دستی گام‌به‌گام (Step-by-Step Manual Setup)
+
+اگر مایلید مراحل را به صورت دستی اجرا و نظارت فرمایید:
+
+### مرحله ۱: نصب پیش‌نیازهای اولیه در سرور لینوکس
+```bash
+sudo apt update && sudo apt upgrade -y
+sudo apt install -y curl wget git nginx certbot python3-certbot-nginx build-essential
+```
+
+### مرحله ۲: نصب Node.js 20 LTS و PM2
+```bash
+curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+sudo apt install -y nodejs
+sudo npm install -g pm2
+```
+بررسی صحت نصب:
+```bash
+node -v   # باید v20.x باشد
+npm -v
+```
+
+### مرحله ۳: کلون یا انتقال پروژه و بیلد نهایی
+```bash
+cd /var/www/book-translator
+
+# نصب وابستگی‌ها بدون خطای ERESOLVE
 npm install
+
+# اجرای بیلد کامل (تولید dist/index.html برای کلاینت و dist/server.js برای سرور)
 npm run build
 ```
 
-### مرحله ۲: اجرای سرور با PM2
-ابتدا مطمئن شوید PM2 نصب است (`npm install -g pm2`):
+### مرحله ۴: اجرا در پس‌زمینه با PM2 و ذخیره برای ریبوت خودکار
 ```bash
-# اجرای سرور Node.js روی پورت ۳۰۰۰
-pm2 start "npm run dev" --name "book-translator"
-# یا در محیط پروداکشن:
-pm2 start server.ts --name "book-translator" --interpreter ./node_modules/.bin/tsx
+NODE_ENV=production pm2 start dist/server.js --name "book-translator" --max-memory-restart 600M
 pm2 save
+pm2 startup
 ```
 
-### مرحله ۳: تنظیم Nginx در اوبونتو
-فایل کانفیگ را باز کنید:
+*(دستور خروجی `pm2 startup` را کپی و اجرا نمایید تا پس از ری‌استارت شدن سرور، سایت خودکار بالا بیاید).*
+
+---
+
+## 🌐 پیکربندی Nginx برای ساب‌دامین یا دامنه اصلی
+
+فایل کانفیگ وب‌سرور Nginx را بسازید:
 ```bash
 sudo nano /etc/nginx/sites-available/book-translator
 ```
-محتوای زیر را قرار دهید (توجه کنید مسیر `root` به پوشه `dist` شما اشاره کند):
+
+محتوای بهینه‌سازی‌شده زیر را قرار دهید (ساب‌دامین خود را جایگزین کنید):
 ```nginx
 server {
     listen 80;
-    server_name your-domain.com; # یا آی‌پی سرور
+    server_name sub.yourdomain.ir; # نام دامنه یا ساب‌دامین شما
 
-    root /var/www/book-translator/dist;
-    index index.html;
+    # سقف حجم آپلود برای فایل‌های قطور کتاب (PDF، DOCX، EPUB تا ۱۰۰ مگابایت)
     client_max_body_size 100M;
 
-    # فوروارد مسیر /api به سرور Node.js (برای جلوگیری از خطای HTML 200)
-    location /api/ {
-        proxy_pass http://127.0.0.1:3000/api/;
+    # فوروارد ترافیک به سمت سرور نودجی‌اس
+    location / {
+        proxy_pass http://127.0.0.1:3000;
         proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
-        proxy_read_timeout 120s;
-    }
-
-    location / {
-        try_files $uri $uri/ /index.html;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_cache_bypass $http_upgrade;
+        proxy_read_timeout 300s;
+        proxy_connect_timeout 300s;
     }
 }
 ```
-سپس فعال‌سازی و بارگذاری مجدد Nginx:
+
+فعال‌سازی کانفیگ در Nginx:
 ```bash
 sudo ln -s /etc/nginx/sites-available/book-translator /etc/nginx/sites-enabled/
 sudo nginx -t
 sudo systemctl reload nginx
 ```
 
+### دریافت گواهی امنیتی SSL رایگان (HTTPS با Let's Encrypt):
+```bash
+sudo certbot --nginx -d sub.yourdomain.ir
+```
+*(ربات خودکار گواهینامه معتبر SSL نصب کرده و ریدایرکت خودکار به HTTPS را فعال می‌نماید).*
+
 ---
 
-## روش دوم (فوق سریع / بدون نیاز به اجرای Node.js):
-اگر نمی‌خواهید سرویس Node.js را روی اوبونتو در حال اجرا نگه دارید:
-1. پروژه را با `npm run build` بیلد بگیرید.
-2. پوشه `dist` را روی هر وب‌سروری (Nginx یا آپاچی) قرار دهید.
-3. در سامانه، به بخش **«ویرایش سرورها و کلیدهای API»** بروید و حالت اتصال را روی:
-   **«مستقیم مرورگر (ویژه خروجی بیلد)»** قرار دهید.
-4. کلیدهای API خود را برای سرورهای دلخواه وارد کنید.
-5. سیستم بدون وابستگی به هیچ بک‌اندا و بدون خطای ۴۰۴/HTML، مستقیماً از طریق مرورگر به OpenRouter، DeepSeek یا Gemini متصل شده و چرخش و سوئیچ خودکار کلیدها را انجام می‌دهد.
+## 🔒 تنظیم فایروال لینوکس (UFW Firewall)
+
+برای امنیت سرور و جلوگیری از حملات:
+```bash
+sudo ufw allow OpenSSH
+sudo ufw allow 'Nginx Full'
+sudo ufw enable
+```
+
+---
+
+## 📋 ابزارهای نظارت و مانیتورینگ زنده سرور
+
+- **مشاهده لاگ‌های خطای زنده و لاگ‌های وب‌سرویس:**
+  ```bash
+  pm2 logs book-translator
+  ```
+- **بررسی مصرف رم و پردازنده سرور به صورت گرافیکی در ترمینال:**
+  ```bash
+  pm2 monit
+  ```
+- **ری‌استارت کردن سریع برنامه بدون قطعی ترافیک:**
+  ```bash
+  pm2 reload book-translator
+  ```
+
+---
+
+## 👤 حساب‌های پیش‌فرض سامانه جهت ورود اولیه
+
+- **مدیر ارشد سامانه (Super Admin):**
+  - شماره همراه: `09120000000` یا ایمیل: `admin@translator.ir`
+  - رمز عبور: `Admin@123456`
+  - امکانات: تعریف درگاه‌های بانکی، تعیین نرخ کلمه‌ای، پیکربندی استخر هوش مصنوعی، تنظیمات پیامک OTP، صدور کدهای تخفیف و دانلود بکاپ دیتابیس.
+
+- **کاربر نمونه تستی:**
+  - شماره همراه: `09121111111` یا ایمیل: `user@translator.ir`
+  - رمز عبور: `User@123456`

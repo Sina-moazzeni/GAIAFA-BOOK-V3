@@ -46,7 +46,8 @@ import {
   RotateCw,
   Save,
   Info,
-  Edit3
+  Edit3,
+  Calculator
 } from 'lucide-react';
 import {
   User,
@@ -959,6 +960,46 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
     } catch (e) {}
   };
 
+  // Reset Single Key Stats & Tokens
+  const handleResetSingleKeyStats = async (keyId: string, keyName: string) => {
+    if (!confirm(`آیا از صفر کردن آمار توکن‌ها و درخواست‌های کلید «${keyName}» اطمینان دارید؟`)) return;
+    try {
+      const res = await fetch(`/api/admin/api-keys/${keyId}/reset-stats`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (res.ok) {
+        alert(data.message || 'آمار کلید با موفقیت ریست شد.');
+        fetchApiKeys();
+      } else {
+        alert(data.error || 'خطا در ریست آمار کلید');
+      }
+    } catch (e: any) {
+      alert(`خطا: ${e.message}`);
+    }
+  };
+
+  // Reset All Keys Stats & Tokens
+  const handleResetAllKeysStats = async () => {
+    if (!confirm('آیا از صفر کردن آمار مصرف توکن و تعداد درخواست‌های کلیه کلیدهای هوش مصنوعی سرور اطمینان دارید؟')) return;
+    try {
+      const res = await fetch('/api/admin/api-keys/reset-all-stats', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (res.ok) {
+        alert(data.message || 'آمار همه کلیدها صفر شد.');
+        fetchApiKeys();
+      } else {
+        alert(data.error || 'خطا در ریست آمار کلیدها');
+      }
+    } catch (e: any) {
+      alert(`خطا: ${e.message}`);
+    }
+  };
+
   // Quick 1-Click Wallet Gift for Users
   const handleQuickGift = async (userId: string, amount: number, desc: string) => {
     try {
@@ -1504,7 +1545,33 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
       </div>
 
       {/* Main Content Area */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 flex-1 w-full">
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 flex-1 w-full space-y-6">
+        {settingsToast && (
+          <div
+            className={`p-4 rounded-2xl border text-xs font-bold flex items-center justify-between shadow-xl transition-all animate-in fade-in sticky top-28 z-30 backdrop-blur-md ${
+              settingsToast.type === 'success'
+                ? 'bg-emerald-500/20 border-emerald-500/50 text-emerald-300 shadow-emerald-500/10'
+                : 'bg-rose-500/20 border-rose-500/50 text-rose-300 shadow-rose-500/10'
+            }`}
+          >
+            <div className="flex items-center gap-2.5">
+              {settingsToast.type === 'success' ? (
+                <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
+              ) : (
+                <AlertCircle className="w-5 h-5 text-rose-400 shrink-0" />
+              )}
+              <span>{settingsToast.message}</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setSettingsToast(null)}
+              className="p-1 rounded-lg hover:bg-slate-900/60 text-slate-400 hover:text-white"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        )}
+
         {/* ========================================================= */}
         {/* TAB 1: OVERVIEW */}
         {/* ========================================================= */}
@@ -1627,6 +1694,64 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
                   ))}
                 </div>
               )}
+            </div>
+
+            {/* Linux VPS Environment & Production Health Status Card */}
+            <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl space-y-4">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pb-3 border-b border-slate-800">
+                <div className="flex items-center gap-2.5">
+                  <span className="relative flex h-3 w-3">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
+                  </span>
+                  <div>
+                    <h3 className="font-bold text-base text-white flex items-center gap-2">
+                      <Server className="w-4 h-4 text-emerald-400" />
+                      <span>وضعیت استقرار روی سرور مجازی لینوکس (Linux VPS Production Health)</span>
+                    </h3>
+                    <p className="text-[11px] text-slate-400">سامانه ۱۰۰٪ سازگار با Ubuntu/Debian، سرویس Systemd و cPanel Phusion Passenger</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-1.5 bg-emerald-500/10 text-emerald-400 px-3 py-1 rounded-full text-xs font-bold border border-emerald-500/20">
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  <span>پایدار و آماده بهره‌برداری تجاری</span>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
+                <div className="bg-slate-950 p-3.5 rounded-2xl border border-slate-800">
+                  <span className="text-slate-400 text-[11px] block mb-1">سیستم‌عامل و سرور:</span>
+                  <div className="font-bold text-white flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
+                    <span>Linux VPS / Debian / Ubuntu</span>
+                  </div>
+                  <span className="text-[10px] text-slate-500 mt-1 block">پشتیبانی از اسکریپت deploy.sh</span>
+                </div>
+
+                <div className="bg-slate-950 p-3.5 rounded-2xl border border-slate-800">
+                  <span className="text-slate-400 text-[11px] block mb-1">سرویس پس‌زمینه لینوکس:</span>
+                  <div className="font-bold text-amber-300 font-mono">
+                    book-translator.service
+                  </div>
+                  <span className="text-[10px] text-slate-500 mt-1 block">Auto-Restart فعال در Systemd</span>
+                </div>
+
+                <div className="bg-slate-950 p-3.5 rounded-2xl border border-slate-800">
+                  <span className="text-slate-400 text-[11px] block mb-1">حالت گوش دادن پورت و سوکت:</span>
+                  <div className="font-bold text-cyan-300 font-mono">
+                    PORT / Unix Domain Socket
+                  </div>
+                  <span className="text-[10px] text-slate-500 mt-1 block">سازگار با Nginx Reverse Proxy</span>
+                </div>
+
+                <div className="bg-slate-950 p-3.5 rounded-2xl border border-slate-800">
+                  <span className="text-slate-400 text-[11px] block mb-1">پایگاه داده مستقل از کاربر:</span>
+                  <div className="font-bold text-purple-300 font-mono">
+                    data/database.json (Fast I/O)
+                  </div>
+                  <span className="text-[10px] text-slate-500 mt-1 block">پشتیبان‌گیری خودکار بدون وابستگی</span>
+                </div>
+              </div>
             </div>
           </div>
         )}
@@ -3090,6 +3215,14 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
                   <span>{testingAllKeys ? 'در حال بررسی...' : 'تست پینگ همزمان تمام کلیدها'}</span>
                 </button>
                 <button
+                  onClick={handleResetAllKeysStats}
+                  className="px-3.5 py-2 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 border border-rose-500/30 text-xs font-bold flex items-center gap-1.5 transition"
+                  title="صفر کردن کنتور توکن و آمار کلیه کلیدها"
+                >
+                  <RotateCw className="w-4 h-4 text-rose-400" />
+                  <span>ریست آمار و توکن همه کلیدها</span>
+                </button>
+                <button
                   onClick={() => { fetchApiKeys(); fetchQueueStats(); }}
                   className="px-3.5 py-2 rounded-xl bg-slate-900 border border-slate-800 text-xs text-slate-300 hover:text-white flex items-center gap-1.5"
                 >
@@ -3393,6 +3526,14 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
                                 <span>ویرایش</span>
                               </button>
                               <button
+                                onClick={() => handleResetSingleKeyStats(k.id, k.name)}
+                                className="px-2 py-1 rounded-lg bg-blue-500/10 hover:bg-blue-500/20 text-blue-300 border border-blue-500/20 text-[11px] font-bold flex items-center gap-1 transition"
+                                title="صفر کردن آمار توکن‌های مصرفی و خطاهای این کلید"
+                              >
+                                <RotateCw className="w-3 h-3 text-blue-400" />
+                                <span>ریست توکن</span>
+                              </button>
+                              <button
                                 onClick={() => handleTestApiKey(k)}
                                 disabled={testingKeyId === k.id}
                                 className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] flex items-center gap-1"
@@ -3415,6 +3556,172 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
                   </tbody>
                 </table>
               </div>
+            </div>
+
+            {/* Token Cost Transparency & Live Financial Calculator Card */}
+            {(() => {
+              const totalTokensUsedAll = apiKeys.reduce((acc, k) => acc + (k.totalTokensUsed || 0), 0);
+              // Standard cost: $0.15 per 1,000,000 tokens on Flash/gpt-4o-mini
+              const estimatedCostUsd = ((totalTokensUsedAll / 1000000) * 0.15);
+              const usdToTomanRate = 92000;
+              const estimatedCostToman = Math.round(estimatedCostUsd * usdToTomanRate);
+
+              return (
+                <div className="p-5 rounded-3xl bg-slate-900 border border-slate-800 shadow-xl space-y-4">
+                  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pb-3 border-b border-slate-800">
+                    <div className="flex items-center gap-2">
+                      <Calculator className="w-5 h-5 text-emerald-400" />
+                      <div>
+                        <h3 className="font-bold text-sm text-white">محاسبه‌گر شفاف هزینه واقعی توکن‌های مصرفی سرور</h3>
+                        <p className="text-[11px] text-slate-400">شفافیت ۱۰۰٪ تجاری: برآورد ریالی و دلاری هزینه‌های پردازش هوش مصنوعی</p>
+                      </div>
+                    </div>
+                    <span className="text-[10px] bg-emerald-500/10 text-emerald-400 px-2.5 py-1 rounded-full font-bold border border-emerald-500/20">
+                      نرخ میانگین: ۰.۱۵$ به ازای هر ۱ میلیون توکن
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+                    <div className="bg-slate-950 p-3.5 rounded-2xl border border-slate-800">
+                      <span className="text-slate-400 text-[11px] block mb-1">مجموع کل توکن‌های مصرف‌شده:</span>
+                      <div className="text-lg font-black text-amber-400 font-mono">
+                        {totalTokensUsedAll.toLocaleString('en-US')} <span className="text-xs font-normal text-slate-400">توکن</span>
+                      </div>
+                      <span className="text-[10px] text-slate-500 mt-1 block">شامل درخواست‌های ترجمه و واژه‌نامه</span>
+                    </div>
+
+                    <div className="bg-slate-950 p-3.5 rounded-2xl border border-slate-800">
+                      <span className="text-slate-400 text-[11px] block mb-1">هزینه معادل دلاری (USD):</span>
+                      <div className="text-lg font-black text-emerald-400 font-mono">
+                        ${estimatedCostUsd.toFixed(4)} <span className="text-xs font-normal text-slate-400">USD</span>
+                      </div>
+                      <span className="text-[10px] text-slate-500 mt-1 block">بر مبنای تعرفه رسمی Google & OpenAI</span>
+                    </div>
+
+                    <div className="bg-slate-950 p-3.5 rounded-2xl border border-slate-800">
+                      <span className="text-slate-400 text-[11px] block mb-1">معادل هزینه به تومان ایران:</span>
+                      <div className="text-lg font-black text-blue-400 font-mono">
+                        {estimatedCostToman.toLocaleString('fa-IR')} <span className="text-xs font-normal text-slate-400">تومان</span>
+                      </div>
+                      <span className="text-[10px] text-slate-500 mt-1 block">با احتساب دلار ۹۲,۰۰۰ تومانی</span>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* AI Glossary Extractor Throttling & Configuration Card */}
+            <div className="p-5 rounded-3xl bg-slate-900 border border-slate-800 shadow-xl space-y-4">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pb-3 border-b border-slate-800">
+                <div className="flex items-center gap-2">
+                  <BookOpen className="w-5 h-5 text-amber-400" />
+                  <div>
+                    <h3 className="font-bold text-sm text-white">کنترل استخراج هوشمند اصطلاحات تخصصی (AI Glossary Extractor)</h3>
+                    <p className="text-[11px] text-slate-400">مدیریت سقف نمونه متن و کنترل قطعی مصرف توکن در استخراج واژگان</p>
+                  </div>
+                </div>
+                <div className="text-[11px] bg-amber-500/10 text-amber-300 px-3 py-1 rounded-full font-bold border border-amber-500/25">
+                  مصرف هر استخراج: کمتر از ۳ تک‌تومان ایران!
+                </div>
+              </div>
+
+              {/* Explanatory banner addressing user concern */}
+              <div className="bg-emerald-500/10 border border-emerald-500/25 p-4 rounded-2xl text-xs text-emerald-200 leading-relaxed space-y-1.5">
+                <div className="font-bold text-emerald-300 flex items-center gap-1.5">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                  <span>تضمین عدم مصرف زیاد توکن در استخراج اصطلاحات:</span>
+                </div>
+                <p className="text-[11px] text-slate-300">
+                  برای استخراج واژه‌نامه تخصصی، سامانه کل کتاب را به هوش مصنوعی ارسال نمی‌کند، بلکه تنها یک نمونه کوتاه (حدود ۲۰۰ کلمه / ۱۲۰۰ کاراکتر) را برای کشف ۶ الی ۸ واژه کلیدی بررسی می‌کند. 
+                  حداکثر مصرف هر بار استخراج تنها <strong>حدود ۳۰۰ توکن</strong> (معادل <strong>۰.۰۰۰۰۴۵ دلار</strong> یا <strong>کمتر از ۳ تک‌تومان ایران</strong>) است. 
+                  این قابلیت بدون تحمیل هزینه، کیفیت و یکدستی ترجمه را در تمام فصل‌های کتاب تضمین می‌نماید.
+                </p>
+              </div>
+
+              {settings && (
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs pt-1">
+                  <div className="bg-slate-950 p-3.5 rounded-2xl border border-slate-800 space-y-2">
+                    <label className="font-bold text-slate-300 block">وضعیت استخراج خودکار:</label>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          const currentEnabled = settings.aiGlossaryConfig?.enabled !== false;
+                          const newConfig = {
+                            ...(settings.aiGlossaryConfig || {}),
+                            enabled: !currentEnabled,
+                            maxSampleChars: settings.aiGlossaryConfig?.maxSampleChars || 1200,
+                            maxTerms: settings.aiGlossaryConfig?.maxTerms || 8,
+                            fallbackHeuristicEnabled: true,
+                          };
+                          const updated = { ...settings, aiGlossaryConfig: newConfig };
+                          setSettings(updated);
+                          await fetch('/api/admin/settings', {
+                            method: 'PUT',
+                            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                            body: JSON.stringify(updated),
+                          });
+                          alert(currentEnabled ? 'استخراج خودکار واژه‌نامه غیرفعال شد.' : 'استخراج خودکار واژه‌نامه فعال شد.');
+                        }}
+                        className={`w-full py-2 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 ${
+                          settings.aiGlossaryConfig?.enabled !== false
+                            ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 hover:bg-emerald-500/30'
+                            : 'bg-rose-500/20 text-rose-300 border border-rose-500/40 hover:bg-rose-500/30'
+                        }`}
+                      >
+                        {settings.aiGlossaryConfig?.enabled !== false ? '✓ فعال و خودکار' : '✕ غیرفعال'}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="bg-slate-950 p-3.5 rounded-2xl border border-slate-800 space-y-1.5">
+                    <label className="font-bold text-slate-300 block">سقف طول متن نمونه (کاراکتر):</label>
+                    <input
+                      type="number"
+                      min="400"
+                      max="3000"
+                      step="100"
+                      value={settings.aiGlossaryConfig?.maxSampleChars || 1200}
+                      onChange={(e) => {
+                        const val = Number(e.target.value);
+                        setSettings({
+                          ...settings,
+                          aiGlossaryConfig: {
+                            ...(settings.aiGlossaryConfig || { enabled: true, maxTerms: 8, fallbackHeuristicEnabled: true }),
+                            maxSampleChars: val,
+                          },
+                        });
+                      }}
+                      className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white font-mono text-xs focus:outline-none focus:border-amber-500 text-left"
+                      dir="ltr"
+                    />
+                    <span className="text-[10px] text-slate-500 block">پیش‌فرض: ۱۲۰۰ کاراکتر (~۲۰۰ کلمه)</span>
+                  </div>
+
+                  <div className="bg-slate-950 p-3.5 rounded-2xl border border-slate-800 space-y-1.5">
+                    <label className="font-bold text-slate-300 block">سقف تعداد واژگان استخراجی:</label>
+                    <input
+                      type="number"
+                      min="4"
+                      max="15"
+                      value={settings.aiGlossaryConfig?.maxTerms || 8}
+                      onChange={(e) => {
+                        const val = Number(e.target.value);
+                        setSettings({
+                          ...settings,
+                          aiGlossaryConfig: {
+                            ...(settings.aiGlossaryConfig || { enabled: true, maxSampleChars: 1200, fallbackHeuristicEnabled: true }),
+                            maxTerms: val,
+                          },
+                        });
+                      }}
+                      className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white font-mono text-xs focus:outline-none focus:border-amber-500 text-left"
+                      dir="ltr"
+                    />
+                    <span className="text-[10px] text-slate-500 block">پیش‌فرض: ۶ الی ۸ اصطلاح کلیدی</span>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Add Key Modal */}

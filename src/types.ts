@@ -1,15 +1,21 @@
 export type ToneId = 'spiritual' | 'novel' | 'self_help' | 'academic' | 'business' | 'aerospace' | 'mathematics';
 
+export type UserRole = 'admin' | 'staff' | 'publisher' | 'user';
+
 export interface User {
   id: string;
   name: string;
   phone: string;
   email: string;
-  role: 'admin' | 'user';
+  role: UserRole;
   walletBalance: number;
   status: 'active' | 'banned';
   createdAt: number;
   lastLoginAt?: number;
+  customCostPerWord?: number; // نرخ اختصاصی هر کلمه به تومان برای این کاربر خاص
+  discountPercent?: number; // درصد تخفیف ویژه اختصاصی (مثلا ۲۰ درصد)
+  organizationName?: string; // نام انتشارات یا موسسه همکار
+  notes?: string; // یادداشت پرسنل پشتیبانی یا مدیر
 }
 
 export interface TranslationJob {
@@ -66,6 +72,7 @@ export interface ApiKeyItem {
 export interface SystemSettings {
   pricing: {
     costPerWord: number;
+    publisherCostPerWord?: number; // نرخ ویژه ناشران (تومان)
     specializedMultiplier: number;
     freeWelcomeGift: number;
     minDepositAmount: number;
@@ -134,6 +141,19 @@ export interface SystemSettings {
     createdAt: number;
   }>;
   headerFooter?: HeaderFooterConfig;
+  aiGlossaryConfig?: {
+    enabled: boolean;
+    maxSampleChars: number;
+    maxTerms: number;
+    fallbackHeuristicEnabled: boolean;
+  };
+  announcementBar?: {
+    enabled: boolean;
+    text: string;
+    type: 'info' | 'warning' | 'success' | 'urgent';
+    linkUrl?: string;
+    linkText?: string;
+  };
   seo?: {
     siteTitle: string;
     metaDescription: string;
@@ -318,6 +338,12 @@ export type BookThemeId =
 export type BackgroundPatternId = 'none' | 'arabesque' | 'geometry' | 'parchment';
 export type BorderStyleId = 'ornate_spiritual' | 'double_classic' | 'thin_modern' | 'none';
 
+export type BookTrimSize =
+  | 'ruqai'    // قطع رقعی (۱۴.۵ × ۲۱.۵ سانتی‌متر - رمان، ادبیات و عمومی)
+  | 'vaziri'   // قطع وزیری (۱۷.۵ × ۲۵ سانتی‌متر - دانشگاهی، علمی، تخصصی)
+  | 'rahli'    // قطع رحلی (۲۱ × ۲۹.۷ سانتی‌متر / A4 - نفیس، مصور، مرجع)
+  | 'pocket';  // قطع جیبی (۱۱.۵ × ۱۶.۵ سانتی‌متر - همراه و چکیده)
+
 export interface CustomColorPalette {
   headerColor?: string;     // رنگ سربرگ / Running Header
   footerColor?: string;     // رنگ پاورقی و شماره صفحه
@@ -348,6 +374,7 @@ export interface BookDesignConfig {
   backgroundPattern: BackgroundPatternId;
   watermarkText?: string;
   pageMargin?: 'compact' | 'normal' | 'generous';
+  trimSize?: BookTrimSize;
   customColors?: CustomColorPalette;
 }
 

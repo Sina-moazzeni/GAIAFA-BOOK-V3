@@ -162,7 +162,13 @@ export function plainTextToHtml(plainText: string, originalHtml?: string): strin
       continue;
     }
 
-    // Markdown-style Heading 1 or first block if it's very short and looks like a chapter header
+    // Fleuron and ornamental dividers (e.g. ✤ ── ❦ ── ✤)
+    if (block.includes('❦') || block.includes('───') || block.startsWith('✤')) {
+      htmlParts.push(`<div class="book-fleuron-divider" style="text-align: center; margin: 26px 0; font-size: 15pt; color: #b45309; letter-spacing: 5px;">✤ ───── ❦ ───── ✤</div>`);
+      continue;
+    }
+
+    // Markdown-style Heading 1 or chapter title
     if (block.startsWith('# ')) {
       const headingText = block.replace(/^#\s*/, '').trim();
       htmlParts.push(`<h1 style="color: #1a365d; font-size: 24pt; margin-bottom: 22px; text-align: center;">${headingText}</h1>`);
@@ -172,6 +178,62 @@ export function plainTextToHtml(plainText: string, originalHtml?: string): strin
     } else if (block.startsWith('### ')) {
       const headingText = block.replace(/^###\s*/, '').trim();
       htmlParts.push(`<h3 style="color: #2c5282; font-size: 14pt; margin-top: 18px; margin-bottom: 10px;">${headingText}</h3>`);
+    } else if (block.includes('💡') || block.includes('نکته کلیدی')) {
+      // 💡 جعبه نکته کلیدی و خلاصه (Key Takeaway Box)
+      const text = block.replace(/^[>*\s]*💡\s*(?:[*\s]*نکته کلیدی:?[*\s]*)?/i, '').trim();
+      htmlParts.push(`
+        <div class="book-callout book-callout-tip" style="background: #fffbeb; border-right: 4px solid #f59e0b; padding: 14px 18px; margin: 22px 0; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+          <div style="display: flex; align-items: center; gap: 8px; font-weight: 800; color: #b45309; margin-bottom: 6px; font-size: 11pt;">
+            <span>💡</span>
+            <span>نکته کلیدی و خلاصه فصل</span>
+          </div>
+          <p style="margin: 0; line-height: 2.0; font-size: 11.5pt; color: #78350f;">${text}</p>
+        </div>
+      `);
+    } else if (block.includes('📜') || block.includes('نقل‌قول') || block.includes('نقل قول')) {
+      // 📜 جعبه نقل قول زرین (Author / Golden Quote Box)
+      const text = block.replace(/^[>*\s]*📜\s*(?:[*\s]*نقل‌?قول:?[*\s]*)?/i, '').trim();
+      htmlParts.push(`
+        <div class="book-callout book-callout-quote" style="background: #f0fdf4; border-right: 4px solid #10b981; padding: 14px 18px; margin: 22px 0; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+          <div style="display: flex; align-items: center; gap: 8px; font-weight: 800; color: #047857; margin-bottom: 6px; font-size: 11pt;">
+            <span>📜</span>
+            <span>کلام و نقل‌قول بزرگان</span>
+          </div>
+          <p style="margin: 0; line-height: 2.1; font-size: 12pt; color: #064e3b; font-style: italic;">«${text.replace(/^[«"]+|[»"]+$/g, '')}»</p>
+        </div>
+      `);
+    } else if (block.includes('⚠️') || block.includes('توجه مهم') || block.includes('هشدار')) {
+      // ⚠️ جعبه هشدار و توجه حساس (Warning Callout Box)
+      const text = block.replace(/^[>*\s]*⚠️\s*(?:[*\s]*توجه مهم:?[*\s]*)?/i, '').trim();
+      htmlParts.push(`
+        <div class="book-callout book-callout-warning" style="background: #fef2f2; border-right: 4px solid #ef4444; padding: 14px 18px; margin: 22px 0; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+          <div style="display: flex; align-items: center; gap: 8px; font-weight: 800; color: #b91c1c; margin-bottom: 6px; font-size: 11pt;">
+            <span>⚠️</span>
+            <span>توجه مهم و تمایز مفهومی</span>
+          </div>
+          <p style="margin: 0; line-height: 2.0; font-size: 11.5pt; color: #7f1d1d;">${text}</p>
+        </div>
+      `);
+    } else if (block.includes('❓') || block.includes('پرسش برای تامل') || block.includes('پرسش و تامل')) {
+      // ❓ جعبه تامل و پرسش برای خواننده (Reflection / Study Box)
+      const text = block.replace(/^[>*\s]*❓\s*(?:[*\s]*پرسش برای تامل:?[*\s]*)?/i, '').trim();
+      htmlParts.push(`
+        <div class="book-callout book-callout-question" style="background: #f0f9ff; border-right: 4px solid #0284c7; padding: 14px 18px; margin: 22px 0; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+          <div style="display: flex; align-items: center; gap: 8px; font-weight: 800; color: #0369a1; margin-bottom: 6px; font-size: 11pt;">
+            <span>❓</span>
+            <span>پرسش برای تامل و تمرین خواننده</span>
+          </div>
+          <p style="margin: 0; line-height: 2.0; font-size: 11.5pt; color: #0c4a6e;">${text}</p>
+        </div>
+      `);
+    } else if (block.startsWith('[پانویس:') || block.startsWith('پانویس:')) {
+      // 📝 یادداشت و پانویس استاندارد مترجم
+      const text = block.replace(/^\[?پانویس:\s*|\]$/g, '').trim();
+      htmlParts.push(`
+        <div class="book-footnote" style="margin-top: 20px; padding-top: 10px; border-top: 1px dashed #cbd5e1; font-size: 9.5pt; color: #64748b; line-height: 1.8;">
+          <strong style="color: #475569;">[پانویس مترجم]:</strong> ${text}
+        </div>
+      `);
     } else if (block.startsWith('> ') || block.startsWith('«')) {
       const quoteText = block.replace(/^>\s*/, '').trim();
       htmlParts.push(`<blockquote style="border-right: 4px solid #3182ce; padding: 12px 18px; margin: 18px 0; background: #f7fafc; color: #4a5568; font-style: italic;">${quoteText}</blockquote>`);

@@ -39,6 +39,37 @@ function requireAdmin(req: express.Request, res: express.Response, next: express
   next();
 }
 
+// Staff or Admin guard middleware (عملیات کاربران، صف کتاب‌ها، شارژ و کوپن‌ها)
+function requireStaffOrAdmin(req: express.Request, res: express.Response, next: express.NextFunction) {
+  const user = getAuthUser(req);
+  if (!user || (user.role !== 'admin' && user.role !== 'staff')) {
+    return res.status(403).json({ error: 'دسترسی فقط مخصوص کادر پشتیبانی یا مدیریت سامانه است.' });
+  }
+  (req as any).user = user;
+  next();
+}
+
+// Clean user response with pricing tier info
+export function sanitizeUser(user: User) {
+  const rateInfo = db.getUserEffectiveCostPerWord(user);
+  return {
+    id: user.id,
+    name: user.name,
+    phone: user.phone,
+    email: user.email,
+    role: user.role,
+    walletBalance: user.walletBalance,
+    status: user.status,
+    customCostPerWord: user.customCostPerWord,
+    discountPercent: user.discountPercent,
+    organizationName: user.organizationName,
+    notes: user.notes,
+    pricingTier: rateInfo.tier,
+    effectiveCostPerWord: rateInfo.effectiveCostPerWord,
+    tierLabel: rateInfo.tierLabel,
+  };
+}
+
 export function setupSaasRoutes(app: express.Express) {
   // ==========================================
   // 1. PUBLIC CMS & CONFIG
@@ -115,15 +146,7 @@ export function setupSaasRoutes(app: express.Express) {
       success: true,
       message: 'ثبت‌نام با موفقیت انجام شد.',
       token,
-      user: {
-        id: user.id,
-        name: user.name,
-        phone: user.phone,
-        email: user.email,
-        role: user.role,
-        walletBalance: user.walletBalance,
-        status: user.status,
-      },
+      user: sanitizeUser(user),
     });
   });
 
@@ -174,15 +197,7 @@ export function setupSaasRoutes(app: express.Express) {
       success: true,
       message: 'ورود موفقیت‌آمیز بود.',
       token,
-      user: {
-        id: user.id,
-        name: user.name,
-        phone: user.phone,
-        email: user.email,
-        role: user.role,
-        walletBalance: user.walletBalance,
-        status: user.status,
-      },
+      user: sanitizeUser(user),
     });
   });
 
@@ -242,15 +257,7 @@ export function setupSaasRoutes(app: express.Express) {
       success: true,
       message: 'ورود با پیامک موفقیت‌آمیز بود.',
       token,
-      user: {
-        id: user.id,
-        name: user.name,
-        phone: user.phone,
-        email: user.email,
-        role: user.role,
-        walletBalance: user.walletBalance,
-        status: user.status,
-      },
+      user: sanitizeUser(user),
     });
   });
 
@@ -266,15 +273,7 @@ export function setupSaasRoutes(app: express.Express) {
   app.get('/api/auth/me', requireAuth, (req, res) => {
     const user = (req as any).user as User;
     return res.json({
-      user: {
-        id: user.id,
-        name: user.name,
-        phone: user.phone,
-        email: user.email,
-        role: user.role,
-        walletBalance: user.walletBalance,
-        status: user.status,
-      },
+      user: sanitizeUser(user),
     });
   });
 
@@ -293,25 +292,24 @@ export function setupSaasRoutes(app: express.Express) {
   app.post('/api/pricing/calculate', (req, res) => {
     const { words, tone } = req.body;
     const cleanWords = Math.max(0, Number(words) || 0);
-    const settings = db.getSettings().pricing;
+    const user = getAuthUser(req);
+    const rateInfo = db.getUserEffectiveCostPerWord(user, tone);
 
-    let multiplier = 1.0;
-    if (tone === 'academic' || tone === 'aerospace' || tone === 'mathematics') {
-      multiplier = settings.specializedMultiplier || 1.25;
-    }
-
-    const costPerWord = Math.round(settings.costPerWord * multiplier);
+    const costPerWord = rateInfo.effectiveCostPerWord;
     const totalCost = Math.round(cleanWords * costPerWord);
     const estimatedChunks = Math.max(1, Math.ceil(cleanWords / 700));
     const estimatedMinutes = Math.max(1, Math.ceil((estimatedChunks * 4.5) / 60));
 
-    const user = getAuthUser(req);
     const userBalance = user ? user.walletBalance : 0;
     const hasEnoughBalance = userBalance >= totalCost;
 
     return res.json({
       words: cleanWords,
       costPerWord,
+      baseCostPerWord: rateInfo.baseCostPerWord,
+      tier: rateInfo.tier,
+      tierLabel: rateInfo.tierLabel,
+      discountPercent: rateInfo.discountPercent,
       totalCost,
       estimatedChunks,
       estimatedMinutes,
@@ -345,7 +343,7 @@ export function setupSaasRoutes(app: express.Express) {
       return res.status(404).json({ error: 'کتاب مورد نظر یافت نشد.' });
     }
 
-    if (book.userId !== user.id && user.role !== 'admin') {
+    if (book.userId !== user.id && user.role !== 'admin' && user.role !== 'staff') {
       return res.status(403).json({ error: 'شما دسترسی به این کتاب را ندارید.' });
     }
 
@@ -382,19 +380,15 @@ export function setupSaasRoutes(app: express.Express) {
       totalWords += Number(c.wordCount) || 0;
     });
 
-    const settings = db.getSettings().pricing;
-    let multiplier = 1.0;
-    if (tone === 'academic' || tone === 'aerospace' || tone === 'mathematics') {
-      multiplier = settings.specializedMultiplier || 1.25;
-    }
-    const costPerWord = Math.round(settings.costPerWord * multiplier);
+    const rateInfo = db.getUserEffectiveCostPerWord(user, tone);
+    const costPerWord = rateInfo.effectiveCostPerWord;
     const estimatedCost = Math.round(totalWords * costPerWord);
 
     // If starting translation immediately, check wallet balance
     if (startTranslation) {
       if (user.walletBalance < estimatedCost) {
         return res.status(402).json({
-          error: `موجودی کیف پول شما کافی نیست. هزینه ترجمه: ${estimatedCost.toLocaleString('fa-IR')} تومان - موجودی فعلی: ${user.walletBalance.toLocaleString('fa-IR')} تومان.`,
+          error: `موجودی کیف پول شما کافی نیست. هزینه ترجمه: ${estimatedCost.toLocaleString('fa-IR')} تومان (${rateInfo.tierLabel}) - موجودی فعلی: ${user.walletBalance.toLocaleString('fa-IR')} تومان.`,
           requiredAmount: estimatedCost,
           currentBalance: user.walletBalance,
         });
@@ -405,7 +399,7 @@ export function setupSaasRoutes(app: express.Express) {
         userId: user.id,
         amount: -estimatedCost,
         type: 'charge',
-        description: `هزینه ترجمه پس‌زمینه کتاب «${title}» (${totalWords.toLocaleString('fa-IR')} کلمه)`,
+        description: `هزینه ترجمه پس‌زمینه کتاب «${title}» (${totalWords.toLocaleString('fa-IR')} کلمه - ${rateInfo.tierLabel})`,
         status: 'success',
       });
     }
@@ -600,12 +594,8 @@ export function setupSaasRoutes(app: express.Express) {
     const uncompletedChunks = book.chunks.filter(c => !c.translatedHtml);
     const uncompletedWords = uncompletedChunks.reduce((sum, c) => sum + (c.wordCount || 0), 0);
 
-    const settings = db.getSettings().pricing;
-    let multiplier = 1.0;
-    if (book.tone === 'academic' || book.tone === 'aerospace' || book.tone === 'mathematics') {
-      multiplier = settings.specializedMultiplier || 1.25;
-    }
-    const costPerWord = Math.round(settings.costPerWord * multiplier);
+    const rateInfo = db.getUserEffectiveCostPerWord(user, book.tone);
+    const costPerWord = rateInfo.effectiveCostPerWord;
     const refundAmount = Math.round(uncompletedWords * costPerWord);
 
     if (refundAmount > 0) {
@@ -613,7 +603,7 @@ export function setupSaasRoutes(app: express.Express) {
         userId: user.id,
         amount: refundAmount,
         type: 'refund',
-        description: `بازگشت هزینه ${uncompletedWords.toLocaleString('fa-IR')} کلمه ترجمه‌نشده کتاب «${book.title}»`,
+        description: `بازگشت هزینه ${uncompletedWords.toLocaleString('fa-IR')} کلمه ترجمه‌نشده کتاب «${book.title}» (${rateInfo.tierLabel})`,
         status: 'success',
       });
     }
@@ -636,7 +626,7 @@ export function setupSaasRoutes(app: express.Express) {
     const book = db.getBookById(req.params.id);
 
     if (!book) return res.status(404).json({ error: 'کتاب یافت نشد.' });
-    if (book.userId !== user.id && user.role !== 'admin') {
+    if (book.userId !== user.id && user.role !== 'admin' && user.role !== 'staff') {
       return res.status(403).json({ error: 'دسترسی غیرمجاز.' });
     }
 
@@ -653,12 +643,8 @@ export function setupSaasRoutes(app: express.Express) {
 
     // Recalculate wordCount
     book.wordCount = book.chunks.reduce((sum, c) => sum + (c.wordCount || 0), 0);
-    const settings = db.getSettings().pricing;
-    let multiplier = 1.0;
-    if (book.tone === 'academic' || book.tone === 'aerospace' || book.tone === 'mathematics') {
-      multiplier = settings.specializedMultiplier || 1.25;
-    }
-    book.estimatedCost = Math.round(book.wordCount * Math.round(settings.costPerWord * multiplier));
+    const rateInfo = db.getUserEffectiveCostPerWord(user, book.tone);
+    book.estimatedCost = Math.round(book.wordCount * rateInfo.effectiveCostPerWord);
     db.saveBook(book);
 
     return res.json({
@@ -737,6 +723,40 @@ export function setupSaasRoutes(app: express.Express) {
     }
     const book = db.getBookById(job.bookId);
     return res.json({ job, book });
+  });
+
+  // AI Smart Glossary Auto-Extraction (supports both routes & payload keys)
+  const handleGlossaryExtraction = async (req: express.Request, res: express.Response) => {
+    try {
+      const text = req.body.text || req.body.sampleText || req.body.englishText;
+      const tone = req.body.tone || 'general';
+      if (!text || typeof text !== 'string' || text.trim().length < 20) {
+        return res.status(400).json({ error: 'متن انگلیسی برای استخراج اصطلاحات کافی نیست.' });
+      }
+      const terms = await queueManager.extractGlossaryTerms(text.trim(), tone);
+      return res.json({ success: true, terms, glossary: terms });
+    } catch (err: any) {
+      console.error('Glossary extraction error:', err);
+      return res.status(500).json({ error: err.message || 'خطا در استخراج خودکار اصطلاحات' });
+    }
+  };
+  app.post('/api/ai/extract-glossary', handleGlossaryExtraction);
+  app.post('/api/extract-glossary', handleGlossaryExtraction);
+
+  // Free Sample Translation (Free preview trial without wallet deduction)
+  app.post('/api/books/sample-translate', async (req, res) => {
+    try {
+      const { text, tone, glossary } = req.body;
+      if (!text || typeof text !== 'string' || text.trim().length < 10) {
+        return res.status(400).json({ error: 'متن برای ترجمه نمونه ارسال نشده است.' });
+      }
+      const sampleText = text.trim().slice(0, 7000);
+      const translatedHtml = await queueManager.translateStandalone(sampleText, tone || 'spiritual', glossary || []);
+      return res.json({ success: true, translatedHtml });
+    } catch (err: any) {
+      console.error('Sample translation error:', err);
+      return res.status(500).json({ error: err.message || 'خطا در ترجمه آزمایشی نمونه کتاب' });
+    }
   });
 
   // ==========================================
@@ -1038,8 +1058,11 @@ export function setupSaasRoutes(app: express.Express) {
   // 7. ADMIN PANEL ENDPOINTS
   // ==========================================
 
-  // Admin Overview
-  app.get('/api/admin/overview', requireAdmin, (req, res) => {
+  // Admin & Staff Overview
+  app.get('/api/admin/overview', requireStaffOrAdmin, (req, res) => {
+    const requestingUser = (req as any).user as User;
+    const isStaff = requestingUser.role === 'staff';
+
     const users = db.getUsers();
     const books = db.getBooks();
     const jobs = db.getJobs();
@@ -1050,42 +1073,62 @@ export function setupSaasRoutes(app: express.Express) {
     books.forEach(b => { totalWords += b.wordCount || 0; });
 
     let totalRevenue = 0;
-    transactions.forEach(t => {
-      if (t.type === 'deposit' && t.status === 'success') {
-        totalRevenue += t.amount;
-      }
-    });
+    if (!isStaff) {
+      transactions.forEach(t => {
+        if (t.type === 'deposit' && t.status === 'success') {
+          totalRevenue += t.amount;
+        }
+      });
+    }
 
     const activeJobs = jobs.filter(j => j.status === 'queued' || j.status === 'processing');
 
     return res.json({
+      isStaff,
+      hideFinancialStats: isStaff,
       totalUsers: users.length,
       totalBooks: books.length,
       totalWords,
-      totalRevenue,
+      totalRevenue: isStaff ? undefined : totalRevenue,
       activeJobsCount: activeJobs.length,
       activeJobs,
-      apiKeysCount: apiKeys.length,
-      apiKeysActive: apiKeys.filter(k => k.isActive && k.cooldownUntil <= Date.now()).length,
-      recentUsers: users.slice(-5).reverse(),
-      recentTransactions: transactions.slice(0, 10),
+      apiKeysCount: isStaff ? undefined : apiKeys.length,
+      apiKeysActive: isStaff ? undefined : apiKeys.filter(k => k.isActive && k.cooldownUntil <= Date.now()).length,
+      recentUsers: users.slice(-5).reverse().map(u => ({
+        id: u.id,
+        name: u.name,
+        phone: u.phone,
+        email: u.email,
+        role: u.role,
+        status: u.status,
+        customCostPerWord: u.customCostPerWord,
+        organizationName: u.organizationName,
+      })),
+      recentTransactions: isStaff ? [] : transactions.slice(0, 10),
     });
   });
 
-  // Admin Users List
-  app.get('/api/admin/users', requireAdmin, (req, res) => {
+  // Admin & Staff Users List
+  app.get('/api/admin/users', requireStaffOrAdmin, (req, res) => {
+    const requestingUser = (req as any).user as User;
+    const isStaff = requestingUser.role === 'staff';
+
     const users = db.getUsers();
     const books = db.getBooks();
     const transactions = db.getTransactions();
 
     const userList = users.map(u => {
       const userTxs = transactions.filter(t => t.userId === u.id);
-      const totalSpent = userTxs
-        .filter(t => (t.type === 'charge' || t.amount < 0) && t.status === 'success')
-        .reduce((sum, t) => sum + Math.abs(t.amount), 0);
-      const totalDeposited = userTxs
-        .filter(t => (t.type === 'deposit' || t.type === 'admin_gift') && t.status === 'success')
-        .reduce((sum, t) => sum + t.amount, 0);
+      const totalSpent = isStaff
+        ? undefined
+        : userTxs
+            .filter(t => (t.type === 'charge' || t.amount < 0) && t.status === 'success')
+            .reduce((sum, t) => sum + Math.abs(t.amount), 0);
+      const totalDeposited = isStaff
+        ? undefined
+        : userTxs
+            .filter(t => (t.type === 'deposit' || t.type === 'admin_gift') && t.status === 'success')
+            .reduce((sum, t) => sum + t.amount, 0);
 
       const userBooks = books.filter(b => b.userId === u.id);
       const translatedWords = userBooks.reduce((sum, b) => {
@@ -1093,20 +1136,40 @@ export function setupSaasRoutes(app: express.Express) {
         return sum + completedChunks.reduce((csum, c) => csum + (c.wordCount || 0), 0);
       }, 0);
 
+      const rateInfo = db.getUserEffectiveCostPerWord(u);
+
       return {
         ...u,
         booksCount: userBooks.length,
         totalSpent,
         totalDeposited,
         translatedWords,
+        pricingTier: rateInfo.tier,
+        effectiveCostPerWord: rateInfo.effectiveCostPerWord,
+        tierLabel: rateInfo.tierLabel,
       };
     });
-    return res.json({ users: userList });
+    return res.json({ users: userList, isStaff });
   });
 
-  // Admin Create New User
-  app.post('/api/admin/users/create', requireAdmin, (req, res) => {
-    const { name, phone, email, password, role, walletBalance } = req.body;
+  // Admin & Staff Create New User
+  app.post('/api/admin/users/create', requireStaffOrAdmin, (req, res) => {
+    const requestingUser = (req as any).user as User;
+    const isStaff = requestingUser.role === 'staff';
+
+    const {
+      name,
+      phone,
+      email,
+      password,
+      role = 'user',
+      walletBalance,
+      customCostPerWord,
+      discountPercent,
+      organizationName,
+      notes,
+    } = req.body;
+
     if (!name || !phone) {
       return res.status(400).json({ error: 'نام و شماره همراه کاربر الزامی است.' });
     }
@@ -1117,13 +1180,23 @@ export function setupSaasRoutes(app: express.Express) {
       return res.status(400).json({ error: 'کاربری با این شماره همراه یا ایمیل در سیستم موجود است.' });
     }
 
+    // Staff cannot create Admin users
+    let finalRole = role;
+    if (isStaff && role === 'admin') {
+      finalRole = 'user';
+    }
+
     const newUser = db.createUser({
       name: name.trim(),
       phone: cleanPhone,
       email: email ? email.trim() : '',
       password: password || 'User@123456',
-      role: role === 'admin' ? 'admin' : 'user',
+      role: finalRole,
       walletBalance: Number(walletBalance) || 0,
+      customCostPerWord: customCostPerWord ? Number(customCostPerWord) : undefined,
+      discountPercent: discountPercent ? Number(discountPercent) : undefined,
+      organizationName: organizationName ? organizationName.trim() : undefined,
+      notes: notes ? notes.trim() : undefined,
     });
 
     return res.json({
@@ -1133,15 +1206,49 @@ export function setupSaasRoutes(app: express.Express) {
     });
   });
 
-  // Admin Update User (name, phone, email, role, status, password)
-  app.put('/api/admin/users/:id', requireAdmin, (req, res) => {
-    const { name, phone, email, role, status, password } = req.body;
+  // Admin & Staff Update User (name, phone, email, role, status, password, customCostPerWord, etc.)
+  app.put('/api/admin/users/:id', requireStaffOrAdmin, (req, res) => {
+    const requestingUser = (req as any).user as User;
+    const isStaff = requestingUser.role === 'staff';
+
+    const targetUser = db.getUserById(req.params.id);
+    if (!targetUser) return res.status(404).json({ error: 'کاربر یافت نشد.' });
+
+    // Staff cannot edit Admin accounts
+    if (isStaff && targetUser.role === 'admin') {
+      return res.status(403).json({ error: 'کارمندان اجازه ویرایش مشخصات حساب مدیر ارشد را ندارند.' });
+    }
+
+    const {
+      name,
+      phone,
+      email,
+      role,
+      status,
+      password,
+      customCostPerWord,
+      discountPercent,
+      organizationName,
+      notes,
+    } = req.body;
+
     const updates: any = {};
     if (name !== undefined) updates.name = name.trim();
     if (phone !== undefined) updates.phone = phone.trim();
     if (email !== undefined) updates.email = email.trim();
-    if (role !== undefined) updates.role = role;
+    if (role !== undefined) {
+      // Staff cannot escalate to Admin
+      if (isStaff && role === 'admin') {
+        // do not change
+      } else {
+        updates.role = role;
+      }
+    }
     if (status !== undefined) updates.status = status;
+    if (customCostPerWord !== undefined) updates.customCostPerWord = customCostPerWord;
+    if (discountPercent !== undefined) updates.discountPercent = discountPercent;
+    if (organizationName !== undefined) updates.organizationName = organizationName;
+    if (notes !== undefined) updates.notes = notes;
 
     const updated = db.updateUser(req.params.id, updates);
     if (!updated) return res.status(404).json({ error: 'کاربر یافت نشد.' });
@@ -1150,11 +1257,14 @@ export function setupSaasRoutes(app: express.Express) {
       db.setUserPassword(req.params.id, password.trim());
     }
 
-    return res.json({ success: true, user: updated, message: 'مشخصات کاربر با موفقیت به‌روزرسانی شد.' });
+    return res.json({ success: true, user: updated, message: 'مشخصات کاربر و نرخ اختصاصی با موفقیت به‌روزرسانی شد.' });
   });
 
-  // Admin Adjust Wallet
-  app.post('/api/admin/users/:id/adjust-wallet', requireAdmin, (req, res) => {
+  // Admin & Staff Adjust Wallet (افزایش یا کسر دستی موجودی با ثبت لاگ)
+  app.post('/api/admin/users/:id/adjust-wallet', requireStaffOrAdmin, (req, res) => {
+    const requestingUser = (req as any).user as User;
+    const isStaff = requestingUser.role === 'staff';
+
     const { amount, description } = req.body;
     const user = db.getUserById(req.params.id);
     if (!user) return res.status(404).json({ error: 'کاربر یافت نشد.' });
@@ -1162,13 +1272,17 @@ export function setupSaasRoutes(app: express.Express) {
     const diff = Number(amount);
     if (isNaN(diff)) return res.status(400).json({ error: 'مبلغ نامعتبر است.' });
 
+    const defaultDesc = diff >= 0
+      ? (isStaff ? `افزایش دستی موجودی توسط کادر پشتیبانی (${requestingUser.name})` : 'افزایش دستی موجودی توسط مدیر ارشد')
+      : (isStaff ? `کسر دستی موجودی توسط کادر پشتیبانی (${requestingUser.name})` : 'کسر دستی موجودی توسط مدیر ارشد');
+
     db.addTransaction({
       userId: user.id,
       amount: diff,
       type: diff >= 0 ? 'admin_gift' : 'charge',
-      description: description || (diff >= 0 ? 'افزایش دستی موجودی توسط مدیر ارشد' : 'کسر دستی موجودی توسط مدیر ارشد'),
+      description: description || defaultDesc,
       status: 'success',
-      trackingCode: `ADM-${Date.now().toString().slice(-6)}`,
+      trackingCode: `${isStaff ? 'STF' : 'ADM'}-${Date.now().toString().slice(-6)}`,
     });
 
     const updated = db.getUserById(req.params.id);
@@ -1423,11 +1537,51 @@ export function setupSaasRoutes(app: express.Express) {
     return res.json({ stats });
   });
 
+  // Admin Reset Single API Key Stats & Tokens
+  app.post('/api/admin/api-keys/:id/reset-stats', requireAdmin, (req, res) => {
+    const key = db.getApiKeys().find(k => k.id === req.params.id);
+    if (!key) return res.status(404).json({ error: 'کلید یافت نشد.' });
+    key.totalTokensUsed = 0;
+    key.totalRequests = 0;
+    key.successfulRequests = 0;
+    key.failedRequests = 0;
+    key.rpmCount = 0;
+    key.cooldownUntil = 0;
+    db.saveApiKey(key);
+    return res.json({ success: true, message: `شمارنده توکن‌ها و درخواست‌های کلید «${key.name}» با موفقیت ریست شد.` });
+  });
+
+  // Admin Reset All API Keys Stats & Tokens
+  app.post('/api/admin/api-keys/reset-all-stats', requireAdmin, (req, res) => {
+    const keys = db.getApiKeys();
+    keys.forEach(k => {
+      k.totalTokensUsed = 0;
+      k.totalRequests = 0;
+      k.successfulRequests = 0;
+      k.failedRequests = 0;
+      k.rpmCount = 0;
+      k.cooldownUntil = 0;
+      db.saveApiKey(k);
+    });
+    return res.json({ success: true, message: 'آمار توکن‌ها و درخواست‌های کلیه کلیدهای سرور با موفقیت صفر شد.' });
+  });
+
   // Admin Delete API Key
   app.delete('/api/admin/api-keys/:id', requireAdmin, (req, res) => {
     const ok = db.deleteApiKey(req.params.id);
     if (!ok) return res.status(404).json({ error: 'کلید یافت نشد.' });
     return res.json({ success: true, message: 'کلید با موفقیت از سرور حذف شد.' });
+  });
+
+  // Public Announcement Bar Endpoint
+  app.get('/api/system/public-announcement', (req, res) => {
+    const settings = db.getSettings();
+    const bar = settings.announcementBar || {
+      enabled: settings.seo?.announcementEnabled || false,
+      text: settings.seo?.announcementText || settings.cms?.announcement || '',
+      type: 'info',
+    };
+    return res.json({ announcement: bar });
   });
 
   // Admin Get Settings
@@ -1491,12 +1645,12 @@ export function setupSaasRoutes(app: express.Express) {
     return res.json(result);
   });
 
-  // Admin Coupons Management
-  app.get('/api/admin/coupons', requireAdmin, (req, res) => {
+  // Admin & Staff Coupons Management
+  app.get('/api/admin/coupons', requireStaffOrAdmin, (req, res) => {
     return res.json({ coupons: db.getCoupons() });
   });
 
-  app.post('/api/admin/coupons', requireAdmin, (req, res) => {
+  app.post('/api/admin/coupons', requireStaffOrAdmin, (req, res) => {
     const { code, creditBonus = 0, discountPercent = 0, maxUses = 100, isActive = true } = req.body;
     if (!code) return res.status(400).json({ error: 'کد تخفیف الزامی است.' });
 
@@ -1515,7 +1669,7 @@ export function setupSaasRoutes(app: express.Express) {
     return res.json({ success: true, coupon: newCoupon });
   });
 
-  app.delete('/api/admin/coupons/:id', requireAdmin, (req, res) => {
+  app.delete('/api/admin/coupons/:id', requireStaffOrAdmin, (req, res) => {
     const ok = db.deleteCoupon(req.params.id);
     if (!ok) return res.status(404).json({ error: 'کد تخفیف یافت نشد.' });
     return res.json({ success: true });
@@ -1628,9 +1782,9 @@ export function setupSaasRoutes(app: express.Express) {
   });
 
   // ==========================================
-  // 11. ADMIN BOOKS COMPREHENSIVE OVERSIGHT
+  // 11. ADMIN & STAFF BOOKS COMPREHENSIVE OVERSIGHT
   // ==========================================
-  app.get('/api/admin/all-books', requireAdmin, (_req, res) => {
+  app.get('/api/admin/all-books', requireStaffOrAdmin, (_req, res) => {
     const books = db.getBooks();
     const users = db.getUsers();
     const booksWithMeta = books.map(b => {
@@ -1657,13 +1811,13 @@ export function setupSaasRoutes(app: express.Express) {
     return res.json({ books: booksWithMeta });
   });
 
-  app.get('/api/admin/books/:id', requireAdmin, (req, res) => {
+  app.get('/api/admin/books/:id', requireStaffOrAdmin, (req, res) => {
     const book = db.getBookById(req.params.id);
     if (!book) return res.status(404).json({ error: 'کتاب یافت نشد.' });
     return res.json({ book });
   });
 
-  app.delete('/api/admin/books/:id', requireAdmin, (req, res) => {
+  app.delete('/api/admin/books/:id', requireStaffOrAdmin, (req, res) => {
     const ok = db.deleteBook(req.params.id);
     if (!ok) return res.status(404).json({ error: 'کتاب یافت نشد.' });
     return res.json({ success: true, message: 'کتاب با موفقیت از سیستم حذف گردید.' });

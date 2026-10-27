@@ -21,9 +21,11 @@ import {
   BarChart3,
   Table,
   LayoutGrid,
-  Coins
+  Coins,
+  FileCheck
 } from 'lucide-react';
 import { User, BookProject, TranslationJob } from '../types.ts';
+import { InvoiceModal } from './InvoiceModal.tsx';
 
 interface UserDashboardProps {
   user: User;
@@ -62,6 +64,19 @@ export function UserDashboard({
 }: UserDashboardProps) {
   const [filter, setFilter] = useState<'all' | 'completed' | 'translating' | 'draft'>('all');
   const [dashboardTab, setDashboardTab] = useState<'grid' | 'analytics'>('grid');
+  const [invoiceBook, setInvoiceBook] = useState<BookProject | null>(null);
+  const [announcement, setAnnouncement] = useState<{ enabled: boolean; text: string; type?: string; linkUrl?: string; linkText?: string } | null>(null);
+
+  useEffect(() => {
+    fetch('/api/system/public-announcement')
+      .then(res => res.json())
+      .then(data => {
+        if (data?.announcement?.enabled && data.announcement.text) {
+          setAnnouncement(data.announcement);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   // Helper for per-book words and financial calculations
   const getBookUsage = (b: BookProject) => {
@@ -198,11 +213,11 @@ export function UserDashboard({
               <span>ثبت کتاب جدید</span>
             </button>
 
-            {/* Logout on desktop */}
+            {/* Logout */}
             <button
               onClick={onLogout}
               title="خروج از حساب"
-              className="hidden sm:inline-flex p-2 rounded-xl bg-slate-800 hover:bg-rose-500/20 hover:text-rose-400 text-slate-400 border border-slate-700 transition-all shrink-0"
+              className="inline-flex p-2 rounded-xl bg-slate-800 hover:bg-rose-500/20 hover:text-rose-400 text-slate-400 border border-slate-700 transition-all shrink-0"
             >
               <LogOut className="w-4 h-4" />
             </button>
@@ -212,6 +227,24 @@ export function UserDashboard({
 
       {/* Main Container */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 flex-1 w-full">
+        {/* Global Broadcast Announcement Banner */}
+        {announcement && (
+          <div className="mb-6 p-3.5 sm:p-4 rounded-2xl bg-gradient-to-r from-amber-500/15 via-slate-900 to-indigo-950/30 border border-amber-500/30 flex items-center justify-between gap-3 text-xs shadow-lg animate-in fade-in">
+            <div className="flex items-center gap-2.5">
+              <span className="w-2.5 h-2.5 rounded-full bg-amber-400 shrink-0 animate-ping"></span>
+              <span className="text-amber-200 font-medium leading-relaxed">{announcement.text}</span>
+            </div>
+            {announcement.linkUrl && (
+              <a
+                href={announcement.linkUrl}
+                className="shrink-0 px-3 py-1.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 font-bold border border-amber-500/30 text-[11px] transition"
+              >
+                {announcement.linkText || 'مشاهده'}
+              </a>
+            )}
+          </div>
+        )}
+
         {/* Active Background Jobs Banner (Cloud Processing Guarantee) */}
         {activeJobs.length > 0 && (
           <div className="mb-8 p-5 rounded-2xl bg-gradient-to-r from-amber-950/40 via-slate-900 to-slate-900 border border-amber-500/40 shadow-xl relative overflow-hidden">
@@ -505,6 +538,13 @@ export function UserDashboard({
                             >
                               <Download className="w-3 h-3" />
                             </button>
+                            <button
+                              onClick={() => setInvoiceBook(b)}
+                              title="صدور پیش‌فاکتور رسمی"
+                              className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-amber-400 border border-slate-700"
+                            >
+                              <FileCheck className="w-3 h-3" />
+                            </button>
                           </div>
                         </td>
                       </tr>
@@ -623,11 +663,11 @@ export function UserDashboard({
                       </button>
                     </div>
 
-                    {/* Quick Exports Row */}
-                    <div className="grid grid-cols-3 gap-1.5">
+                    {/* Quick Exports & Proforma Invoice Row */}
+                    <div className="grid grid-cols-4 gap-1.5">
                       <button
                         onClick={() => onExportDocx(book)}
-                        className="py-1.5 px-2 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-[11px] text-slate-300 border border-slate-700/60 flex items-center justify-center gap-1 transition-colors"
+                        className="py-1.5 px-1.5 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-[10px] text-slate-300 border border-slate-700/60 flex items-center justify-center gap-1 transition-colors"
                         title="دانلود خروجی Word استاندارد"
                       >
                         <Download className="w-3 h-3 text-blue-400" />
@@ -635,7 +675,7 @@ export function UserDashboard({
                       </button>
                       <button
                         onClick={() => onExportPdf(book)}
-                        className="py-1.5 px-2 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-[11px] text-slate-300 border border-slate-700/60 flex items-center justify-center gap-1 transition-colors"
+                        className="py-1.5 px-1.5 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-[10px] text-slate-300 border border-slate-700/60 flex items-center justify-center gap-1 transition-colors"
                         title="دانلود خروجی PDF صفحه‌آرایی شده"
                       >
                         <Download className="w-3 h-3 text-rose-400" />
@@ -643,11 +683,19 @@ export function UserDashboard({
                       </button>
                       <button
                         onClick={() => onExportEpub(book)}
-                        className="py-1.5 px-2 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-[11px] text-slate-300 border border-slate-700/60 flex items-center justify-center gap-1 transition-colors"
+                        className="py-1.5 px-1.5 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-[10px] text-slate-300 border border-slate-700/60 flex items-center justify-center gap-1 transition-colors"
                         title="دانلود فایل EPUB برای کتاب‌خوان‌ها"
                       >
                         <Download className="w-3 h-3 text-emerald-400" />
                         <span>EPUB</span>
+                      </button>
+                      <button
+                        onClick={() => setInvoiceBook(book)}
+                        className="py-1.5 px-1.5 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-[10px] text-amber-300 border border-amber-500/20 flex items-center justify-center gap-1 transition-colors"
+                        title="صدور پیش‌فاکتور رسمی کتاب"
+                      >
+                        <FileCheck className="w-3 h-3 text-amber-400" />
+                        <span>فاکتور</span>
                       </button>
                     </div>
                   </div>
@@ -657,6 +705,16 @@ export function UserDashboard({
           </div>
         )}
       </main>
+
+      {invoiceBook && (
+        <InvoiceModal
+          isOpen={Boolean(invoiceBook)}
+          onClose={() => setInvoiceBook(null)}
+          book={invoiceBook}
+          currentUser={user}
+          invoiceType="proforma"
+        />
+      )}
     </div>
   );
 }
