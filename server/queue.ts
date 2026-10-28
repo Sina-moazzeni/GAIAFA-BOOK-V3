@@ -1,5 +1,6 @@
 import { db, TranslationJob, BookRecord, ApiKeyConfig } from './db.ts';
 import { GoogleGenAI, ThinkingLevel } from '@google/genai';
+import { bookCacheManager } from './bookCacheManager.ts';
 
 // System prompt as specified in the brief + strict no-summarization & continuity
 const SYSTEM_INSTRUCTION_TRANSLATOR = `Role & Objective:
@@ -374,7 +375,7 @@ export class QueueManager {
 
         try {
           const t0 = Date.now();
-          translatedHtml = await this.translateChunkWithAi(chunk.englishText, book, keyConfig);
+          translatedHtml = await this.translateChunkWithAi(chunk.englishText, book, keyConfig, chunk.chunkNumber);
           const latency = Date.now() - t0;
 
           // Record key stats
@@ -390,6 +391,15 @@ export class QueueManager {
           chunk.modelUsed = keyConfig.model || 'gemini-3.5-flash-lite';
           chunk.translatedAt = Date.now();
           chunk.errorMessage = undefined;
+
+          // Update dedicated book context cache (running narrative thread, terminology, rhythm anchor)
+          bookCacheManager.updateCacheAfterChunk({
+            bookId: book.id,
+            chunkNumber: chunk.chunkNumber,
+            englishText: chunk.englishText,
+            translatedHtml,
+            book,
+          });
 
           job.completedChunks = book.chunks.filter(c => c.status === 'completed').length;
           job.progressPercent = Math.round((job.completedChunks / book.chunks.length) * 100);
@@ -444,12 +454,15 @@ export class QueueManager {
     db.saveBook(book);
   }
 
-  private async translateChunkWithAi(englishText: string, book: BookRecord, keyConfig: ApiKeyConfig): Promise<string> {
+  private async translateChunkWithAi(englishText: string, book: BookRecord, keyConfig: ApiKeyConfig, chunkNumber: number = 1): Promise<string> {
     const tone = book.tone || 'معنوی و خودشناسی';
     let glossaryText = 'واژه‌نامه تخصصی کتاب';
     if (Array.isArray(book.glossary) && book.glossary.length > 0) {
       glossaryText = book.glossary.map(g => `  * ${g.en} -> ${g.fa}`).join('\n');
     }
+
+    // Retrieve dedicated context cache for this book (narrative continuity, established terms, ending rhythm anchor)
+    const dedicatedCachePrompt = bookCacheManager.formatPromptContext(book.id, book.title, tone);
 
     // Preserve images
     const imageMap = new Map<string, string>();
@@ -468,9 +481,11 @@ export class QueueManager {
 - Chapter Context: ${cleanChapterTitle(book.title)}
 - Glossary:
 ${glossaryText}
+${dedicatedCachePrompt ? `\n${dedicatedCachePrompt}` : ''}
 [CRITICAL INSTRUCTION]
 1. Translate every paragraph and dialogue in full without omission or summary.
 2. Do NOT invent or output artificial chunk numbers or section labels such as "بخش ۱", "بخش ۲", "(بخش ۱)", "Part 1", etc.
+${dedicatedCachePrompt ? '3. Maintain 100% naming, stylistic, and rhythmic continuity with the dedicated book context cache provided above.' : ''}
 
 [INPUT TEXT TO TRANSLATE]
 ${cleanEnglish}`;
@@ -483,11 +498,12 @@ ${cleanEnglish}`;
         httpOptions: { headers: { 'User-Agent': 'aistudio-build' }, timeout: 45000 },
       });
 
+      // Ensure flash lite models like gemini-3.5-flash-lite map to valid aliases
+      const requestedModel = keyConfig.model || 'gemini-3.1-flash-lite';
       const candModels = Array.from(new Set([
-        keyConfig.model || 'gemini-3.5-flash-lite',
-        'gemini-3.5-flash-lite',
-        'gemini-3.8-flash',
+        requestedModel,
         'gemini-3.1-flash-lite',
+        'gemini-3.8-flash',
         'gemini-flash-latest',
       ]));
 
@@ -501,7 +517,7 @@ ${cleanEnglish}`;
               systemInstruction: SYSTEM_INSTRUCTION_TRANSLATOR,
               temperature: 0.35,
               topP: 0.95,
-              thinkingConfig: { thinkingLevel: m.includes('lite') ? ThinkingLevel.MINIMAL : ThinkingLevel.LOW },
+              thinkingConfig: { thinkingLevel: (m.includes('lite') || m.includes('flash')) ? ThinkingLevel.MINIMAL : ThinkingLevel.LOW },
             },
           });
           resultHtml = response.text || '';

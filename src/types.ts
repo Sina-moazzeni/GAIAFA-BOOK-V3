@@ -393,6 +393,7 @@ export interface BookProject {
   createdAt: number;
   updatedAt: number;
   rollingSummary?: string;
+  contextCache?: any;
   designConfig?: BookDesignConfig;
   sourceFileType?: 'txt' | 'docx' | 'pdf' | 'epub' | 'json';
   totalImagesCount?: number;

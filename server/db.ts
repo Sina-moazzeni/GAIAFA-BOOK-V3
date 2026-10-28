@@ -58,6 +58,7 @@ export interface BookRecord {
   status: 'draft' | 'translating' | 'completed' | 'error';
   chunks: BookChunkRecord[];
   glossary?: Array<{ id?: string; en: string; fa: string; note?: string }>;
+  contextCache?: any;
   createdAt: number;
   updatedAt: number;
 }

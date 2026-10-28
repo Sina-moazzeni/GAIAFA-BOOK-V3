@@ -550,12 +550,14 @@ export default function App() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          bookId: project.id,
           chunkId,
+          chunkNumber: chunk.chunkNumber,
           englishText: chunk.englishText,
           tone: project.tone,
           glossary: project.glossary,
           chapterTitle: chunk.chapterTitle,
-          model: project.model || 'gemini-3.8-flash',
+          model: project.model || 'gemini-3.5-flash-lite',
           serverPool,
         }),
       });

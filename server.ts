@@ -14,6 +14,7 @@ import JSZip from 'jszip';
 import { BOOK_THEMES } from './src/constants/themes.ts';
 import { setupSaasRoutes } from './server/saasRoutes.ts';
 import { db } from './server/db.ts';
+import { bookCacheManager } from './server/bookCacheManager.ts';
 
 function cleanChapterTitle(title: string): string {
   if (!title) return 'فصل کتاب';
@@ -622,11 +623,24 @@ function restoreImages(html: string, imageMap: Map<string, string>): string {
 }
 
 app.post('/api/translate', async (req, res) => {
-  const { chunkId, englishText, tone, glossary, previousSummary, chapterTitle, model, provider, apiKey, baseURL, serverPool } = req.body;
+  const { chunkId, englishText, tone, glossary, previousSummary, chapterTitle, model, provider, apiKey, baseURL, serverPool, bookId, chunkNumber } = req.body;
 
   if (!englishText || typeof englishText !== 'string') {
     return res.status(400).json({ error: 'متن انگلیسی برای ترجمه الزامی است.' });
   }
+
+  // Resolve target book for dedicated context caching
+  let resolvedBookId = bookId;
+  let targetBook: any = null;
+  if (resolvedBookId) {
+    targetBook = db.getBookById(resolvedBookId);
+  } else if (chunkId) {
+    targetBook = db.getBooks().find(b => b.chunks?.some(c => c.id === chunkId)) || null;
+    if (targetBook) resolvedBookId = targetBook.id;
+  }
+
+  // Retrieve dedicated book context cache (compact narrative thread, terminology, and rhythm anchor)
+  const dedicatedCachePrompt = resolvedBookId ? bookCacheManager.formatPromptContext(resolvedBookId, chapterTitle, tone) : '';
 
   // 0. Image preservation: replace heavy base64 images with lightweight tokens for the AI prompt
   const imagePlaceholderMap = new Map<string, string>();
@@ -642,7 +656,7 @@ app.post('/api/translate', async (req, res) => {
   });
 
   const hasImages = imagePlaceholderMap.size > 0;
-  const targetModel = model || 'gemini-3.8-flash';
+  const targetModel = model || 'gemini-3.5-flash-lite';
 
   // Format glossary items
   let glossaryText = 'واژه‌نامه عمومی';
@@ -654,20 +668,38 @@ app.post('/api/translate', async (req, res) => {
     glossaryText = glossary;
   }
 
-  // Build the User Prompt exactly as specified in the brief with zero-summarization guarantee
+  // Build the User Prompt with dedicated book cache and zero-summarization guarantee
   const userPrompt = `[CONFIGURATION]
 - Book Tone: ${tone || 'معنوی و خودشناسی'}
 - Chapter / Section Context: ${cleanChapterTitle(chapterTitle || 'بخش جاری کتاب')}
 - Glossary / واژه‌نامه اختصاصی:
 ${glossaryText}
-${previousSummary ? `\n[PREVIOUS SUMMARY / CONTEXT]\n${previousSummary}\n` : ''}
+${dedicatedCachePrompt ? `\n${dedicatedCachePrompt}` : (previousSummary ? `\n[PREVIOUS SUMMARY / CONTEXT]\n${previousSummary}\n` : '')}
 ${hasImages ? `\n[IMAGE PRESERVATION INSTRUCTION]\nThis text contains image placeholders like [[IMAGE_PRESERVED_SLOT_0]]. You MUST preserve every placeholder intact at its exact corresponding position between the translated paragraphs in Persian. Do NOT remove or modify image placeholders.\n` : ''}
 [CRITICAL INSTRUCTION]
 1. Do NOT summarize. Translate every single sentence, dialogue, nuance, and paragraph verbatim into fluent, natural Persian without omission or censorship.
 2. Do NOT invent, add, or output artificial chunk numbers, section labels, or headers such as "بخش ۱", "بخش ۲", "(بخش ۱)", "Part 1", etc. Translate only the actual text content.
+${dedicatedCachePrompt ? '3. Maintain 100% naming, stylistic, and rhythmic continuity with the dedicated book context cache provided above.' : ''}
 
 [INPUT TEXT TO TRANSLATE]
 ${cleanEnglishText}`;
+
+  // Helper to persist to dedicated book context cache on successful translation
+  const saveCacheIfApplicable = (html: string) => {
+    if (resolvedBookId && targetBook) {
+      try {
+        bookCacheManager.updateCacheAfterChunk({
+          bookId: resolvedBookId,
+          chunkNumber: Number(chunkNumber) || 1,
+          englishText,
+          translatedHtml: html,
+          book: targetBook,
+        });
+      } catch (cErr) {
+        console.warn('[BookCacheManager] Cache update error:', cErr);
+      }
+    }
+  };
 
   // 1. MULTI-SERVER FAILOVER POOL: If user has configured an active pool of servers/endpoints
   if (Array.isArray(serverPool) && serverPool.length > 0) {
@@ -745,6 +777,7 @@ ${cleanEnglishText}`;
                 }
 
                 console.log(`[Auto-Switching Engine] Success via Server "${server.name}" using Key ${sKey.slice(0, 4)}...${sKey.slice(-4)}`);
+                saveCacheIfApplicable(cleanHtml);
                 return res.json({
                   chunkId,
                   translatedHtml: restoreImages(cleanHtml, imagePlaceholderMap),
@@ -833,6 +866,7 @@ ${cleanEnglishText}`;
             cleanHtml = sanitizeTranslatedHtml(cleanHtml);
 
             console.log(`[Auto-Switching Engine] Success via Server "${server.name}" using Key ${currentApiKey.slice(0, 4)}...`);
+            saveCacheIfApplicable(cleanHtml);
             return res.json({
               chunkId,
               translatedHtml: restoreImages(cleanHtml, imagePlaceholderMap),
@@ -925,6 +959,7 @@ ${cleanEnglishText}`;
         cleanHtml = cleanHtml.replace(/^```\s*/, '').replace(/\s*```$/, '');
       }
       cleanHtml = sanitizeTranslatedHtml(cleanHtml);
+      saveCacheIfApplicable(cleanHtml);
 
       return res.json({
         chunkId,
@@ -944,13 +979,14 @@ ${cleanEnglishText}`;
 
   // Fallback model chain in case of temporary 503 high demand on Google servers
   const fallbackChain: Record<string, string[]> = {
-    'gemini-3.8-flash': ['gemini-3.8-flash', 'gemini-3.1-flash-lite', 'gemini-flash-latest'],
+    'gemini-3.5-flash-lite': ['gemini-3.1-flash-lite', 'gemini-3.8-flash', 'gemini-flash-latest'],
     'gemini-3.1-flash-lite': ['gemini-3.1-flash-lite', 'gemini-3.8-flash', 'gemini-flash-latest'],
+    'gemini-3.8-flash': ['gemini-3.8-flash', 'gemini-3.1-flash-lite', 'gemini-flash-latest'],
     'gemini-4-argon': ['gemini-4-argon', 'gemini-3.8-flash', 'gemini-3.1-flash-lite'],
     'gemini-flash-latest': ['gemini-flash-latest', 'gemini-3.8-flash', 'gemini-3.1-flash-lite'],
   };
 
-  const modelCandidates = fallbackChain[targetModel] || [targetModel, 'gemini-3.8-flash', 'gemini-3.1-flash-lite'];
+  const modelCandidates = fallbackChain[targetModel] || ['gemini-3.1-flash-lite', 'gemini-3.8-flash', 'gemini-flash-latest'];
 
   let lastError: any = null;
   let successfulHtml = '';
@@ -1055,6 +1091,7 @@ ${cleanEnglishText}`;
 
   if (successfulHtml) {
     const sanitized = sanitizeTranslatedHtml(successfulHtml);
+    saveCacheIfApplicable(sanitized);
     return res.json({
       chunkId,
       translatedHtml: restoreImages(sanitized, imagePlaceholderMap),
