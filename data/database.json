@@ -5,18 +5,44 @@
       "name": "مدیر ارشد سامانه",
       "phone": "09120000000",
       "email": "admin@translator.ir",
-      "passwordHash": "dba46cb5ed1c8a36af6856a9c2e0fcfe03b8694a5fefdae52611a2de95d57ba4",
+      "passwordHash": "921156fc67df4a1116c5f0ce282a50cb8cd7b16a1152af9adf0300469e5082a1",
       "role": "admin",
       "walletBalance": 2500000,
       "status": "active",
-      "createdAt": 1790179026712
+      "createdAt": 1790179026712,
+      "lastLoginAt": 1793192680082
+    },
+    {
+      "id": "usr_staff_default",
+      "name": "کارمند و پشتیبان سامانه",
+      "phone": "09122222222",
+      "email": "staff@translator.ir",
+      "passwordHash": "921156fc67df4a1116c5f0ce282a50cb8cd7b16a1152af9adf0300469e5082a1",
+      "role": "staff",
+      "walletBalance": 1000000,
+      "status": "active",
+      "createdAt": 1789303725864,
+      "lastLoginAt": 1793192684828
+    },
+    {
+      "id": "usr_publisher_default",
+      "name": "انتشارات ققنوس / اندیشه نو",
+      "phone": "09123333333",
+      "email": "publisher@translator.ir",
+      "passwordHash": "921156fc67df4a1116c5f0ce282a50cb8cd7b16a1152af9adf0300469e5082a1",
+      "role": "publisher",
+      "organizationName": "انتشارات ققنوس",
+      "customCostPerWord": 28,
+      "walletBalance": 3500000,
+      "status": "active",
+      "createdAt": 1789735725864
     },
     {
       "id": "usr_demo_1",
       "name": "کاربر نمونه سامانه",
       "phone": "09121111111",
       "email": "user@translator.ir",
-      "passwordHash": "ee3ddd91b17f4caf9ddca6a8dfb4cda0e1ea8bf7001520e149fd8a3a9dd5ec39",
+      "passwordHash": "921156fc67df4a1116c5f0ce282a50cb8cd7b16a1152af9adf0300469e5082a1",
       "role": "user",
       "walletBalance": 450000,
       "status": "active",
@@ -33,6 +59,17 @@
       "status": "active",
       "createdAt": 1792771055099,
       "lastLoginAt": 1792771055099
+    },
+    {
+      "id": "usr_1793192688960_b53934c4",
+      "name": "Test Author",
+      "phone": "",
+      "email": "test.author@gmail.com",
+      "passwordHash": "",
+      "role": "user",
+      "walletBalance": 25000,
+      "status": "active",
+      "createdAt": 1793192688960
     }
   ],
   "books": [
@@ -253,6 +290,15 @@
       "status": "success",
       "trackingCode": "ZP-110099",
       "createdAt": 1790523035930
+    },
+    {
+      "id": "tx_1793192688960",
+      "userId": "usr_1793192688960_b53934c4",
+      "amount": 25000,
+      "type": "admin_gift",
+      "description": "شارژ اولیه حساب کاربری",
+      "status": "success",
+      "createdAt": 1793192688960
     }
   ],
   "apiKeys": [
@@ -318,6 +364,18 @@
     "0c650c1f592ab5e9935bfa8e59cc156e08d7767bda3c5d3940dc8d4ac0efe3f4": {
       "userId": "usr_1792771055099_630ab4ec",
       "expiresAt": 1793030255100
+    },
+    "c3b114f4b7d05589a633ac633e44b9f8c6d0281b0804b5f1860c885bf815d244": {
+      "userId": "usr_admin_1",
+      "expiresAt": 1793451880082
+    },
+    "229d1c798153ab3ab5fb110a7c86bf829eddd031a4749d2a0495ed8f96f40841": {
+      "userId": "usr_staff_default",
+      "expiresAt": 1793451884829
+    },
+    "231f8e6629a6fd095c1f76b2b683c52c74076343e640c4e5fbfd0a92f84d8c70": {
+      "userId": "usr_1793192688960_b53934c4",
+      "expiresAt": 1793451888961
     }
   },
   "settings": {
@@ -451,6 +509,19 @@
           "a": "بله، الگوریتم پردازش اختصاصی تمام تصاویر، جدول‌ها و ساختار پاراگراف‌ها را بدون افت کیفیت استخراج کرده و در ترجمه فارسی سر جای خود قرار می‌دهد."
         }
       ]
+    },
+    "aiGlossaryConfig": {
+      "enabled": true,
+      "maxSampleChars": 1200,
+      "maxTerms": 8,
+      "fallbackHeuristicEnabled": true
+    },
+    "announcementBar": {
+      "enabled": true,
+      "text": "🎉 تخفیف ویژه چاپ و ترجمه: هزینه ترجمه هر کلمه فقط ۴۵ تومان همراه با استخراج هوشمند واژه‌نامه تخصصی و صفحه‌بندی کتاب.",
+      "type": "info",
+      "linkUrl": "/page/pricing",
+      "linkText": "مشاهده تعرفه‌ها"
     },
     "seo": {
       "siteTitle": "مترجم و ویراستار هوشمند کتاب | Smart Persian Book Translator",

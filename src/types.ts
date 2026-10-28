@@ -16,6 +16,16 @@ export interface User {
   discountPercent?: number; // درصد تخفیف ویژه اختصاصی (مثلا ۲۰ درصد)
   organizationName?: string; // نام انتشارات یا موسسه همکار
   notes?: string; // یادداشت پرسنل پشتیبانی یا مدیر
+  authProvider?: 'phone' | 'email' | 'google';
+  avatarUrl?: string;
+}
+
+export interface LanguageOption {
+  code: string;
+  name: string;
+  enName: string;
+  flag?: string;
+  isDefault?: boolean;
 }
 
 export interface TranslationJob {
@@ -385,6 +395,8 @@ export interface BookProject {
   author: string;
   translator: string;
   tone: ToneId;
+  sourceLanguage?: string; // e.g. 'en' (default)
+  targetLanguage?: string; // e.g. 'fa' (default)
   providerId?: string; // ID of configured provider
   model: string; // Model selection
   customToneDescription?: string;

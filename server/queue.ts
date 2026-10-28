@@ -476,14 +476,18 @@ export class QueueManager {
       return `\n${token}\n`;
     });
 
+    const sourceLangName = book.sourceLanguage === 'de' ? 'German' : book.sourceLanguage === 'fr' ? 'French' : book.sourceLanguage === 'ar' ? 'Arabic' : book.sourceLanguage === 'tr' ? 'Turkish' : book.sourceLanguage === 'es' ? 'Spanish' : book.sourceLanguage === 'ru' ? 'Russian' : 'English';
+    const targetLangName = book.targetLanguage === 'en' ? 'English' : book.targetLanguage === 'ar' ? 'Arabic' : book.targetLanguage === 'tr' ? 'Turkish' : book.targetLanguage === 'fr' ? 'French' : book.targetLanguage === 'de' ? 'German' : 'Persian (Farsi)';
+
     const userPrompt = `[CONFIGURATION]
+- Language Direction: ${sourceLangName} -> ${targetLangName}
 - Book Tone: ${tone}
 - Chapter Context: ${cleanChapterTitle(book.title)}
 - Glossary:
 ${glossaryText}
 ${dedicatedCachePrompt ? `\n${dedicatedCachePrompt}` : ''}
 [CRITICAL INSTRUCTION]
-1. Translate every paragraph and dialogue in full without omission or summary.
+1. Translate every paragraph and dialogue in full from ${sourceLangName} into fluent, natural, and publication-ready ${targetLangName} without omission, censorship, or summary.
 2. Do NOT invent or output artificial chunk numbers or section labels such as "بخش ۱", "بخش ۲", "(بخش ۱)", "Part 1", etc.
 ${dedicatedCachePrompt ? '3. Maintain 100% naming, stylistic, and rhythmic continuity with the dedicated book context cache provided above.' : ''}
 

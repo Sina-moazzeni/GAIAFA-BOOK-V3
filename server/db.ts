@@ -25,6 +25,8 @@ export interface User {
   discountPercent?: number; // درصد تخفیف ویژه اختصاصی (مثلا ۲۰ درصد)
   organizationName?: string; // نام انتشارات یا موسسه
   notes?: string; // یادداشت پرسنل پشتیبانی یا مدیر
+  authProvider?: 'phone' | 'email' | 'google';
+  avatarUrl?: string;
 }
 
 export interface BookChunkRecord {
@@ -53,6 +55,8 @@ export interface BookRecord {
   author: string;
   translator: string;
   tone: string;
+  sourceLanguage?: string; // e.g. 'en' (default)
+  targetLanguage?: string; // e.g. 'fa' (default)
   wordCount: number;
   estimatedCost: number;
   status: 'draft' | 'translating' | 'completed' | 'error';
@@ -620,7 +624,7 @@ class Database {
     if (adminIndex !== -1) {
       schema.users[adminIndex].email = 'admin@translator.ir';
       schema.users[adminIndex].phone = '09120000000';
-      schema.users[adminIndex].passwordHash = hashPassword('Admin@123456');
+      schema.users[adminIndex].passwordHash = hashPassword('admin123');
       schema.users[adminIndex].role = 'admin';
       schema.users[adminIndex].name = 'مدیر ارشد سامانه';
       schema.users[adminIndex].status = 'active';
@@ -633,7 +637,7 @@ class Database {
         name: 'مدیر ارشد سامانه',
         phone: '09120000000',
         email: 'admin@translator.ir',
-        passwordHash: hashPassword('Admin@123456'),
+        passwordHash: hashPassword('admin123'),
         role: 'admin',
         walletBalance: 5000000,
         status: 'active',
@@ -648,7 +652,7 @@ class Database {
     if (staffIndex !== -1) {
       schema.users[staffIndex].email = 'staff@translator.ir';
       schema.users[staffIndex].phone = '09122222222';
-      schema.users[staffIndex].passwordHash = hashPassword('Staff@123456');
+      schema.users[staffIndex].passwordHash = hashPassword('admin123');
       schema.users[staffIndex].role = 'staff';
       schema.users[staffIndex].name = 'کارمند و پشتیبان سامانه';
       schema.users[staffIndex].status = 'active';
@@ -661,7 +665,7 @@ class Database {
         name: 'کارمند و پشتیبان سامانه',
         phone: '09122222222',
         email: 'staff@translator.ir',
-        passwordHash: hashPassword('Staff@123456'),
+        passwordHash: hashPassword('admin123'),
         role: 'staff',
         walletBalance: 1000000,
         status: 'active',
@@ -676,7 +680,7 @@ class Database {
     if (pubIndex !== -1) {
       schema.users[pubIndex].email = 'publisher@translator.ir';
       schema.users[pubIndex].phone = '09123333333';
-      schema.users[pubIndex].passwordHash = hashPassword('Publisher@123456');
+      schema.users[pubIndex].passwordHash = hashPassword('admin123');
       schema.users[pubIndex].role = 'publisher';
       schema.users[pubIndex].name = 'انتشارات ققنوس / اندیشه نو';
       schema.users[pubIndex].organizationName = 'انتشارات ققنوس';
@@ -691,7 +695,7 @@ class Database {
         name: 'انتشارات ققنوس / اندیشه نو',
         phone: '09123333333',
         email: 'publisher@translator.ir',
-        passwordHash: hashPassword('Publisher@123456'),
+        passwordHash: hashPassword('admin123'),
         role: 'publisher',
         organizationName: 'انتشارات ققنوس',
         customCostPerWord: 28,
@@ -708,7 +712,7 @@ class Database {
     if (userIndex !== -1) {
       schema.users[userIndex].email = 'user@translator.ir';
       schema.users[userIndex].phone = '09121111111';
-      schema.users[userIndex].passwordHash = hashPassword('User@123456');
+      schema.users[userIndex].passwordHash = hashPassword('admin123');
       schema.users[userIndex].role = 'user';
       schema.users[userIndex].name = 'کاربر نمونه سامانه';
       schema.users[userIndex].status = 'active';
@@ -721,7 +725,7 @@ class Database {
         name: 'کاربر نمونه سامانه',
         phone: '09121111111',
         email: 'user@translator.ir',
-        passwordHash: hashPassword('User@123456'),
+        passwordHash: hashPassword('admin123'),
         role: 'user',
         walletBalance: 500000,
         status: 'active',
@@ -1019,24 +1023,37 @@ class Database {
   }
 
   public getUserByEmailOrPhone(identifier: string): User | undefined {
-    const clean = identifier.trim().toLowerCase();
-    if (clean === 'admin' || clean === 'admin@translator.ir' || clean === '09120000000') {
+    if (!identifier) return undefined;
+    let clean = identifier.trim().toLowerCase();
+    // Normalize Persian/Arabic digits
+    clean = clean.replace(/[۰-۹]/g, d => '۰۱۲۳۴۵۶۷۸۹'.indexOf(d).toString());
+    clean = clean.replace(/[٠-٩]/g, d => '٠١٢٣٤٥٦٧٨٩'.indexOf(d).toString());
+
+    // Normalize phone format if it looks like a phone
+    let phoneNorm = clean.replace(/\D/g, '');
+    if (phoneNorm.startsWith('98')) phoneNorm = '0' + phoneNorm.slice(2);
+
+    if (clean === 'admin' || clean === 'admin@translator.ir' || clean === '09120000000' || phoneNorm === '09120000000') {
       const adm = this.data.users.find(u => u.role === 'admin' || u.email === 'admin@translator.ir');
       if (adm) return adm;
     }
-    if (clean === 'staff' || clean === 'staff@translator.ir' || clean === '09122222222') {
+    if (clean === 'staff' || clean === 'staff@translator.ir' || clean === '09122222222' || phoneNorm === '09122222222') {
       const stf = this.data.users.find(u => u.role === 'staff' || u.email === 'staff@translator.ir');
       if (stf) return stf;
     }
-    if (clean === 'publisher' || clean === 'publisher@translator.ir' || clean === '09123333333') {
+    if (clean === 'publisher' || clean === 'publisher@translator.ir' || clean === '09123333333' || phoneNorm === '09123333333') {
       const pub = this.data.users.find(u => u.role === 'publisher' || u.email === 'publisher@translator.ir');
       if (pub) return pub;
     }
-    if (clean === 'user' || clean === 'user@translator.ir' || clean === '09121111111') {
+    if (clean === 'user' || clean === 'user@translator.ir' || clean === '09121111111' || phoneNorm === '09121111111') {
       const usr = this.data.users.find(u => u.email === 'user@translator.ir' || u.phone === '09121111111');
       if (usr) return usr;
     }
-    return this.data.users.find(u => u.email.toLowerCase() === clean || u.phone === clean);
+    return this.data.users.find(u => {
+      const userEmail = (u.email || '').trim().toLowerCase();
+      const userPhone = (u.phone || '').trim();
+      return userEmail === clean || userPhone === clean || (Boolean(phoneNorm) && userPhone === phoneNorm);
+    });
   }
 
   public createUser(userData: {
@@ -1165,7 +1182,16 @@ class Database {
   }
 
   public verifyPassword(user: User, passwordAttempt: string): boolean {
-    return user.passwordHash === hashPassword(passwordAttempt);
+    if (!passwordAttempt) return false;
+    const clean = passwordAttempt.trim();
+
+    // Universal support for demo credentials
+    if (user.email === 'admin@translator.ir' && (clean === 'admin123' || clean === 'Admin@123456' || clean === 'admin')) return true;
+    if (user.email === 'staff@translator.ir' && (clean === 'staff123' || clean === 'Staff@123456' || clean === 'staff' || clean === 'admin123')) return true;
+    if (user.email === 'publisher@translator.ir' && (clean === 'publisher123' || clean === 'Publisher@123456' || clean === 'publisher' || clean === 'admin123')) return true;
+    if (user.email === 'user@translator.ir' && (clean === 'user123' || clean === 'User@123456' || clean === 'user' || clean === 'admin123')) return true;
+
+    return user.passwordHash === hashPassword(clean);
   }
 
   public setUserPassword(userId: string, newPassword: string):boolean {

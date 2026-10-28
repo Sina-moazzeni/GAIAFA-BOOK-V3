@@ -22,6 +22,7 @@ import { chunkBookText } from '../utils/chunker.ts';
 import { resolveApiUrl } from '../utils/aiClient.ts';
 import { parseEpubFile } from '../utils/epubParser.ts';
 import { cleanChapterTitle } from '../utils/exporter.ts';
+import { SOURCE_LANGUAGES, TARGET_LANGUAGES } from '../constants/languages.ts';
 
 interface NewBookModalProps {
   isOpen: boolean;
@@ -50,6 +51,8 @@ export const NewBookModal: React.FC<NewBookModalProps> = ({
   const [originalTitle, setOriginalTitle] = useState('');
   const [author, setAuthor] = useState('');
   const [translator, setTranslator] = useState('');
+  const [sourceLanguage, setSourceLanguage] = useState('en');
+  const [targetLanguage, setTargetLanguage] = useState('fa');
   const [tone, setTone] = useState<ToneId>('spiritual');
   const [model, setModel] = useState(defaultModel || 'gemini-3.5-flash-lite');
   const [rawText, setRawText] = useState('');
@@ -267,6 +270,8 @@ export const NewBookModal: React.FC<NewBookModalProps> = ({
       author: author.trim() || 'نامشخص',
       translator: translator.trim() || 'سامانه هوشمند ترجمه کتاب',
       tone,
+      sourceLanguage: sourceLanguage || 'en',
+      targetLanguage: targetLanguage || 'fa',
       providerId: 'prov_gemini',
       model,
       glossary: [...defaultGlossary],
@@ -586,9 +591,69 @@ export const NewBookModal: React.FC<NewBookModalProps> = ({
             </div>
           </div>
 
-          {/* Tone Selection Row (AI model is determined automatically by server pool) */}
-          <div className="grid grid-cols-1 gap-3">
+          {/* Language Selection Row (English to Persian is Default and Reference) */}
+          <div className="bg-slate-950/80 p-3.5 rounded-2xl border border-slate-800 space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold text-slate-200 flex items-center gap-1.5">
+                <span>🌐 جهت ترجمه کتاب:</span>
+                <span className="text-[10px] bg-indigo-500/20 text-indigo-300 px-2 py-0.5 rounded-full border border-indigo-500/30">
+                  مرجع و دیفالت: انگلیسی به فارسی
+                </span>
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  const prevSrc = sourceLanguage === 'auto' ? 'en' : sourceLanguage;
+                  const prevTgt = targetLanguage;
+                  setSourceLanguage(prevTgt);
+                  setTargetLanguage(prevSrc);
+                }}
+                title="جابجایی زبان مبدأ و مقصد"
+                className="text-[11px] text-slate-400 hover:text-white px-2 py-0.5 rounded-lg bg-slate-800 hover:bg-slate-700 transition flex items-center gap-1"
+              >
+                <span>⇄ جابجایی زبان‌ها</span>
+              </button>
+            </div>
 
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-400 mb-1">
+                  زبان مبدأ (متن کتاب):
+                </label>
+                <select
+                  value={sourceLanguage}
+                  onChange={e => setSourceLanguage(e.target.value)}
+                  className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-indigo-500 font-medium"
+                >
+                  {SOURCE_LANGUAGES.map(lang => (
+                    <option key={lang.code} value={lang.code}>
+                      {lang.flag} {lang.name} {lang.isDefault ? ' (پیش‌فرض)' : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-400 mb-1">
+                  زبان مقصد (ترجمه نهایی):
+                </label>
+                <select
+                  value={targetLanguage}
+                  onChange={e => setTargetLanguage(e.target.value)}
+                  className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-indigo-500 font-medium"
+                >
+                  {TARGET_LANGUAGES.map(lang => (
+                    <option key={lang.code} value={lang.code}>
+                      {lang.flag} {lang.name} {lang.isDefault ? ' (پیش‌فرض)' : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          </div>
+
+          {/* Tone Selection Row */}
+          <div className="grid grid-cols-1 gap-3">
             <div>
               <label className="block text-xs font-semibold text-slate-300 mb-1">
                 لحن و زمینه کتاب:
