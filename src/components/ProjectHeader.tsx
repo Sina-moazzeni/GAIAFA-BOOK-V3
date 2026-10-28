@@ -11,6 +11,7 @@ import {
   Calculator,
   ShieldCheck,
   Palette,
+  Replace,
   ChevronDown,
   ChevronUp
 } from 'lucide-react';
@@ -23,6 +24,7 @@ interface ProjectHeaderProps {
   onOpenGlossaryModal: () => void;
   onOpenTokenModal: () => void;
   onOpenExportModal?: () => void;
+  onOpenFindReplaceModal?: () => void;
 }
 
 export const ProjectHeader: React.FC<ProjectHeaderProps> = ({
@@ -31,6 +33,7 @@ export const ProjectHeader: React.FC<ProjectHeaderProps> = ({
   onOpenGlossaryModal,
   onOpenTokenModal,
   onOpenExportModal,
+  onOpenFindReplaceModal,
 }) => {
   const [showDetailsMobile, setShowDetailsMobile] = useState(false);
   const currentTone = TONE_DEFINITIONS.find(t => t.id === project?.tone) || TONE_DEFINITIONS[0];
@@ -140,6 +143,18 @@ export const ProjectHeader: React.FC<ProjectHeaderProps> = ({
               {glossary.length}
             </span>
           </button>
+
+          {/* Global Find & Replace in Book Trigger */}
+          {onOpenFindReplaceModal && (
+            <button
+              onClick={onOpenFindReplaceModal}
+              className="flex items-center gap-1.5 px-3 py-1.5 sm:py-2 rounded-xl text-xs font-semibold bg-slate-900 hover:bg-slate-800 text-slate-200 border border-slate-700 hover:border-emerald-500/60 transition group shadow-sm shrink-0"
+              title="جستجو و جایگزینی سراسری کلمات یا اسامی شخصیت‌ها در کل کتاب"
+            >
+              <Replace className="w-3.5 h-3.5 text-emerald-400 group-hover:rotate-180 transition-transform duration-300 shrink-0" />
+              <span>جایگزینی در کل کتاب</span>
+            </button>
+          )}
 
           {/* Book Design & Export Studio Trigger */}
           {onOpenExportModal && (

@@ -19,6 +19,7 @@ const TranslationWorkspace = React.lazy(() => import('./components/TranslationWo
 const WalletModal = React.lazy(() => import('./components/WalletModal.tsx').then(m => ({ default: m.WalletModal })));
 const NewBookModal = React.lazy(() => import('./components/NewBookModal.tsx').then(m => ({ default: m.NewBookModal })));
 const GlossaryModal = React.lazy(() => import('./components/GlossaryModal.tsx').then(m => ({ default: m.GlossaryModal })));
+const FindReplaceModal = React.lazy(() => import('./components/FindReplaceModal.tsx').then(m => ({ default: m.FindReplaceModal })));
 const ServerStatusModal = React.lazy(() => import('./components/ServerStatusModal.tsx').then(m => ({ default: m.ServerStatusModal })));
 const ProviderManagerModal = React.lazy(() => import('./components/ProviderManagerModal.tsx').then(m => ({ default: m.ProviderManagerModal })));
 const BooksLibraryModal = React.lazy(() => import('./components/BooksLibraryModal.tsx').then(m => ({ default: m.BooksLibraryModal })));
@@ -111,6 +112,7 @@ export default function App() {
   const [isWalletModalOpen, setIsWalletModalOpen] = useState(false);
   const [isNewBookModalOpen, setIsNewBookModalOpen] = useState(false);
   const [isGlossaryModalOpen, setIsGlossaryModalOpen] = useState(false);
+  const [isFindReplaceModalOpen, setIsFindReplaceModalOpen] = useState(false);
   const [isServerModalOpen, setIsServerModalOpen] = useState(false);
   const [isTokenModalOpen, setIsTokenModalOpen] = useState(false);
   const [isProvidersModalOpen, setIsProvidersModalOpen] = useState(false);
@@ -897,6 +899,7 @@ export default function App() {
           onOpenProvidersModal={() => setIsProvidersModalOpen(true)}
           activeProviderName={serverPool.find((s) => s.isEnabled)?.name.split(' (')[0] || 'جمینای'}
           onOpenDesignModal={() => setIsDesignModalOpen(true)}
+          onOpenFindReplaceModal={() => setIsFindReplaceModalOpen(true)}
           onBackToDashboard={() => setCurrentView('dashboard')}
           isAdmin={isUserAdmin}
         />
@@ -905,6 +908,7 @@ export default function App() {
           project={project}
           onUpdateProject={(updates) => handleUpdateProject({ ...project, ...updates })}
           onOpenGlossaryModal={() => setIsGlossaryModalOpen(true)}
+          onOpenFindReplaceModal={() => setIsFindReplaceModalOpen(true)}
           onOpenTokenModal={() => setIsTokenModalOpen(true)}
           onOpenExportModal={() => setIsDesignModalOpen(true)}
         />
@@ -983,6 +987,7 @@ export default function App() {
               onOpenServerPoolModal={() => setIsProvidersModalOpen(true)}
               isAdmin={isUserAdmin}
               onOpenMobileChunks={() => setMobileWorkspaceTab('chunks')}
+              onOpenFindReplaceModal={() => setIsFindReplaceModalOpen(true)}
             />
           </div>
         </div>
@@ -1018,6 +1023,18 @@ export default function App() {
           handleUpdateProject({ ...project, glossary: newGlossary });
         }}
         isAdmin={isUserAdmin}
+      />
+
+      <FindReplaceModal
+        isOpen={isFindReplaceModalOpen}
+        onClose={() => setIsFindReplaceModalOpen(false)}
+        project={project}
+        onUpdateChunks={(updatedChunks) => {
+          handleUpdateProject({ ...project, chunks: updatedChunks });
+        }}
+        onUpdateGlossary={(newGlossary) => {
+          handleUpdateProject({ ...project, glossary: newGlossary });
+        }}
       />
 
       <ExportDesignModal

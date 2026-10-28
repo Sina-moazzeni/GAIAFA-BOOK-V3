@@ -14,6 +14,7 @@ import {
   Palette,
   Menu,
   MoreVertical,
+  Replace,
   X
 } from 'lucide-react';
 import { BookProject, ServerStatusResponse } from '../types.ts';
@@ -26,6 +27,7 @@ interface NavbarProps {
   onOpenServerModal: () => void;
   onOpenNewBookModal: () => void;
   onOpenGlossaryModal: () => void;
+  onOpenFindReplaceModal?: () => void;
   onLoadSampleBook: (sample: SampleBook) => void;
   onPrintPdf: () => void;
   onOpenLibraryModal: () => void;
@@ -43,6 +45,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenServerModal,
   onOpenNewBookModal,
   onOpenGlossaryModal,
+  onOpenFindReplaceModal,
   onLoadSampleBook,
   onPrintPdf,
   onOpenLibraryModal,
@@ -164,6 +167,18 @@ export const Navbar: React.FC<NavbarProps> = ({
               <span>آپلود کتاب</span>
             </button>
 
+            {/* Global Find & Replace in Book */}
+            {onOpenFindReplaceModal && (
+              <button
+                onClick={onOpenFindReplaceModal}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-750 text-emerald-300 border border-slate-700 hover:border-emerald-500/50 transition shadow-sm"
+                title="جستجو و جایگزینی سراسری کلمات یا اسامی شخصیت‌ها در تمام فصول کتاب"
+              >
+                <Replace className="w-3.5 h-3.5 text-emerald-400" />
+                <span>جایگزینی سراسری</span>
+              </button>
+            )}
+
             {/* Book Design & PDF Studio Button */}
             <button
               onClick={onOpenDesignModal}
@@ -198,6 +213,16 @@ export const Navbar: React.FC<NavbarProps> = ({
                   <PlusCircle className="w-4 h-4 text-indigo-400" />
                   <span>آپلود کتاب جدید</span>
                 </button>
+
+                {onOpenFindReplaceModal && (
+                  <button
+                    onClick={onOpenFindReplaceModal}
+                    className="w-full text-right px-4 py-2.5 text-xs text-emerald-300 hover:bg-slate-750 flex items-center gap-2.5 transition"
+                  >
+                    <Replace className="w-4 h-4 text-emerald-400" />
+                    <span>جایگزینی در کل کتاب</span>
+                  </button>
+                )}
 
                 <button
                   onClick={onOpenDesignModal}
