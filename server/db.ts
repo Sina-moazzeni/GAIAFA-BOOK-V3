@@ -221,6 +221,11 @@ export interface SystemSettings {
     features: Array<{ id: string; title: string; description: string; icon: string }>;
     faqs: Array<{ id: string; q: string; a: string }>;
   };
+  keyPoolSettings?: {
+    allowAutoSwitchOnTranslationFailure: boolean; // default false
+    allowAutoSwitchOnTest: boolean; // default true
+    preferredFallbackModel?: string;
+  };
 }
 
 export interface CustomPage {
@@ -451,6 +456,11 @@ const DEFAULT_SETTINGS: SystemSettings = {
     faviconUrl: '',
     announcementEnabled: true,
     announcementText: '🎉 به پلتفرم تجاری ترجمه کتاب خوش آمدید! با ثبت‌نام اولیه ۲۵,۰۰۰ تومان هدیه ترجمه دریافت کنید.',
+  },
+  keyPoolSettings: {
+    allowAutoSwitchOnTranslationFailure: false, // Default false: no automatic model switch during translation
+    allowAutoSwitchOnTest: true,
+    preferredFallbackModel: 'gemini-3.1-flash-lite',
   },
 };
 
@@ -1233,6 +1243,32 @@ class Database {
       delete this.data.sessions[token];
       this.saveData(this.data);
     }
+  }
+
+  public cleanExpiredSessionsAndOtps(): { expiredSessions: number; expiredOtps: number } {
+    const now = Date.now();
+    let expiredSessions = 0;
+    let expiredOtps = 0;
+
+    for (const [token, session] of Object.entries(this.data.sessions || {})) {
+      if (session && session.expiresAt && session.expiresAt < now) {
+        delete this.data.sessions[token];
+        expiredSessions++;
+      }
+    }
+
+    for (const [key, otp] of Object.entries(this.data.otpStore || {})) {
+      if (otp && otp.expiresAt && otp.expiresAt < now) {
+        delete this.data.otpStore[key];
+        expiredOtps++;
+      }
+    }
+
+    if (expiredSessions > 0 || expiredOtps > 0) {
+      this.saveData(this.data);
+    }
+
+    return { expiredSessions, expiredOtps };
   }
 
   // --- OTP Management ---

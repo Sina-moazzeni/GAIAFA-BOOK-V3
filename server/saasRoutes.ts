@@ -5,6 +5,7 @@ import { queueManager } from './queue.ts';
 import { GoogleGenAI } from '@google/genai';
 import { sendRealOtpSms } from './smsService.ts';
 import { zarinpalService } from './zarinpalService.ts';
+import { bookCacheManager } from './bookCacheManager.ts';
 
 // Helper to extract authenticated user from Authorization header
 export function getAuthUser(req: express.Request): User | null {
@@ -1682,6 +1683,68 @@ export function setupSaasRoutes(app: express.Express) {
     const ok = db.deleteApiKey(req.params.id);
     if (!ok) return res.status(404).json({ error: 'کلید یافت نشد.' });
     return res.json({ success: true, message: 'کلید با موفقیت از سرور حذف شد.' });
+  });
+
+  // Admin Batch Switch Model for Keys (Allows manual switch if a specific model goes down or is slow)
+  app.post('/api/admin/api-keys/batch-switch-model', requireAdmin, (req, res) => {
+    try {
+      const { targetModel, provider } = req.body;
+      if (!targetModel || typeof targetModel !== 'string') {
+        return res.status(400).json({ error: 'لطفاً مدل مقصد را مشخص فرمایید.' });
+      }
+
+      const keys = db.getApiKeys();
+      let updatedCount = 0;
+      keys.forEach((k) => {
+        if (!provider || k.provider === provider) {
+          k.model = targetModel.trim();
+          db.saveApiKey(k);
+          updatedCount++;
+        }
+      });
+
+      return res.json({
+        success: true,
+        message: `مدل تعداد ${updatedCount} کلید با موفقیت به «${targetModel.trim()}» سوئیچ شد.`,
+        updatedCount,
+        targetModel: targetModel.trim(),
+      });
+    } catch (err: any) {
+      return res.status(500).json({ error: `خطا در تغییر مدل کلیدها: ${err?.message || 'خطای سرور'}` });
+    }
+  });
+
+  // Admin Clear System Cache (In-Memory Contexts, Expired Sessions, Node Garbage Collection)
+  // CRITICAL: DOES NOT DELETE ANY DATABASE RECORDS, USERS, OR BOOKS (WHETHER TRANSLATING OR DRAFT)!
+  app.post('/api/admin/system/clear-cache', requireAdmin, (req, res) => {
+    try {
+      const memoryCacheCount = bookCacheManager.clearAllMemoryCache();
+      const sessionCleanStats = db.cleanExpiredSessionsAndOtps();
+
+      if (typeof global.gc === 'function') {
+        try {
+          global.gc();
+        } catch (e) {}
+      }
+
+      const mem = process.memoryUsage();
+      const heapUsedMb = Math.round(mem.heapUsed / (1024 * 1024));
+      const rssMb = Math.round(mem.rss / (1024 * 1024));
+
+      return res.json({
+        success: true,
+        message: 'حافظه موقت و کش سیستم با موفقیت پاکسازی شد. هیچ‌یک از کتاب‌ها، بخش‌ها یا اطلاعات کاربران حذف نگردید.',
+        stats: {
+          clearedContextCacheCount: memoryCacheCount,
+          clearedExpiredSessions: sessionCleanStats.expiredSessions,
+          clearedExpiredOtps: sessionCleanStats.expiredOtps,
+          heapUsedMb,
+          rssMb,
+        },
+      });
+    } catch (err: any) {
+      return res.status(500).json({ error: `خطا در پاکسازی کش: ${err?.message || 'خطای سرور'}` });
+    }
   });
 
   // Public Announcement Bar Endpoint

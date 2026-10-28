@@ -512,14 +512,16 @@ ${cleanEnglish}`;
         httpOptions: { headers: { 'User-Agent': 'aistudio-build' }, timeout: 55000 },
       });
 
-      // Ensure flash lite models like gemini-3.5-flash-lite map to valid aliases
+      const allowAutoSwitch = db.getSettings().keyPoolSettings?.allowAutoSwitchOnTranslationFailure === true;
       const requestedModel = keyConfig.model || 'gemini-3.1-flash-lite';
-      const candModels = Array.from(new Set([
-        requestedModel,
-        'gemini-3.1-flash-lite',
-        'gemini-3.8-flash',
-        'gemini-flash-latest',
-      ]));
+      const candModels = allowAutoSwitch
+        ? Array.from(new Set([
+            requestedModel,
+            'gemini-3.1-flash-lite',
+            'gemini-3.8-flash',
+            'gemini-flash-latest',
+          ]))
+        : [requestedModel];
 
       let lastErr: any = null;
       for (const m of candModels) {

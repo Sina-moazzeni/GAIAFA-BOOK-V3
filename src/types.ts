@@ -182,6 +182,11 @@ export interface SystemSettings {
     features: Array<{ id: string; title: string; description: string; icon: string }>;
     faqs: Array<{ id: string; q: string; a: string }>;
   };
+  keyPoolSettings?: {
+    allowAutoSwitchOnTranslationFailure: boolean;
+    allowAutoSwitchOnTest: boolean;
+    preferredFallbackModel?: string;
+  };
 }
 
 export interface CustomPage {

@@ -307,7 +307,7 @@
       "name": "Gemini Primary Enterprise",
       "provider": "gemini",
       "apiKey": "AQ.Ab8RN6KvORfo0w7_0pbgQu1UmstUk9UXFHpI8SSHNx59DitlEQ",
-      "model": "gemini-3.5-flash-lite",
+      "model": "gemini-3.1-flash-lite",
       "isActive": true,
       "priority": 1,
       "totalRequests": 14,
@@ -353,18 +353,6 @@
   ],
   "otpStore": {},
   "sessions": {
-    "5a1f7d82b9db4028e17367e9d93d2b24816bf82bd025afbacb66be4662da626d": {
-      "userId": "usr_admin_1",
-      "expiresAt": 1793030232801
-    },
-    "653ec85a54a4db82b2418577d34e5aa73ff0e32ec5df12241be117dbfa1db630": {
-      "userId": "usr_demo_1",
-      "expiresAt": 1793030236504
-    },
-    "0c650c1f592ab5e9935bfa8e59cc156e08d7767bda3c5d3940dc8d4ac0efe3f4": {
-      "userId": "usr_1792771055099_630ab4ec",
-      "expiresAt": 1793030255100
-    },
     "c3b114f4b7d05589a633ac633e44b9f8c6d0281b0804b5f1860c885bf815d244": {
       "userId": "usr_admin_1",
       "expiresAt": 1793451880082
@@ -380,6 +368,10 @@
     "bb9b4802816f9c342c1d6792ed6fdd0cdfbe35f86b851dcad80b316a88569011": {
       "userId": "usr_admin_1",
       "expiresAt": 1793454536417
+    },
+    "9c3eb4c87839b0a27b442366e7b57961cdd99013929d997dde2d4f5f9a50139a": {
+      "userId": "usr_admin_1",
+      "expiresAt": 1793463107328
     }
   },
   "settings": {
@@ -535,7 +527,11 @@
       "faviconUrl": "",
       "announcementEnabled": true,
       "announcementText": "🎉 به پلتفرم تجاری ترجمه کتاب خوش آمدید! با ثبت‌نام اولیه ۲۵,۰۰۰ تومان هدیه ترجمه دریافت کنید."
+    },
+    "keyPoolSettings": {
+      "allowAutoSwitchOnTranslationFailure": false,
+      "allowAutoSwitchOnTest": true,
+      "preferredFallbackModel": "gemini-3.1-flash-lite"
     }
-  },
-  "coupons": []
+  }
 }

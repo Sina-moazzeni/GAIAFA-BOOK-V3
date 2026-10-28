@@ -49,7 +49,8 @@ import {
   Info,
   Edit3,
   Calculator,
-  HelpCircle
+  HelpCircle,
+  Sliders
 } from 'lucide-react';
 import {
   User,
@@ -353,6 +354,11 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
   const [isDownloadingBackup, setIsDownloadingBackup] = useState(false);
   const [isImportingBackup, setIsImportingBackup] = useState(false);
   const [backupFileInputKey, setBackupFileInputKey] = useState(Date.now());
+
+  // Cache clearing & Batch model switch states
+  const [isClearingCache, setIsClearingCache] = useState(false);
+  const [batchTargetModel, setBatchTargetModel] = useState('gemini-3.1-flash-lite');
+  const [isSwitchingBatchModel, setIsSwitchingBatchModel] = useState(false);
 
   const token = localStorage.getItem('auth_token') || '';
 
@@ -1054,6 +1060,86 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
       }
     } catch (e: any) {
       alert(`خطا: ${e.message}`);
+    }
+  };
+
+  // Clear System In-Memory Cache (Safe: Does NOT delete any books, chunks, users, or database records!)
+  const handleClearSystemCache = async () => {
+    if (!confirm('آیا مایل به پاکسازی حافظه موقت و کش سیستم هستید؟\n\nتوجه: این فرآیند جهت آزادسازی رم و افزایش سرعت سرور لینوکس است. هیچ‌یک از کتاب‌ها (در حال ترجمه یا پایان‌یافته) و داده‌های کاربران حذف نخواهند شد.')) {
+      return;
+    }
+    setIsClearingCache(true);
+    try {
+      const res = await fetch('/api/admin/system/clear-cache', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      const data = await res.json();
+      if (res.ok) {
+        alert(`🧹 ${data.message}\n• کش‌های بافت پاکسازی‌شده: ${data.stats?.clearedContextCacheCount || 0}\n• سشن‌های منقضی آزادشده: ${data.stats?.clearedExpiredSessions || 0}\n• مصرف رم کنونی هیپ: ${data.stats?.heapUsedMb || 0} مگابایت`);
+      } else {
+        alert(data.error || 'خطا در پاکسازی کش');
+      }
+    } catch (e: any) {
+      alert(`خطا در پاکسازی کش: ${e.message}`);
+    } finally {
+      setIsClearingCache(false);
+    }
+  };
+
+  // Batch Switch Model for All Keys (Allows manager to manually switch model if one is down)
+  const handleBatchSwitchModel = async () => {
+    if (!confirm(`آیا مایلید مدل تمام کلیدهای فعال سرور به «${batchTargetModel}» سوئیچ شود؟`)) return;
+    setIsSwitchingBatchModel(true);
+    try {
+      const res = await fetch('/api/admin/api-keys/batch-switch-model', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ targetModel: batchTargetModel }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        alert(`✅ ${data.message}`);
+        fetchApiKeys();
+      } else {
+        alert(data.error || 'خطا در سوئیچ گروهی مدل');
+      }
+    } catch (e: any) {
+      alert(`خطا: ${e.message}`);
+    } finally {
+      setIsSwitchingBatchModel(false);
+    }
+  };
+
+  // Toggle Auto-Switch on Translation Failure
+  const handleToggleAutoSwitchTranslation = async (enabled: boolean) => {
+    if (!settings) return;
+    const updated: SystemSettings = {
+      ...settings,
+      keyPoolSettings: {
+        ...(settings.keyPoolSettings || { allowAutoSwitchOnTest: true, preferredFallbackModel: 'gemini-3.1-flash-lite' }),
+        allowAutoSwitchOnTranslationFailure: enabled,
+      },
+    };
+    setSettings(updated);
+    try {
+      await fetch('/api/admin/settings', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(updated),
+      });
+      alert(enabled ? 'سوئیچ خودکار مدل در حین ترجمه فعال شد.' : 'سوئیچ خودکار در حین ترجمه غیرفعال شد (ترجمه منحصراً با مدل انتخابی انجام خواهد شد).');
+    } catch (e) {
+      alert('خطا در ذخیره تنظیمات سوئیچ');
     }
   };
 
@@ -3712,6 +3798,15 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
 
               <div className="flex flex-wrap items-center gap-2">
                 <button
+                  onClick={handleClearSystemCache}
+                  disabled={isClearingCache}
+                  className="px-3.5 py-2 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 text-xs font-bold flex items-center gap-1.5 transition disabled:opacity-50"
+                  title="پاکسازی امن کش حافظه جهت آزادسازی رم و افزایش سرعت بدون حذف اطلاعات یا کتاب‌ها"
+                >
+                  <Sparkles className="w-4 h-4 text-amber-400" />
+                  <span>{isClearingCache ? 'در حال پاکسازی...' : 'پاکسازی کش و رم سیستم'}</span>
+                </button>
+                <button
                   onClick={handleTestAllKeys}
                   disabled={testingAllKeys}
                   className="px-3.5 py-2 rounded-xl bg-purple-500/10 hover:bg-purple-500/20 text-purple-300 border border-purple-500/30 text-xs font-bold flex items-center gap-1.5 transition disabled:opacity-50"
@@ -3871,6 +3966,128 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
                     <span>{queueStats?.reserveSlotsLimit ?? Math.max(0, apiKeys.filter((k) => k.isActive).length - Math.max(1, Math.floor(apiKeys.filter((k) => k.isActive).length * 0.7)))}</span>
                     <span className="text-[10px] text-purple-300 font-normal">رزرو ضد توقف</span>
                   </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Key Pool Switching Policy & Linux Speed Optimization Card */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Box 1: Key Pool Model Switch Policy */}
+              <div className="p-5 rounded-3xl bg-slate-900 border border-slate-800 shadow-xl space-y-4">
+                <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+                  <div className="flex items-center gap-2">
+                    <Sliders className="w-5 h-5 text-indigo-400" />
+                    <div>
+                      <h3 className="text-sm font-bold text-white">سیاست سوئیچ مدل‌ها در استخر کلیدها</h3>
+                      <p className="text-[11px] text-slate-400">کنترل رفتار سیستم هنگام ترجمه یا تست کلیدها</p>
+                    </div>
+                  </div>
+                  <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
+                    settings?.keyPoolSettings?.allowAutoSwitchOnTranslationFailure
+                      ? 'bg-amber-500/10 text-amber-300 border border-amber-500/30'
+                      : 'bg-emerald-500/10 text-emerald-300 border border-emerald-500/30'
+                  }`}>
+                    {settings?.keyPoolSettings?.allowAutoSwitchOnTranslationFailure ? 'سوئیچ خودکار فعال' : 'ثابت روی مدل انتخابی (پیش‌فرض)'}
+                  </span>
+                </div>
+
+                {/* Auto-switch on Translation toggle */}
+                <div className="bg-slate-950/70 p-4 rounded-2xl border border-slate-800/80 flex items-start justify-between gap-3">
+                  <div className="space-y-1">
+                    <span className="text-xs font-bold text-slate-200 block">
+                      سوئیچ خودکار مدل در زمان ترجمه کتاب
+                    </span>
+                    <p className="text-[11px] text-slate-400 leading-relaxed">
+                      در حالت پیش‌فرض (غیرفعال)، ترجمه صرفاً با مدل مشخص‌شده انجام می‌شود و در صورت بروز خطا سوئیچ نمی‌کند تا ساختار و لحن دستخوش تغییر نشود. فقط در صورت فعال‌سازی این کلید توسط مدیر، سامانه مجاز به سوئیچ روی مدل‌های رزرو خواهد بود.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleToggleAutoSwitchTranslation(!(settings?.keyPoolSettings?.allowAutoSwitchOnTranslationFailure))}
+                    className={`shrink-0 w-12 h-6 flex items-center rounded-full p-1 transition duration-300 cursor-pointer ${
+                      settings?.keyPoolSettings?.allowAutoSwitchOnTranslationFailure ? 'bg-amber-500 justify-end' : 'bg-slate-800 justify-start'
+                    }`}
+                  >
+                    <div className="bg-white w-4 h-4 rounded-full shadow-md transform transition"></div>
+                  </button>
+                </div>
+
+                {/* Manual Switch for Management */}
+                <div className="bg-slate-950/70 p-4 rounded-2xl border border-slate-800/80 space-y-3">
+                  <div className="space-y-1">
+                    <span className="text-xs font-bold text-amber-300 flex items-center gap-1.5">
+                      <Cpu className="w-3.5 h-3.5 text-amber-400" />
+                      سوئیچ سریع مدل تمام کلیدها توسط مدیریت (در صورت عدم کارکرد یک مدل)
+                    </span>
+                    <p className="text-[11px] text-slate-400">
+                      چنانچه مدلی خاص (مانند Gemini 3.8) دچار کندی یا اختلال موقت شد، مدیر می‌تواند با یک کلیک مدل تمام کلیدهای سرور را به مدل پایدار دیگری سوئیچ کند.
+                    </p>
+                  </div>
+
+                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 pt-1">
+                    <select
+                      value={batchTargetModel}
+                      onChange={(e) => setBatchTargetModel(e.target.value)}
+                      className="flex-1 bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-400 font-mono"
+                    >
+                      <option value="gemini-3.1-flash-lite">Gemini 3.1 Flash-Lite (فوق سریع، پایدار و کم‌مصرف)</option>
+                      <option value="gemini-3.8-flash">Gemini 3.8 Flash (هوشمند، استاندارد و با کیفیت)</option>
+                      <option value="gemini-flash-latest">Gemini Flash Latest (آخرین نگارش پایدار فلش)</option>
+                      <option value="gemini-2.5-flash">Gemini 2.5 Flash (پشتیبان نسل ۲)</option>
+                    </select>
+                    <button
+                      type="button"
+                      onClick={handleBatchSwitchModel}
+                      disabled={isSwitchingBatchModel}
+                      className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs flex items-center justify-center gap-1.5 transition disabled:opacity-50 shrink-0 cursor-pointer"
+                    >
+                      {isSwitchingBatchModel ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Zap className="w-3.5 h-3.5" />}
+                      <span>سوئیچ کلیدها</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Box 2: Linux VPS Speed & Cache Optimization */}
+              <div className="p-5 rounded-3xl bg-slate-900 border border-slate-800 shadow-xl space-y-4 flex flex-col justify-between">
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+                    <div className="flex items-center gap-2">
+                      <Sparkles className="w-5 h-5 text-amber-400" />
+                      <div>
+                        <h3 className="text-sm font-bold text-white">بهینه‌سازی سرعت و پاکسازی رم سرور لینوکس VPS</h3>
+                        <p className="text-[11px] text-slate-400">آزادسازی کش موقت بدون آسیب به کتاب‌ها یا سفارشات</p>
+                      </div>
+                    </div>
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-300 border border-blue-500/30 font-bold">
+                      سرور لینوکس VPS
+                    </span>
+                  </div>
+
+                  <div className="bg-slate-950/70 p-4 rounded-2xl border border-slate-800/80 space-y-2 text-xs">
+                    <div className="text-slate-300 font-bold flex items-center gap-1.5">
+                      <ShieldCheck className="w-4 h-4 text-emerald-400" />
+                      گارانتی حفظ ۱۰۰٪ اطلاعات و کتاب‌های در حال ترجمه:
+                    </div>
+                    <ul className="text-[11px] text-slate-400 space-y-1 list-disc list-inside">
+                      <li>هیچ کتابی چه در حال ترجمه و چه تکمیل‌شده پاک <strong className="text-white">نمی‌شود</strong>.</li>
+                      <li>اطلاعات کاربران، کیف پول و فایل‌های خروجی کاملاً دست‌نخورده باقی می‌مانند.</li>
+                      <li>تنها کش‌های موقت پردازش قبلی و سشن‌های منقضی از رم سرور آزاد می‌شوند.</li>
+                      <li>سرعت و پاسخگویی سرور مجازی لینوکس به مراتب روان‌تر و سریع‌تر می‌شود.</li>
+                    </ul>
+                  </div>
+                </div>
+
+                <div className="pt-2">
+                  <button
+                    type="button"
+                    onClick={handleClearSystemCache}
+                    disabled={isClearingCache}
+                    className="w-full py-3 rounded-2xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-bold text-xs flex items-center justify-center gap-2 shadow-lg shadow-amber-500/20 transition disabled:opacity-50 cursor-pointer"
+                  >
+                    {isClearingCache ? <RefreshCw className="w-4 h-4 animate-spin text-slate-950" /> : <Sparkles className="w-4 h-4 text-slate-950" />}
+                    <span>{isClearingCache ? 'در حال آزادسازی کش و پاکسازی حافظه...' : 'پاکسازی کش و حافظه موقت سیستم (افزایش سرعت)'}</span>
+                  </button>
                 </div>
               </div>
             </div>

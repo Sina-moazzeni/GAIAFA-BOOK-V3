@@ -258,6 +258,15 @@ export class BookCacheManager {
   public clearCache(bookId: string) {
     memoryCache.delete(bookId);
   }
+
+  /**
+   * Clears all in-memory context caches across books safely without affecting database records
+   */
+  public clearAllMemoryCache(): number {
+    const count = memoryCache.size;
+    memoryCache.clear();
+    return count;
+  }
 }
 
 export const bookCacheManager = new BookCacheManager();

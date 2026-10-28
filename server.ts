@@ -787,13 +787,17 @@ ${cleanEnglishText}`;
               },
             });
 
-            const candidateModels = Array.from(new Set([
-              server.model || 'gemini-3.8-flash',
-              'gemini-3.8-flash',
-              'gemini-3.1-flash-lite',
-              'gemini-flash-latest',
-              'gemini-2.5-flash',
-            ]));
+            const allowAutoSwitch = db.getSettings().keyPoolSettings?.allowAutoSwitchOnTranslationFailure === true;
+            const primaryModel = server.model || 'gemini-3.8-flash';
+            const candidateModels = allowAutoSwitch
+              ? Array.from(new Set([
+                  primaryModel,
+                  'gemini-3.8-flash',
+                  'gemini-3.1-flash-lite',
+                  'gemini-flash-latest',
+                  'gemini-2.5-flash',
+                ]))
+              : [primaryModel];
 
             let lastCandErr: any = null;
             for (const candModel of candidateModels) {
@@ -1043,7 +1047,10 @@ ${cleanEnglishText}`;
     'gemini-flash-latest': ['gemini-flash-latest', 'gemini-3.8-flash', 'gemini-3.1-flash-lite'],
   };
 
-  const modelCandidates = fallbackChain[targetModel] || ['gemini-3.1-flash-lite', 'gemini-3.8-flash', 'gemini-flash-latest'];
+  const allowAutoSwitch = db.getSettings().keyPoolSettings?.allowAutoSwitchOnTranslationFailure === true;
+  const modelCandidates = allowAutoSwitch
+    ? (fallbackChain[targetModel] || ['gemini-3.1-flash-lite', 'gemini-3.8-flash', 'gemini-flash-latest'])
+    : [targetModel];
 
   let lastError: any = null;
   let successfulHtml = '';
