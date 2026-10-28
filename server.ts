@@ -77,7 +77,19 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const isProduction = process.env.NODE_ENV === 'production';
+
+// Production detection:
+// If NODE_ENV is explicitly 'development', run in Vite dev mode.
+// Otherwise, if dist/index.html exists (e.g. after npm run build) or NODE_ENV is 'production',
+// run high-performance production mode to serve minified, compressed static assets without Vite HMR.
+const isExplicitDev = process.env.NODE_ENV === 'development';
+const hasDistBuild = [
+  path.resolve(process.cwd(), 'dist'),
+  path.resolve(__dirname, 'dist'),
+  __dirname,
+].some(p => fs.existsSync(path.resolve(p, 'index.html')));
+
+const isProduction = !isExplicitDev && (process.env.NODE_ENV === 'production' || hasDistBuild);
 
 // Enable Gzip/Brotli compression for all HTTP responses (reduces asset payload by up to 85%)
 app.use(compression());
@@ -2213,7 +2225,7 @@ async function startServer() {
       setHeaders: (res, filePath) => {
         if (filePath.endsWith('.html')) {
           res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
-        } else if (filePath.match(/\.(woff2?|ttf|eot|otf|svg|png|jpg|jpeg|webp)$/i)) {
+        } else if (filePath.match(/\.(woff2?|ttf|eot|otf|svg|png|jpg|jpeg|webp|js|css)$/i)) {
           res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
         }
       }

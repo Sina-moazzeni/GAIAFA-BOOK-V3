@@ -972,7 +972,6 @@ export function downloadWordHtml(project: BookProject) {
     </xml>
     <![endif]-->
     <style>
-      @import url('https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;600;700&display=swap');
       body {
         font-family: '${fontFamily}', 'Vazirmatn', 'B Nazanin', 'B Mitra', 'IRANSans', 'Tahoma', 'Arial', sans-serif;
         mso-ascii-font-family: '${fontFamily}';
@@ -1037,7 +1036,6 @@ export function downloadStyledHtml(project: BookProject) {
 <head>
   <meta charset="UTF-8">
   <title>${project.title || project.originalTitle}</title>
-  <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;600;700;800&display=swap" rel="stylesheet">
   <style>
     body {
       font-family: 'Vazirmatn', sans-serif;
