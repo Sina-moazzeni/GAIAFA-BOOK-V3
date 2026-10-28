@@ -74,6 +74,7 @@ export type AdminTab =
   | 'completed_books'
   | 'all_books'
   | 'users'
+  | 'coupons'
   | 'api_pool'
   | 'finance'
   | 'page_builder'
@@ -195,7 +196,8 @@ export function AdminSectionGuide({
 }
 
 export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPanelProps) {
-  const [activeTab, setActiveTab] = useState<AdminTab>('overview');
+  const isStaff = currentUser.role === 'staff';
+  const [activeTab, setActiveTab] = useState<AdminTab>(isStaff ? 'overview' : 'overview');
 
   // Overview Data
   const [overview, setOverview] = useState<any>(null);
@@ -256,8 +258,12 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
     phone: '',
     email: '',
     password: '',
-    role: 'user',
+    role: 'user' as 'admin' | 'staff' | 'publisher' | 'user',
     walletBalance: 50000,
+    customCostPerWord: '' as string | number,
+    discountPercent: '' as string | number,
+    organizationName: '',
+    notes: '',
   });
   const [createUserLoading, setCreateUserLoading] = useState(false);
   const [createUserError, setCreateUserError] = useState<string | null>(null);
@@ -268,9 +274,13 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
     name: string;
     phone: string;
     email: string;
-    role: 'admin' | 'user';
+    role: 'admin' | 'staff' | 'publisher' | 'user';
     status: 'active' | 'banned';
     password?: string;
+    customCostPerWord?: number | string;
+    discountPercent?: number | string;
+    organizationName?: string;
+    notes?: string;
   } | null>(null);
   const [editUserLoading, setEditUserLoading] = useState(false);
 
@@ -507,13 +517,34 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
     setCreateUserLoading(true);
     setCreateUserError(null);
     try {
+      const payload: any = {
+        name: createUserForm.name,
+        phone: createUserForm.phone,
+        email: createUserForm.email,
+        password: createUserForm.password,
+        role: createUserForm.role,
+        walletBalance: Number(createUserForm.walletBalance) || 0,
+      };
+      if (createUserForm.customCostPerWord !== '') {
+        payload.customCostPerWord = Number(createUserForm.customCostPerWord);
+      }
+      if (createUserForm.discountPercent !== '') {
+        payload.discountPercent = Number(createUserForm.discountPercent);
+      }
+      if (createUserForm.organizationName?.trim()) {
+        payload.organizationName = createUserForm.organizationName.trim();
+      }
+      if (createUserForm.notes?.trim()) {
+        payload.notes = createUserForm.notes.trim();
+      }
+
       const res = await fetch('/api/admin/users/create', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify(createUserForm),
+        body: JSON.stringify(payload),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -527,6 +558,10 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
           password: '',
           role: 'user',
           walletBalance: 50000,
+          customCostPerWord: '',
+          discountPercent: '',
+          organizationName: '',
+          notes: '',
         });
         fetchUsers();
         fetchOverview();
@@ -539,26 +574,36 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
     }
   };
 
-  // Admin Save Edit User (Profile, role, status, password)
+  // Admin Save Edit User (Profile, role, status, password, custom pricing)
   const handleSaveEditUser = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editUserModal) return;
     setEditUserLoading(true);
     try {
+      const payload: any = {
+        name: editUserModal.name,
+        phone: editUserModal.phone,
+        email: editUserModal.email,
+        role: editUserModal.role,
+        status: editUserModal.status,
+        password: editUserModal.password,
+        customCostPerWord: editUserModal.customCostPerWord !== '' && editUserModal.customCostPerWord !== undefined
+          ? Number(editUserModal.customCostPerWord)
+          : null,
+        discountPercent: editUserModal.discountPercent !== '' && editUserModal.discountPercent !== undefined
+          ? Number(editUserModal.discountPercent)
+          : null,
+        organizationName: editUserModal.organizationName || '',
+        notes: editUserModal.notes || '',
+      };
+
       const res = await fetch(`/api/admin/users/${editUserModal.id}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({
-          name: editUserModal.name,
-          phone: editUserModal.phone,
-          email: editUserModal.email,
-          role: editUserModal.role,
-          status: editUserModal.status,
-          password: editUserModal.password,
-        }),
+        body: JSON.stringify(payload),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -1307,7 +1352,10 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
     return (
       u.name?.toLowerCase().includes(s) ||
       u.phone?.toLowerCase().includes(s) ||
-      u.email?.toLowerCase().includes(s)
+      u.email?.toLowerCase().includes(s) ||
+      u.organizationName?.toLowerCase().includes(s) ||
+      u.notes?.toLowerCase().includes(s) ||
+      u.role?.toLowerCase().includes(s)
     );
   });
 
@@ -1344,17 +1392,31 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
       <header className="sticky top-0 z-40 bg-slate-900/95 backdrop-blur-md border-b border-amber-500/30 shadow-lg">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-amber-500 to-amber-400 text-slate-950 flex items-center justify-center font-black shadow-lg shadow-amber-500/20">
-              <ShieldCheck className="w-6 h-6" />
+            <div className={`w-11 h-11 rounded-2xl flex items-center justify-center font-black shadow-lg ${
+              isStaff
+                ? 'bg-gradient-to-tr from-blue-600 to-indigo-500 text-white shadow-blue-500/20'
+                : 'bg-gradient-to-tr from-amber-500 to-amber-400 text-slate-950 shadow-amber-500/20'
+            }`}>
+              {isStaff ? <Users className="w-6 h-6" /> : <ShieldCheck className="w-6 h-6" />}
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <span className="font-extrabold text-white text-base">پنل مدیریت ارشد سامانه</span>
-                <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500 text-slate-950 font-black">
-                  SUPER ADMIN
+                <span className="font-extrabold text-white text-base">
+                  {isStaff ? 'میز کاربری پرسنل و پشتیبانی سامانه' : 'پنل مدیریت ارشد سامانه'}
+                </span>
+                <span className={`text-[10px] px-2 py-0.5 rounded-full font-black ${
+                  isStaff
+                    ? 'bg-blue-500 text-white'
+                    : 'bg-amber-500 text-slate-950'
+                }`}>
+                  {isStaff ? 'STAFF / پشتیبان سامانه' : 'SUPER ADMIN'}
                 </span>
               </div>
-              <p className="text-xs text-slate-400">نظارت بر کاربران، استخر موازی هوش مصنوعی، درآمدها و امنیت</p>
+              <p className="text-xs text-slate-400">
+                {isStaff
+                  ? 'مدیریت کاربران، نرخ‌های اختصاصی، کدهای تخفیف، صف ترجمه و بررسی پروژه‌ها'
+                  : 'نظارت بر کاربران، استخر موازی هوش مصنوعی، درآمدها و امنیت'}
+              </p>
             </div>
           </div>
 
@@ -1392,30 +1454,34 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
               <span className="truncate">پیشخوان زنده</span>
             </button>
 
-            <button
-              onClick={() => { setActiveTab('monthly_analytics'); fetchMonthlyAnalytics(); }}
-              className={`p-2.5 rounded-xl transition-all flex items-center justify-center gap-2 border ${
-                activeTab === 'monthly_analytics'
-                  ? 'bg-amber-500 text-slate-950 font-bold border-amber-400 shadow-md shadow-amber-500/20'
-                  : 'bg-slate-950/60 text-slate-300 border-slate-800/80 hover:bg-slate-800 hover:text-white'
-              }`}
-            >
-              <BarChart3 className="w-4 h-4 shrink-0 text-emerald-400" />
-              <span className="truncate">آمار و مقایسه ماهانه</span>
-            </button>
+            {!isStaff && (
+              <button
+                onClick={() => { setActiveTab('monthly_analytics'); fetchMonthlyAnalytics(); }}
+                className={`p-2.5 rounded-xl transition-all flex items-center justify-center gap-2 border ${
+                  activeTab === 'monthly_analytics'
+                    ? 'bg-amber-500 text-slate-950 font-bold border-amber-400 shadow-md shadow-amber-500/20'
+                    : 'bg-slate-950/60 text-slate-300 border-slate-800/80 hover:bg-slate-800 hover:text-white'
+                }`}
+              >
+                <BarChart3 className="w-4 h-4 shrink-0 text-emerald-400" />
+                <span className="truncate">آمار و مقایسه ماهانه</span>
+              </button>
+            )}
 
-            <button
-              onClick={() => setActiveTab('daily_revenue')}
-              className={`p-2.5 rounded-xl transition-all flex items-center justify-center gap-2 border shrink-0 min-w-[150px] sm:min-w-0 ${
-                activeTab === 'daily_revenue'
-                  ? 'bg-amber-500 text-slate-950 font-bold border-amber-400 shadow-md shadow-amber-500/20'
-                  : 'bg-slate-950/60 text-slate-300 border-slate-800/80 hover:bg-slate-800 hover:text-white'
-              }`}
-            >
-              <DollarSign className="w-4 h-4 shrink-0 text-emerald-400" />
-              <span className="truncate">درآمد روزانه و پرداخت‌ها</span>
-              <span className="text-[9px] px-1 rounded bg-emerald-500/20 text-emerald-300 font-bold">نمودار</span>
-            </button>
+            {!isStaff && (
+              <button
+                onClick={() => setActiveTab('daily_revenue')}
+                className={`p-2.5 rounded-xl transition-all flex items-center justify-center gap-2 border shrink-0 min-w-[150px] sm:min-w-0 ${
+                  activeTab === 'daily_revenue'
+                    ? 'bg-amber-500 text-slate-950 font-bold border-amber-400 shadow-md shadow-amber-500/20'
+                    : 'bg-slate-950/60 text-slate-300 border-slate-800/80 hover:bg-slate-800 hover:text-white'
+                }`}
+              >
+                <DollarSign className="w-4 h-4 shrink-0 text-emerald-400" />
+                <span className="truncate">درآمد روزانه و پرداخت‌ها</span>
+                <span className="text-[9px] px-1 rounded bg-emerald-500/20 text-emerald-300 font-bold">نمودار</span>
+              </button>
+            )}
 
             <button
               onClick={() => { setActiveTab('completed_books'); fetchAllBooks(); }}
@@ -1457,28 +1523,44 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
             </button>
 
             <button
-              onClick={() => setActiveTab('api_pool')}
-              className={`p-2.5 rounded-xl transition-all flex items-center justify-center gap-2 border ${
-                activeTab === 'api_pool'
+              onClick={() => { setActiveTab('coupons'); fetchCoupons(); }}
+              className={`p-2.5 rounded-xl transition-all flex items-center justify-center gap-2 border shrink-0 min-w-[130px] sm:min-w-0 ${
+                activeTab === 'coupons'
                   ? 'bg-amber-500 text-slate-950 font-bold border-amber-400 shadow-md shadow-amber-500/20'
                   : 'bg-slate-950/60 text-slate-300 border-slate-800/80 hover:bg-slate-800 hover:text-white'
               }`}
             >
-              <Cpu className="w-4 h-4 shrink-0 text-purple-400" />
-              <span className="truncate">استخر کلیدها ({apiKeys.length})</span>
+              <Tag className="w-4 h-4 shrink-0 text-emerald-400" />
+              <span className="truncate">کدهای تخفیف ({coupons.length})</span>
             </button>
 
-            <button
-              onClick={() => setActiveTab('finance')}
-              className={`p-2.5 rounded-xl transition-all flex items-center justify-center gap-2 border ${
-                activeTab === 'finance'
-                  ? 'bg-amber-500 text-slate-950 font-bold border-amber-400 shadow-md shadow-amber-500/20'
-                  : 'bg-slate-950/60 text-slate-300 border-slate-800/80 hover:bg-slate-800 hover:text-white'
-              }`}
-            >
-              <CreditCard className="w-4 h-4 shrink-0 text-cyan-400" />
-              <span className="truncate">امور مالی و درگاه‌ها</span>
-            </button>
+            {!isStaff && (
+              <button
+                onClick={() => setActiveTab('api_pool')}
+                className={`p-2.5 rounded-xl transition-all flex items-center justify-center gap-2 border ${
+                  activeTab === 'api_pool'
+                    ? 'bg-amber-500 text-slate-950 font-bold border-amber-400 shadow-md shadow-amber-500/20'
+                    : 'bg-slate-950/60 text-slate-300 border-slate-800/80 hover:bg-slate-800 hover:text-white'
+                }`}
+              >
+                <Cpu className="w-4 h-4 shrink-0 text-purple-400" />
+                <span className="truncate">استخر کلیدها ({apiKeys.length})</span>
+              </button>
+            )}
+
+            {!isStaff && (
+              <button
+                onClick={() => setActiveTab('finance')}
+                className={`p-2.5 rounded-xl transition-all flex items-center justify-center gap-2 border ${
+                  activeTab === 'finance'
+                    ? 'bg-amber-500 text-slate-950 font-bold border-amber-400 shadow-md shadow-amber-500/20'
+                    : 'bg-slate-950/60 text-slate-300 border-slate-800/80 hover:bg-slate-800 hover:text-white'
+                }`}
+              >
+                <CreditCard className="w-4 h-4 shrink-0 text-cyan-400" />
+                <span className="truncate">امور مالی و درگاه‌ها</span>
+              </button>
+            )}
 
             <button
               onClick={() => { setActiveTab('page_builder'); fetchCustomPages(); }}
@@ -1529,17 +1611,19 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
               <span className="truncate">سئو و برندینگ</span>
             </button>
 
-            <button
-              onClick={() => setActiveTab('security')}
-              className={`p-2.5 rounded-xl transition-all flex items-center justify-center gap-2 border ${
-                activeTab === 'security'
-                  ? 'bg-amber-500 text-slate-950 font-bold border-amber-400 shadow-md shadow-amber-500/20'
-                  : 'bg-slate-950/60 text-slate-300 border-slate-800/80 hover:bg-slate-800 hover:text-white'
-              }`}
-            >
-              <Lock className="w-4 h-4 shrink-0 text-rose-400" />
-              <span className="truncate">امنیت و پیامک</span>
-            </button>
+            {!isStaff && (
+              <button
+                onClick={() => setActiveTab('security')}
+                className={`p-2.5 rounded-xl transition-all flex items-center justify-center gap-2 border ${
+                  activeTab === 'security'
+                    ? 'bg-amber-500 text-slate-950 font-bold border-amber-400 shadow-md shadow-amber-500/20'
+                    : 'bg-slate-950/60 text-slate-300 border-slate-800/80 hover:bg-slate-800 hover:text-white'
+                }`}
+              >
+                <Lock className="w-4 h-4 shrink-0 text-rose-400" />
+                <span className="truncate">امنیت و پیامک</span>
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -1639,16 +1723,29 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
                 <div className="text-[11px] text-slate-500 mt-1">در قالب {overview?.totalBooks || 0} پروژه کتاب</div>
               </div>
 
-              <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-lg">
-                <div className="text-xs text-slate-400 mb-1 flex items-center gap-1.5">
-                  <DollarSign className="w-4 h-4 text-emerald-400" />
-                  مجموع درآمد کل پلتفرم
+              {isStaff ? (
+                <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-lg">
+                  <div className="text-xs text-slate-400 mb-1 flex items-center gap-1.5">
+                    <BookCheck className="w-4 h-4 text-emerald-400" />
+                    کتاب‌های ترجمه‌شده کامل
+                  </div>
+                  <div className="text-3xl font-black text-emerald-400">
+                    {completedBooksCount} <span className="text-xs font-normal text-slate-400">پروژه</span>
+                  </div>
+                  <div className="text-[11px] text-slate-500 mt-1">آماده مطالعه و دریافت خروجی</div>
                 </div>
-                <div className="text-3xl font-black text-emerald-400">
-                  {(overview?.totalRevenue || 0).toLocaleString('en-US')} <span className="text-xs font-normal text-slate-400">تومان</span>
+              ) : (
+                <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-lg">
+                  <div className="text-xs text-slate-400 mb-1 flex items-center gap-1.5">
+                    <DollarSign className="w-4 h-4 text-emerald-400" />
+                    مجموع درآمد کل پلتفرم
+                  </div>
+                  <div className="text-3xl font-black text-emerald-400">
+                    {(overview?.totalRevenue || 0).toLocaleString('en-US')} <span className="text-xs font-normal text-slate-400">تومان</span>
+                  </div>
+                  <div className="text-[11px] text-slate-500 mt-1">از درگاه‌های زرین‌پال، نکست‌پی و مستقیم</div>
                 </div>
-                <div className="text-[11px] text-slate-500 mt-1">از درگاه‌های زرین‌پال، نکست‌پی و مستقیم</div>
-              </div>
+              )}
 
               <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-lg">
                 <div className="text-xs text-slate-400 mb-1 flex items-center gap-1.5">
@@ -2623,9 +2720,10 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
                     <tr>
                       <th className="py-3.5 px-4">کاربر</th>
                       <th className="py-3.5 px-4">اطلاعات تماس</th>
-                      <th className="py-3.5 px-4">نقش</th>
+                      <th className="py-3.5 px-4">نقش و سازمان</th>
+                      <th className="py-3.5 px-4">تعرفه کلمه‌ای</th>
                       <th className="py-3.5 px-4">مانده کیف پول</th>
-                      <th className="py-3.5 px-4">کل مصرف‌شده</th>
+                      {!isStaff && <th className="py-3.5 px-4">کل مصرف‌شده</th>}
                       <th className="py-3.5 px-4">کتاب‌ها و کلمات</th>
                       <th className="py-3.5 px-4">وضعیت</th>
                       <th className="py-3.5 px-4 text-left">عملیات و مدیریت</th>
@@ -2635,7 +2733,14 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
                     {filteredUsers.map((u) => (
                       <tr key={u.id} className="hover:bg-slate-800/40 transition-colors">
                         <td className="py-3.5 px-4 font-bold text-white">
-                          <div>{u.name}</div>
+                          <div className="flex items-center gap-1.5">
+                            <span>{u.name}</span>
+                            {u.notes && (
+                              <span title={`یادداشت داخلی: ${u.notes}`} className="cursor-help text-amber-400">
+                                <Info className="w-3.5 h-3.5" />
+                              </span>
+                            )}
+                          </div>
                           <span className="text-[10px] text-slate-500 font-mono">ID: {u.id.slice(-6)}</span>
                         </td>
                         <td className="py-3.5 px-4">
@@ -2643,24 +2748,67 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
                           <div className="text-[10px] text-slate-500 font-mono" dir="ltr">{u.email}</div>
                         </td>
                         <td className="py-3.5 px-4">
-                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                            u.role === 'admin'
-                              ? 'bg-amber-500/10 border border-amber-500/30 text-amber-400'
-                              : 'bg-slate-800 text-slate-300'
-                          }`}>
-                            {u.role === 'admin' ? 'مدیر ارشد' : 'کاربر عادی'}
-                          </span>
+                          <div className="space-y-1">
+                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                              u.role === 'admin'
+                                ? 'bg-amber-500/10 border border-amber-500/30 text-amber-400'
+                                : u.role === 'staff'
+                                ? 'bg-blue-500/10 border border-blue-500/30 text-blue-300'
+                                : u.role === 'publisher'
+                                ? 'bg-purple-500/10 border border-purple-500/30 text-purple-300'
+                                : 'bg-slate-800 text-slate-300'
+                            }`}>
+                              {u.role === 'admin' ? '👑 مدیر ارشد' : u.role === 'staff' ? '🛡️ کارمند / پشتیبان' : u.role === 'publisher' ? '🏢 ناشر همکار' : '👤 کاربر عادی'}
+                            </span>
+                            {u.organizationName && (
+                              <div className="text-[11px] text-purple-300 font-semibold truncate max-w-[140px]" title={u.organizationName}>
+                                {u.organizationName}
+                              </div>
+                            )}
+                          </div>
+                        </td>
+                        <td className="py-3.5 px-4">
+                          {u.customCostPerWord ? (
+                            <div>
+                              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-cyan-500/15 text-cyan-300 border border-cyan-500/30 font-mono">
+                                ✨ اختصاصی: {u.customCostPerWord} ت
+                              </span>
+                              {u.discountPercent ? (
+                                <div className="text-[10px] text-emerald-400 font-bold mt-0.5">+{u.discountPercent}٪ تخفیف</div>
+                              ) : null}
+                            </div>
+                          ) : u.role === 'publisher' ? (
+                            <div>
+                              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-500/15 text-purple-300 border border-purple-500/30 font-mono">
+                                🏢 نرخ ناشر ({settings?.pricing?.publisherCostPerWord ?? 30} ت)
+                              </span>
+                              {u.discountPercent ? (
+                                <div className="text-[10px] text-emerald-400 font-bold mt-0.5">+{u.discountPercent}٪ تخفیف</div>
+                              ) : null}
+                            </div>
+                          ) : (
+                            <div>
+                              <span className="px-2 py-0.5 rounded-full text-[10px] bg-slate-800 text-slate-400 font-mono border border-slate-700/60">
+                                عمومی ({settings?.pricing?.costPerWord ?? 45} ت)
+                              </span>
+                              {u.discountPercent ? (
+                                <div className="text-[10px] text-emerald-400 font-bold mt-0.5">+{u.discountPercent}٪ تخفیف</div>
+                              ) : null}
+                            </div>
+                          )}
                         </td>
                         <td className="py-3.5 px-4 font-bold text-emerald-400 font-mono">
                           <span className="bg-emerald-500/10 px-2 py-1 rounded-lg border border-emerald-500/20">
                             {(u.walletBalance || 0).toLocaleString('en-US')} <span className="text-[10px] text-emerald-300 font-normal">تومان</span>
                           </span>
                         </td>
-                        <td className="py-3.5 px-4 font-bold text-purple-400 font-mono">
-                          <span className="bg-purple-500/10 px-2 py-1 rounded-lg border border-purple-500/20">
-                            {(u.totalSpent || 0).toLocaleString('en-US')} <span className="text-[10px] text-purple-300 font-normal">تومان</span>
-                          </span>
-                        </td>
+                        {!isStaff && (
+                          <td className="py-3.5 px-4 font-bold text-purple-400 font-mono">
+                            <span className="bg-purple-500/10 px-2 py-1 rounded-lg border border-purple-500/20">
+                              {(u.totalSpent || 0).toLocaleString('en-US')} <span className="text-[10px] text-purple-300 font-normal">تومان</span>
+                            </span>
+                          </td>
+                        )}
                         <td className="py-3.5 px-4">
                           <button
                             onClick={() => handleInspectUserBooks(u)}
@@ -2688,20 +2836,24 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
                                 name: u.name,
                                 phone: u.phone,
                                 email: u.email || '',
-                                role: u.role,
+                                role: u.role || 'user',
                                 status: u.status,
                                 password: '',
+                                customCostPerWord: u.customCostPerWord ?? '',
+                                discountPercent: u.discountPercent ?? '',
+                                organizationName: u.organizationName || '',
+                                notes: u.notes || '',
                               })}
                               className="px-2.5 py-1 rounded-lg bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 text-[11px] font-semibold flex items-center gap-1 transition"
-                              title="ویرایش مشخصات نام، شماره، نقش، رمز عبور"
+                              title="ویرایش مشخصات نام، شماره، نقش، تعرفه اختصاصی و یادداشت"
                             >
                               <Edit3 className="w-3 h-3 text-indigo-400" />
-                              <span>ویرایش</span>
+                              <span>ویرایش و تعرفه</span>
                             </button>
 
                             {/* Wallet Adjust Button */}
                             <button
-                              onClick={() => setAdjustWalletModal({ user: u, amount: 50000, description: 'شارژ کیف پول توسط مدیر' })}
+                              onClick={() => setAdjustWalletModal({ user: u, amount: 50000, description: 'شارژ کیف پول توسط پرسنل' })}
                               className="px-2.5 py-1 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-[11px] font-semibold flex items-center gap-1 transition"
                               title="افزایش یا کسر موجودی کیف پول"
                             >
@@ -2709,24 +2861,18 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
                               <span>کیف پول (+/-)</span>
                             </button>
 
-                            <button
-                              onClick={() => handleUpdateUserStatus(u.id, u.role === 'admin' ? 'user' : 'admin', u.status)}
-                              className="px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px]"
-                              title="تغییر نقش کاربری"
-                            >
-                              {u.role === 'admin' ? 'کاربر عادی' : 'مدیر'}
-                            </button>
-
-                            <button
-                              onClick={() => handleUpdateUserStatus(u.id, u.role, u.status === 'active' ? 'banned' : 'active')}
-                              className={`px-2 py-1 rounded-lg text-[10px] ${
-                                u.status === 'active'
-                                  ? 'bg-rose-500/10 text-rose-400 hover:bg-rose-500/20'
-                                  : 'bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20'
-                              }`}
-                            >
-                              {u.status === 'active' ? 'مسدودسازی' : 'فعال‌سازی'}
-                            </button>
+                            {(!isStaff || u.role !== 'admin') && (
+                              <button
+                                onClick={() => handleUpdateUserStatus(u.id, u.role, u.status === 'active' ? 'banned' : 'active')}
+                                className={`px-2 py-1 rounded-lg text-[10px] ${
+                                  u.status === 'active'
+                                    ? 'bg-rose-500/10 text-rose-400 hover:bg-rose-500/20'
+                                    : 'bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20'
+                                }`}
+                              >
+                                {u.status === 'active' ? 'مسدودسازی' : 'فعال‌سازی'}
+                              </button>
+                            )}
                           </div>
                         </td>
                       </tr>
@@ -2799,8 +2945,80 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
                           className="w-full px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs focus:border-indigo-500 focus:outline-none"
                         >
                           <option value="user">کاربر عادی سامانه</option>
-                          <option value="admin">مدیر ارشد (دسترسی کامل)</option>
+                          <option value="publisher">ناشر همکار (سازمانی)</option>
+                          <option value="staff">پرسنل و پشتیبان سامانه</option>
+                          {!isStaff && <option value="admin">مدیر ارشد (دسترسی تام)</option>}
                         </select>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-300 mb-1">نام سازمان / انتشارات (اختیاری):</label>
+                        <input
+                          type="text"
+                          placeholder="مثلاً: انتشارات ققنوس"
+                          value={editUserModal.organizationName || ''}
+                          onChange={(e) => setEditUserModal({ ...editUserModal, organizationName: e.target.value })}
+                          className="w-full px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs focus:border-indigo-500 focus:outline-none"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-300 mb-1">یادداشت داخلی پرسنل:</label>
+                        <input
+                          type="text"
+                          placeholder="توضیحات خصوصی درباره مشتری"
+                          value={editUserModal.notes || ''}
+                          onChange={(e) => setEditUserModal({ ...editUserModal, notes: e.target.value })}
+                          className="w-full px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs focus:border-indigo-500 focus:outline-none"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Dedicated Pricing & Custom Discount Box */}
+                    <div className="p-3.5 bg-slate-950 rounded-2xl border border-slate-800 space-y-2.5">
+                      <div className="text-xs font-bold text-amber-300 flex items-center gap-1.5">
+                        <Tag className="w-3.5 h-3.5 text-amber-400" />
+                        <span>تعرفه اختصاصی و تخفیف ویژه این کاربر:</span>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-[11px] font-semibold text-slate-300 mb-1">
+                            نرخ اختصاصی هر کلمه (تومان):
+                          </label>
+                          <input
+                            type="number"
+                            min="1"
+                            step="1"
+                            placeholder="خالی = نرخ پیش‌فرض سامانه"
+                            value={editUserModal.customCostPerWord ?? ''}
+                            onChange={(e) => setEditUserModal({ ...editUserModal, customCostPerWord: e.target.value })}
+                            className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-white font-mono text-xs focus:border-indigo-500 focus:outline-none"
+                          />
+                          <span className="text-[10px] text-slate-500 mt-0.5 block">
+                            عمومی: {settings?.pricing?.costPerWord ?? 45} ت | ناشران: {settings?.pricing?.publisherCostPerWord ?? 30} ت
+                          </span>
+                        </div>
+
+                        <div>
+                          <label className="block text-[11px] font-semibold text-slate-300 mb-1">
+                            درصد تخفیف دائم (٪):
+                          </label>
+                          <input
+                            type="number"
+                            min="0"
+                            max="100"
+                            step="1"
+                            placeholder="مثلاً: ۱۵"
+                            value={editUserModal.discountPercent ?? ''}
+                            onChange={(e) => setEditUserModal({ ...editUserModal, discountPercent: e.target.value })}
+                            className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-white font-mono text-xs focus:border-indigo-500 focus:outline-none"
+                          />
+                          <span className="text-[10px] text-slate-500 mt-0.5 block">
+                            کسر مستقیم از مبلغ محاسبه‌شده
+                          </span>
+                        </div>
                       </div>
                     </div>
 
@@ -3119,16 +3337,18 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
                         <label className="block text-xs font-semibold text-slate-300 mb-1">نقش کاربری:</label>
                         <select
                           value={createUserForm.role}
-                          onChange={(e) => setCreateUserForm({ ...createUserForm, role: e.target.value as 'user' | 'admin' })}
+                          onChange={(e) => setCreateUserForm({ ...createUserForm, role: e.target.value as any })}
                           className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs focus:border-amber-500 focus:outline-none"
                         >
                           <option value="user">کاربر عادی</option>
-                          <option value="admin">مدیر ارشد</option>
+                          <option value="publisher">ناشر همکار (سازمانی)</option>
+                          <option value="staff">پرسنل و پشتیبان سامانه</option>
+                          {!isStaff && <option value="admin">مدیر ارشد (دسترسی تام)</option>}
                         </select>
                       </div>
 
                       <div>
-                        <label className="block text-xs font-semibold text-slate-300 mb-1">شارژ اولیه کیف پول:</label>
+                        <label className="block text-xs font-semibold text-slate-300 mb-1">شارژ اولیه کیف پول (تومان):</label>
                         <input
                           type="number"
                           step="10000"
@@ -3136,6 +3356,63 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
                           onChange={(e) => setCreateUserForm({ ...createUserForm, walletBalance: Number(e.target.value) })}
                           className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs font-mono focus:border-amber-500 focus:outline-none"
                         />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-300 mb-1">نام سازمان / انتشارات (اختیاری):</label>
+                        <input
+                          type="text"
+                          placeholder="مثلاً: انتشارات ققنوس"
+                          value={createUserForm.organizationName}
+                          onChange={(e) => setCreateUserForm({ ...createUserForm, organizationName: e.target.value })}
+                          className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs focus:border-amber-500 focus:outline-none"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-300 mb-1">یادداشت داخلی پرسنل:</label>
+                        <input
+                          type="text"
+                          placeholder="توضیحات خصوصی..."
+                          value={createUserForm.notes}
+                          onChange={(e) => setCreateUserForm({ ...createUserForm, notes: e.target.value })}
+                          className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs focus:border-amber-500 focus:outline-none"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Dedicated Pricing Override for User */}
+                    <div className="p-3 bg-slate-950 rounded-2xl border border-slate-800 space-y-2">
+                      <div className="text-[11px] font-bold text-amber-300 flex items-center gap-1.5">
+                        <Tag className="w-3.5 h-3.5 text-amber-400" />
+                        <span>تعرفه اختصاصی و تخفیف این کاربر (اختیاری):</span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-[10px] font-semibold text-slate-300 mb-1">نرخ کلمه‌ای (تومان):</label>
+                          <input
+                            type="number"
+                            min="1"
+                            placeholder="خالی = پیش‌فرض"
+                            value={createUserForm.customCostPerWord}
+                            onChange={(e) => setCreateUserForm({ ...createUserForm, customCostPerWord: e.target.value })}
+                            className="w-full px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-700 text-white font-mono text-xs focus:border-amber-500 focus:outline-none"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-semibold text-slate-300 mb-1">تخفیف دائم (٪):</label>
+                          <input
+                            type="number"
+                            min="0"
+                            max="100"
+                            placeholder="مثلاً ۱۰"
+                            value={createUserForm.discountPercent}
+                            onChange={(e) => setCreateUserForm({ ...createUserForm, discountPercent: e.target.value })}
+                            className="w-full px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-700 text-white font-mono text-xs focus:border-amber-500 focus:outline-none"
+                          />
+                        </div>
                       </div>
                     </div>
 
@@ -3159,6 +3436,244 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
                 </div>
               </div>
             )}
+          </div>
+        )}
+
+        {/* ========================================================= */}
+        {/* TAB 2.5: COUPONS & DISCOUNT CODES */}
+        {/* ========================================================= */}
+        {activeTab === 'coupons' && (
+          <div className="space-y-6 animate-in fade-in">
+            <AdminSectionGuide
+              title="مدیریت کدهای تخفیف، بن‌های اعتباری و تشویقی"
+              badge="کمپین و بازاریابی"
+              badgeColor="emerald"
+              description="در این بخش می‌توانید کدهای تخفیف متنوع برای افزایش فروش و جذب کاربران و ناشران جدید تعریف کنید. کدها می‌توانند هم شارژ هدیه مستقیم (تومان) به کیف پول کاربر اضافه کنند و هم درصد تخفیف روی فاکتور ترجمه اعمال کنند."
+              bullets={[
+                {
+                  title: 'شارژ هدیه کیف پول (Credit Bonus)',
+                  text: 'مبلغ نقدی مشخصی (مثلاً ۵۰,۰۰۰ تومان) که به محض ثبت کد توسط کاربر به موجودی او افزوده می‌شود.'
+                },
+                {
+                  title: 'تخفیف درصدی (Discount Percent)',
+                  text: 'درصد کسر از کل هزینه ترجمه کتاب (مثلاً ۲۰٪ تخفیف برای سفارش اول).'
+                },
+                {
+                  title: 'سقف دفعات استفاده (Max Uses)',
+                  text: 'حداکثر دفعاتی که این کد در کل سیستم توسط کاربران مختلف قابل فعال‌سازی است.'
+                },
+                {
+                  title: 'کپی سریع کد',
+                  text: 'با یک کلیک روی متن کد، به کلیپ‌بورد کپی می‌شود تا بتوانید آن را در پیامک یا شبکه‌های اجتماعی برای کاربران ارسال کنید.'
+                }
+              ]}
+              tip="راهنمایی پرسنل: کدهای تبلیغاتی مانند NOWRUZ یا FIRST-BOOK برای ترغیب کاربران به ترجمه اولین کتاب بسیار اثربخش هستند."
+            />
+
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+              <div>
+                <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                  <Tag className="w-5 h-5 text-emerald-400" />
+                  <span>مدیریت کدهای تخفیف و بن‌های اعتباری</span>
+                </h2>
+                <p className="text-xs text-slate-400">ایجاد کدهای هدیه نقدی، درصد تخفیف و تعیین ظرفیت مجاز استفاده</p>
+              </div>
+
+              <button
+                onClick={fetchCoupons}
+                className="px-3.5 py-2 rounded-xl bg-slate-900 border border-slate-800 text-xs text-slate-300 hover:text-white flex items-center gap-1.5"
+              >
+                <RefreshCw className="w-4 h-4" />
+                <span>بروزرسانی لیست</span>
+              </button>
+            </div>
+
+            {/* Create Coupon Form Card */}
+            <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl">
+              <h3 className="font-bold text-sm text-white mb-4 flex items-center gap-2">
+                <Plus className="w-4 h-4 text-emerald-400" />
+                <span>تعریف و صدور کد تخفیف جدید</span>
+              </h3>
+
+              <form onSubmit={handleCreateCoupon} className="space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-xs">
+                  <div>
+                    <label className="block font-semibold text-slate-300 mb-1.5">کد تخفیف (انگلیسی / حروف بزرگ):</label>
+                    <input
+                      type="text"
+                      dir="ltr"
+                      placeholder="مثال: SPRING1404"
+                      value={newCouponCode}
+                      onChange={(e) => setNewCouponCode(e.target.value.toUpperCase())}
+                      required
+                      className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-amber-400 font-mono text-sm font-bold focus:border-emerald-500 focus:outline-none text-left"
+                    />
+                    <span className="text-[10px] text-slate-500 mt-1 block">بدون فاصله و کاراکترهای خاص</span>
+                  </div>
+
+                  <div>
+                    <label className="block font-semibold text-slate-300 mb-1.5">شارژ هدیه کیف پول (تومان):</label>
+                    <input
+                      type="number"
+                      step="5000"
+                      min="0"
+                      placeholder="50000"
+                      value={newCouponCredit}
+                      onChange={(e) => setNewCouponCredit(Number(e.target.value))}
+                      className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-white font-mono text-sm focus:border-emerald-500 focus:outline-none"
+                    />
+                    <span className="text-[10px] text-slate-500 mt-1 block">مستقیماً به کیف پول اضافه می‌شود</span>
+                  </div>
+
+                  <div>
+                    <label className="block font-semibold text-slate-300 mb-1.5">درصد تخفیف سفارش (٪):</label>
+                    <input
+                      type="number"
+                      min="0"
+                      max="100"
+                      step="1"
+                      placeholder="مثلاً: 20"
+                      value={newCouponDiscount}
+                      onChange={(e) => setNewCouponDiscount(Number(e.target.value))}
+                      className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-white font-mono text-sm focus:border-emerald-500 focus:outline-none"
+                    />
+                    <span className="text-[10px] text-slate-500 mt-1 block">از هزینه ترجمه کتاب کسر می‌شود</span>
+                  </div>
+
+                  <div>
+                    <label className="block font-semibold text-slate-300 mb-1.5">حداکثر سقف مجاز استفاده (تعداد):</label>
+                    <input
+                      type="number"
+                      min="1"
+                      placeholder="100"
+                      value={newCouponMaxUses}
+                      onChange={(e) => setNewCouponMaxUses(Number(e.target.value))}
+                      className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-white font-mono text-sm focus:border-emerald-500 focus:outline-none"
+                    />
+                    <span className="text-[10px] text-slate-500 mt-1 block">پس از این تعداد منقضی می‌شود</span>
+                  </div>
+                </div>
+
+                <div className="flex justify-end pt-2">
+                  <button
+                    type="submit"
+                    className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 text-white font-bold text-xs flex items-center gap-2 shadow-lg shadow-emerald-500/20 transition"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>ایجاد و فعال‌سازی کد تخفیف</span>
+                  </button>
+                </div>
+              </form>
+            </div>
+
+            {/* Coupons Table Card */}
+            <div className="bg-slate-900 border border-slate-800 rounded-3xl overflow-hidden shadow-xl">
+              <div className="p-4 sm:p-5 border-b border-slate-800 flex items-center justify-between">
+                <h3 className="font-bold text-sm text-white">لیست کلیه کدهای تخفیف تعریف‌شده ({coupons.length})</h3>
+                <span className="text-xs text-slate-400">کدها فوراً برای همه کاربران قابل اعمال هستند</span>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-right text-xs">
+                  <thead className="bg-slate-950/80 border-b border-slate-800 text-slate-400 font-semibold">
+                    <tr>
+                      <th className="py-3.5 px-4">کد تخفیف</th>
+                      <th className="py-3.5 px-4">نوع جایزه / پاداش</th>
+                      <th className="py-3.5 px-4">دفعات استفاده</th>
+                      <th className="py-3.5 px-4">وضعیت</th>
+                      <th className="py-3.5 px-4 text-center">عملیات</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-800/80">
+                    {coupons.length === 0 ? (
+                      <tr>
+                        <td colSpan={5} className="py-12 text-center text-slate-500">
+                          هیچ کد تخفیفی تاکنون ایجاد نشده است. از فرم بالا اولین کد را بسازید.
+                        </td>
+                      </tr>
+                    ) : (
+                      coupons.map((c: any) => {
+                        const used = c.usedCount || (c.usedBy || []).length;
+                        const isExhausted = c.maxUses && used >= c.maxUses;
+                        return (
+                          <tr key={c.id} className="hover:bg-slate-800/40 transition">
+                            <td className="py-3.5 px-4">
+                              <div className="flex items-center gap-2">
+                                <span className="font-mono font-black text-amber-300 text-sm bg-slate-950 px-2.5 py-1 rounded-lg border border-slate-800" dir="ltr">
+                                  {c.code}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    navigator.clipboard.writeText(c.code);
+                                    alert(`کد «${c.code}» در حافظه کپی شد.`);
+                                  }}
+                                  className="p-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white"
+                                  title="کپی در حافظه"
+                                >
+                                  <Copy className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            </td>
+                            <td className="py-3.5 px-4">
+                              <div className="space-y-1">
+                                {c.creditBonus > 0 && (
+                                  <div className="text-emerald-400 font-mono font-bold flex items-center gap-1">
+                                    <Wallet className="w-3.5 h-3.5" />
+                                    <span>+{c.creditBonus.toLocaleString('en-US')} تومان شارژ هدیه</span>
+                                  </div>
+                                )}
+                                {c.discountPercent > 0 && (
+                                  <div className="text-cyan-400 font-mono font-bold flex items-center gap-1">
+                                    <Tag className="w-3.5 h-3.5" />
+                                    <span>{c.discountPercent}٪ تخفیف روی فاکتور</span>
+                                  </div>
+                                )}
+                                {!c.creditBonus && !c.discountPercent && (
+                                  <span className="text-slate-500">بدون مزیت نقدی</span>
+                                )}
+                              </div>
+                            </td>
+                            <td className="py-3.5 px-4 font-mono">
+                              <div className="flex items-center gap-1.5">
+                                <span className="font-bold text-white">{used}</span>
+                                <span className="text-slate-500">از {c.maxUses || 'نامحدود'}</span>
+                              </div>
+                              <div className="w-24 h-1.5 bg-slate-800 rounded-full overflow-hidden mt-1.5">
+                                <div
+                                  className={`h-full ${isExhausted ? 'bg-rose-500' : 'bg-emerald-500'}`}
+                                  style={{ width: `${Math.min(100, ((used / (c.maxUses || 100)) * 100))}%` }}
+                                />
+                              </div>
+                            </td>
+                            <td className="py-3.5 px-4">
+                              <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                                isExhausted
+                                  ? 'bg-rose-500/10 text-rose-400 border border-rose-500/30'
+                                  : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30'
+                              }`}>
+                                {isExhausted ? 'تکمیل ظرفیت' : 'فعال و معتبر'}
+                              </span>
+                            </td>
+                            <td className="py-3.5 px-4 text-center">
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteCoupon(c.id)}
+                                className="px-3 py-1.5 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 text-xs font-semibold inline-flex items-center gap-1 transition"
+                                title="حذف کد تخفیف"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                                <span>حذف</span>
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
           </div>
         )}
 
@@ -4168,10 +4683,10 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
                 <span>تعرفه و قیمت‌گذاری کلمات کتاب</span>
               </h3>
 
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
                 <div>
                   <label className="block text-xs font-semibold text-slate-300 mb-1.5">
-                    نرخ پایه به ازای هر کلمه (تومان):
+                    نرخ پایه عمومی هر کلمه (تومان):
                   </label>
                   <input
                     type="number"
@@ -4184,12 +4699,30 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
                     }
                     className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-white font-mono text-sm focus:border-amber-500 focus:outline-none"
                   />
-                  <p className="text-[11px] text-slate-500 mt-1">مثلاً ۴۵ تومان به ازای هر کلمه</p>
+                  <p className="text-[11px] text-slate-500 mt-1">پیش‌فرض کاربران عادی (۴۵ تومان)</p>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-purple-300 mb-1.5">
+                    نرخ سازمانی ناشران (تومان):
+                  </label>
+                  <input
+                    type="number"
+                    value={settings.pricing.publisherCostPerWord ?? 30}
+                    onChange={(e) =>
+                      setSettings({
+                        ...settings,
+                        pricing: { ...settings.pricing, publisherCostPerWord: Number(e.target.value) },
+                      })
+                    }
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-purple-500/30 text-purple-300 font-mono text-sm focus:border-purple-400 focus:outline-none"
+                  />
+                  <p className="text-[11px] text-slate-500 mt-1">نرخ خودکار کاربران سطح ناشر (۳۰ تومان)</p>
                 </div>
 
                 <div>
                   <label className="block text-xs font-semibold text-slate-300 mb-1.5">
-                    ضریب کتاب‌های تخصصی (هوافضا/ریاضی):
+                    ضریب کتاب‌های تخصصی (علمی/پزشکی):
                   </label>
                   <input
                     type="number"

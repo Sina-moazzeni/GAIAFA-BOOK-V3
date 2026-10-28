@@ -159,11 +159,31 @@ export function UserDashboard({
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
                   <span className="font-bold text-white text-sm sm:text-base truncate">میز کاربری کتاب‌ها</span>
-                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-400 shrink-0">
-                    {user.role === 'admin' ? 'مدیر ارشد' : 'کاربر ویژه'}
+                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 ${
+                    user.role === 'admin'
+                      ? 'bg-amber-500/10 border border-amber-500/30 text-amber-400'
+                      : user.role === 'staff'
+                      ? 'bg-blue-500/10 border border-blue-500/30 text-blue-300'
+                      : user.role === 'publisher'
+                      ? 'bg-purple-500/10 border border-purple-500/30 text-purple-300'
+                      : 'bg-emerald-500/10 border border-emerald-500/30 text-emerald-400'
+                  }`}>
+                    {user.role === 'admin' ? '👑 مدیر ارشد' : user.role === 'staff' ? '🛡️ پرسنل سامانه' : user.role === 'publisher' ? '🏢 ناشر همکار' : '👤 کاربر سامانه'}
+                  </span>
+                  {user.organizationName && (
+                    <span className="hidden md:inline text-[10px] font-semibold text-purple-300 bg-purple-500/10 px-2 py-0.5 rounded-full border border-purple-500/20">
+                      {user.organizationName}
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center gap-2 text-[11px] sm:text-xs text-slate-400 truncate">
+                  <span>{user.name}</span>
+                  <span className="font-mono text-slate-500">({user.phone || user.email})</span>
+                  <span className="text-amber-400/90 font-mono text-[10px] bg-slate-800 px-1.5 py-0.2 rounded">
+                    تعرفه: {systemCostPerWord} ت/کلمه
+                    {user.discountPercent ? ` (${user.discountPercent}٪ تخفیف)` : ''}
                   </span>
                 </div>
-                <p className="text-[11px] sm:text-xs text-slate-400 truncate">{user.name} ({user.phone || user.email})</p>
               </div>
             </div>
 
@@ -193,14 +213,18 @@ export function UserDashboard({
               <Plus className="w-3.5 h-3.5 text-amber-400 mr-1" />
             </button>
 
-            {/* Admin Switcher */}
-            {user.role === 'admin' && onOpenAdmin && (
+            {/* Admin / Staff Switcher */}
+            {(user.role === 'admin' || user.role === 'staff') && onOpenAdmin && (
               <button
                 onClick={onOpenAdmin}
-                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 text-xs font-semibold transition-all shrink-0"
+                className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold transition-all shrink-0 ${
+                  user.role === 'staff'
+                    ? 'bg-blue-500/10 hover:bg-blue-500/20 text-blue-300 border border-blue-500/30'
+                    : 'bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30'
+                }`}
               >
                 <ShieldCheck className="w-4 h-4" />
-                <span className="hidden xs:inline">پنل مدیریت</span>
+                <span className="hidden xs:inline">{user.role === 'staff' ? 'میز پرسنل و پشتیبانی' : 'پنل مدیریت'}</span>
               </button>
             )}
 
