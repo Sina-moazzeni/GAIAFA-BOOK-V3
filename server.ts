@@ -493,10 +493,11 @@ app.post('/api/keys/test', async (req, res) => {
   }
 
   const candidateModels = Array.from(new Set([
-    model || 'gemini-3.8-flash',
+    model || 'gemini-3.1-flash-lite',
     'gemini-3.1-flash-lite',
+    'gemini-3.8-flash',
     'gemini-flash-latest',
-    'gemini-2.5-flash'
+    'gemini-2.5-flash',
   ]));
 
   const t0 = Date.now();
@@ -508,13 +509,19 @@ app.post('/api/keys/test', async (req, res) => {
     try {
       const ai = new GoogleGenAI({
         apiKey: testKey,
-        httpOptions: { headers: { 'User-Agent': 'aistudio-build' }, timeout: 12000 },
+        httpOptions: {
+          headers: { 'User-Agent': 'aistudio-build' },
+          timeout: 35000, // 35s timeout to prevent premature aborts on cloud servers
+        },
       });
       const result = await ai.models.generateContent({
         model: candModel,
-        contents: 'Ping test for Persian book translation engine. Reply with exact word: PONG_OK',
+        contents: 'Ping test. Reply with: PONG_OK',
         config: {
-          thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
+          maxOutputTokens: 20,
+          thinkingConfig: {
+            thinkingLevel: candModel.includes('lite') || candModel.includes('flash') ? ThinkingLevel.MINIMAL : ThinkingLevel.LOW,
+          },
         },
       });
 
@@ -524,8 +531,22 @@ app.post('/api/keys/test', async (req, res) => {
     } catch (candErr: any) {
       lastGeminiError = candErr;
       const errMsg = String(candErr?.message || candErr);
-      // If 503 high demand or 404 model not found, try next candidate model
-      if (errMsg.includes('503') || errMsg.includes('high demand') || errMsg.includes('404') || errMsg.includes('UNAVAILABLE')) {
+      const isTransient =
+        errMsg.includes('504') ||
+        errMsg.includes('DEADLINE_EXCEEDED') ||
+        errMsg.includes('Deadline expired') ||
+        errMsg.includes('503') ||
+        errMsg.includes('high demand') ||
+        errMsg.includes('UNAVAILABLE') ||
+        errMsg.includes('404') ||
+        errMsg.includes('RESOURCE_EXHAUSTED') ||
+        errMsg.includes('timeout') ||
+        errMsg.includes('ETIMEDOUT') ||
+        errMsg.includes('ECONNRESET');
+
+      if (isTransient) {
+        console.warn(`[API Test] Transient error with model ${candModel}: ${errMsg.slice(0, 100)}. Trying fallback candidate...`);
+        await new Promise(r => setTimeout(r, 600));
         continue;
       } else {
         break;
@@ -550,10 +571,23 @@ app.post('/api/keys/test', async (req, res) => {
     });
   }
 
+  let formattedError = lastGeminiError?.message || 'خطا در برقراری ارتباط با مدل هوش مصنوعی از طریق سرور';
+  if (
+    formattedError.includes('504') ||
+    formattedError.includes('DEADLINE_EXCEEDED') ||
+    formattedError.includes('Deadline expired')
+  ) {
+    formattedError =
+      'پایان مهلت زمان اتصال گیت‌وی (کد ۵۰۴ - DEADLINE_EXCEEDED): پاسخ از سمت سرور جمینای در مهلت تعیین‌شده دریافت نشد. این خطا ناشی از ترافیک موقت شبکه یا پردازش سنگین سرور گوگل است. زمان مهلت افزایش یافت، لطفاً لحظاتی دیگر مجدداً تست فرمایید یا مدل سریع‌تر مانند gemini-3.1-flash-lite را برگزینید.';
+  } else if (formattedError.includes('503') || formattedError.includes('high demand') || formattedError.includes('UNAVAILABLE')) {
+    formattedError =
+      'ترافیک موقت بالای سرورهای هوش مصنوعی (کد ۵۰۳). لطفاً لحظاتی دیگر تست فرمایید.';
+  }
+
   return res.json({
     success: false,
     latencyMs,
-    error: lastGeminiError?.message || 'خطا در برقراری ارتباط با مدل هوش مصنوعی از طریق سرور',
+    error: formattedError,
     masked: `${testKey.slice(0, 4)}...${testKey.slice(-4)}`,
     testedByServerIp: true,
   });
@@ -747,7 +781,10 @@ ${cleanEnglishText}`;
             await enforceRateLimit();
             const ai = new GoogleGenAI({
               apiKey: sKey,
-              httpOptions: { headers: { 'User-Agent': 'aistudio-build' } },
+              httpOptions: {
+                headers: { 'User-Agent': 'aistudio-build' },
+                timeout: 50000,
+              },
             });
 
             const candidateModels = Array.from(new Set([
@@ -755,13 +792,14 @@ ${cleanEnglishText}`;
               'gemini-3.8-flash',
               'gemini-3.1-flash-lite',
               'gemini-flash-latest',
+              'gemini-2.5-flash',
             ]));
 
             let lastCandErr: any = null;
             for (const candModel of candidateModels) {
               try {
                 const thinkingLevel =
-                  candModel === 'gemini-3.1-flash-lite'
+                  candModel.includes('lite') || candModel.includes('flash')
                     ? ThinkingLevel.MINIMAL
                     : ThinkingLevel.LOW;
 
@@ -799,7 +837,19 @@ ${cleanEnglishText}`;
               } catch (mErr: any) {
                 lastCandErr = mErr;
                 const mMsg = String(mErr?.message || mErr);
-                if (mMsg.includes('503') || mMsg.includes('high demand') || mMsg.includes('404')) {
+                const isTransient =
+                  mMsg.includes('504') ||
+                  mMsg.includes('DEADLINE_EXCEEDED') ||
+                  mMsg.includes('Deadline expired') ||
+                  mMsg.includes('503') ||
+                  mMsg.includes('high demand') ||
+                  mMsg.includes('UNAVAILABLE') ||
+                  mMsg.includes('404') ||
+                  mMsg.includes('timeout') ||
+                  mMsg.includes('ETIMEDOUT');
+                if (isTransient) {
+                  console.warn(`[Auto-Switching Engine] Transient error (${mMsg.slice(0, 80)}) on ${candModel}. Trying fallback candidate model...`);
+                  await new Promise(r => setTimeout(r, 800));
                   continue;
                 }
                 throw mErr;
@@ -1029,12 +1079,13 @@ ${cleanEnglishText}`;
             headers: {
               'User-Agent': 'aistudio-build',
             },
+            timeout: 50000,
           },
         });
 
         // Use appropriate thinking level for model
         const thinkingLevel =
-          currentModelCandidate === 'gemini-3.1-flash-lite'
+          currentModelCandidate.includes('lite') || currentModelCandidate.includes('flash')
             ? ThinkingLevel.MINIMAL
             : ThinkingLevel.LOW;
 
@@ -1073,19 +1124,25 @@ ${cleanEnglishText}`;
           errorMessage.includes('RESOURCE_EXHAUSTED') ||
           errorMessage.includes('Quota exceeded');
 
-        const isHighDemand =
+        const isTransientOrTimeout =
+          errorMessage.includes('504') ||
+          errorMessage.includes('DEADLINE_EXCEEDED') ||
+          errorMessage.includes('Deadline expired') ||
           errorMessage.includes('503') ||
           errorMessage.includes('high demand') ||
-          errorMessage.includes('UNAVAILABLE');
+          errorMessage.includes('UNAVAILABLE') ||
+          errorMessage.includes('timeout') ||
+          errorMessage.includes('ETIMEDOUT') ||
+          errorMessage.includes('ECONNRESET');
 
         if (isQuotaExceeded && keyObj) {
           markKeyCooldown(keyObj, 60);
           console.warn(`Key ${keyObj.masked} moved to cooldown for 60s.`);
         }
 
-        // If high demand 503 on this model, switch immediately to next candidate model
-        if (isHighDemand && mIdx < modelCandidates.length - 1) {
-          console.warn(`503 High Demand detected on ${currentModelCandidate}. Automatically switching to fallback model ${modelCandidates[mIdx + 1]}...`);
+        // If transient error (504 timeout, 503 high demand), switch immediately to next candidate model
+        if (isTransientOrTimeout && mIdx < modelCandidates.length - 1) {
+          console.warn(`Transient/Timeout error detected on ${currentModelCandidate}. Automatically switching to fallback model ${modelCandidates[mIdx + 1]}...`);
           await new Promise(r => setTimeout(r, 1000));
           break; // Exit inner loop and try next model in modelCandidates
         }
@@ -1111,7 +1168,9 @@ ${cleanEnglishText}`;
 
   const errText = String(lastError?.message || lastError);
   let friendlyError = 'مشکل در برقراری ارتباط با مدل هوش مصنوعی';
-  if (errText.includes('503') || errText.includes('high demand') || errText.includes('UNAVAILABLE')) {
+  if (errText.includes('504') || errText.includes('DEADLINE_EXCEEDED') || errText.includes('Deadline expired')) {
+    friendlyError = 'پایان مهلت زمان اتصال به سرور جمینای (خطای ۵۰۴ - DEADLINE_EXCEEDED). این مورد ناشی از کندی موقت گیت‌وی است؛ سامانه به صورت خودکار با مدل‌های سریع‌تر جایگزین را امتحان می‌کند.';
+  } else if (errText.includes('503') || errText.includes('high demand') || errText.includes('UNAVAILABLE')) {
     friendlyError = 'سرورهای هوش مصنوعی در حال حاضر دچار ترافیک بالای موقت (کد ۵۰۳) هستند. لطفاً لحظاتی دیگر مجدداً تلاش فرمایید یا مدل دیگری را از بالای صفحه انتخاب نمایید.';
   } else if (errText.includes('429') || errText.includes('Quota exceeded')) {
     friendlyError = 'سهمیه مجاز درخواست‌های کلید موقتاً به پایان رسیده است. پس از گذشت یک دقیقه به طور خودکار آزاد می‌شود.';
@@ -2073,8 +2132,8 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, () => {
-    console.log(`Book Translator server listening on ${PORT} (mode: ${isProduction ? 'prod' : 'dev'})`);
+  app.listen(Number(PORT), '0.0.0.0', () => {
+    console.log(`Book Translator server listening on 0.0.0.0:${PORT} (mode: ${isProduction ? 'prod' : 'dev'})`);
   });
 }
 

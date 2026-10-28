@@ -1563,13 +1563,38 @@ export function setupSaasRoutes(app: express.Express) {
           if (k.provider === 'gemini') {
             const ai = new GoogleGenAI({
               apiKey: k.apiKey,
-              httpOptions: { timeout: 10000 },
+              httpOptions: { timeout: 35000 },
             });
-            const resp = await ai.models.generateContent({
-              model: k.model || 'gemini-3.8-flash',
-              contents: 'Ping',
-              config: { maxOutputTokens: 5 },
-            });
+            const candModels = Array.from(new Set([
+              k.model || 'gemini-3.1-flash-lite',
+              'gemini-3.1-flash-lite',
+              'gemini-3.8-flash',
+              'gemini-flash-latest'
+            ]));
+
+            let worked = false;
+            let lastErr: any = null;
+            for (const cm of candModels) {
+              try {
+                await ai.models.generateContent({
+                  model: cm,
+                  contents: 'Ping',
+                  config: { maxOutputTokens: 5 },
+                });
+                worked = true;
+                break;
+              } catch (e: any) {
+                lastErr = e;
+                const msg = String(e?.message || e);
+                if (msg.includes('504') || msg.includes('DEADLINE_EXCEEDED') || msg.includes('503') || msg.includes('UNAVAILABLE') || msg.includes('timeout')) {
+                  continue;
+                }
+                break;
+              }
+            }
+
+            if (!worked && lastErr) throw lastErr;
+
             const latencyMs = Date.now() - t0;
             k.lastLatencyMs = latencyMs;
             db.saveApiKey(k);
@@ -1578,7 +1603,7 @@ export function setupSaasRoutes(app: express.Express) {
             // OpenAI-compatible ping
             const targetUrl = `${(k.baseURL || 'https://api.openai.com/v1').replace(/\/+$/, '')}/chat/completions`;
             const controller = new AbortController();
-            const tid = setTimeout(() => controller.abort(), 12000);
+            const tid = setTimeout(() => controller.abort(), 20000);
             const resp = await fetch(targetUrl, {
               method: 'POST',
               signal: controller.signal,
@@ -1603,7 +1628,13 @@ export function setupSaasRoutes(app: express.Express) {
             }
           }
         } catch (err: any) {
-          results.push({ id: k.id, name: k.name, success: false, error: err.message || 'خطای اتصال' });
+          let errText = err?.message || 'خطای اتصال';
+          if (errText.includes('504') || errText.includes('DEADLINE_EXCEEDED') || errText.includes('Deadline expired')) {
+            errText = 'پایان مهلت زمان (کد ۵۰۴ - DEADLINE_EXCEEDED)';
+          } else if (errText.includes('503') || errText.includes('high demand')) {
+            errText = 'ترافیک بالای موقت (کد ۵۰۳)';
+          }
+          results.push({ id: k.id, name: k.name, success: false, error: errText });
         }
       })
     );

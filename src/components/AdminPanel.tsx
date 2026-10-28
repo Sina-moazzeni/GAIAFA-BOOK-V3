@@ -1090,7 +1090,13 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
         }),
       });
       const data = await res.json();
-      alert(data.success ? `اتصال موفقیت‌آمیز بود! زمان پاسخ: ${data.latencyMs} میلی‌ثانیه` : `خطا در اتصال: ${data.error}`);
+      let displayError = data.error || 'خطای ناشناخته';
+      if (typeof displayError === 'string') {
+        if (displayError.includes('504') || displayError.includes('DEADLINE_EXCEEDED') || displayError.includes('Deadline expired')) {
+          displayError = 'پایان مهلت زمانی گیت‌وی (کد ۵۰۴ - DEADLINE_EXCEEDED): پاسخ از سمت سرور جمینای در مهلت تعیین‌شده دریافت نشد. این خطا ناشی از کندی موقت شبکه یا پردازش سنگین سرور گوگل است. زمان مهلت افزایش یافت؛ لطفاً لحظاتی دیگر مجدداً تلاش فرمایید.';
+        }
+      }
+      alert(data.success ? `اتصال موفقیت‌آمیز بود! زمان پاسخ: ${data.latencyMs} میلی‌ثانیه` : `خطا در اتصال: ${displayError}`);
     } catch (e: any) {
       alert(`خطا: ${e.message}`);
     } finally {

@@ -415,8 +415,18 @@ export class QueueManager {
 
           if (keyConfig) {
             keyConfig.failedRequests++;
-            // If quota limit or high demand, mark cooldown and switch to 30% reserve key immediately
-            if (errMsg.includes('429') || errMsg.includes('Quota') || errMsg.includes('503') || errMsg.includes('UNAVAILABLE') || errMsg.includes('RESOURCE_EXHAUSTED')) {
+            // If quota limit, timeout, or high demand, mark cooldown and switch to 30% reserve key immediately
+            if (
+              errMsg.includes('429') ||
+              errMsg.includes('Quota') ||
+              errMsg.includes('503') ||
+              errMsg.includes('504') ||
+              errMsg.includes('DEADLINE_EXCEEDED') ||
+              errMsg.includes('Deadline expired') ||
+              errMsg.includes('UNAVAILABLE') ||
+              errMsg.includes('RESOURCE_EXHAUSTED') ||
+              errMsg.includes('timeout')
+            ) {
               keyConfig.cooldownUntil = Date.now() + 60000;
               db.saveApiKey(keyConfig);
               this.switchUserToBackupKey(job.userId, keyConfig.id);
@@ -499,7 +509,7 @@ ${cleanEnglish}`;
     if (keyConfig.provider === 'gemini') {
       const ai = new GoogleGenAI({
         apiKey: keyConfig.apiKey,
-        httpOptions: { headers: { 'User-Agent': 'aistudio-build' }, timeout: 45000 },
+        httpOptions: { headers: { 'User-Agent': 'aistudio-build' }, timeout: 55000 },
       });
 
       // Ensure flash lite models like gemini-3.5-flash-lite map to valid aliases
@@ -529,7 +539,18 @@ ${cleanEnglish}`;
         } catch (mErr: any) {
           lastErr = mErr;
           const msg = String(mErr?.message || mErr);
-          if (msg.includes('503') || msg.includes('404') || msg.includes('UNAVAILABLE')) {
+          const isTransient =
+            msg.includes('504') ||
+            msg.includes('DEADLINE_EXCEEDED') ||
+            msg.includes('Deadline expired') ||
+            msg.includes('503') ||
+            msg.includes('404') ||
+            msg.includes('UNAVAILABLE') ||
+            msg.includes('timeout') ||
+            msg.includes('ETIMEDOUT');
+          if (isTransient) {
+            console.warn(`[QueueWorker] Transient error on ${m}: ${msg.slice(0, 80)}. Trying fallback model...`);
+            await new Promise(r => setTimeout(r, 1000));
             continue;
           }
           throw mErr;
