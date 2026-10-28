@@ -252,6 +252,8 @@ export interface DatabaseSchema {
   transactions: TransactionRecord[];
   apiKeys: ApiKeyConfig[];
   customPages: CustomPage[];
+  coupons?: any[];
+  headerFooterConfig?: HeaderFooterConfig;
   otpStore: Record<string, { code: string; expiresAt: number; attempts: number }>;
   sessions: Record<string, { userId: string; expiresAt: number }>;
   settings: SystemSettings;
@@ -1509,6 +1511,7 @@ class Database {
   // --- Export Database Backup ---
   public exportBackup() {
     return {
+      version: '2.0',
       exportedAt: new Date().toISOString(),
       stats: {
         users: this.data.users.length,
@@ -1516,14 +1519,136 @@ class Database {
         jobs: this.data.jobs.length,
         transactions: this.data.transactions.length,
         apiKeys: this.data.apiKeys.length,
+        coupons: (this.data.coupons || []).length,
+        customPages: (this.data.customPages || []).length,
       },
       data: {
-        users: this.data.users.map(u => ({ ...u, passwordHash: '***PROTECTED***' })),
+        users: this.data.users,
         books: this.data.books,
         jobs: this.data.jobs,
         transactions: this.data.transactions,
         settings: this.data.settings,
-        customPages: this.data.customPages,
+        customPages: this.data.customPages || [],
+        coupons: this.data.coupons || [],
+        headerFooterConfig: this.data.headerFooterConfig,
+      },
+    };
+  }
+
+  // --- Import / Restore Database Backup ---
+  public importBackup(backupPayload: any): { success: boolean; message: string; stats: any } {
+    if (!backupPayload) {
+      throw new Error('فایل پشتیبان نامعتبر است.');
+    }
+    const incoming = backupPayload.data ? backupPayload.data : backupPayload;
+
+    let restoredUsers = 0;
+    let restoredBooks = 0;
+    let restoredPages = 0;
+    let restoredCoupons = 0;
+
+    // 1. Restore Books
+    if (Array.isArray(incoming.books)) {
+      incoming.books.forEach((inBook: BookRecord) => {
+        if (!inBook || !inBook.id) return;
+        const existingIdx = this.data.books.findIndex(b => b.id === inBook.id);
+        if (existingIdx !== -1) {
+          this.data.books[existingIdx] = inBook;
+        } else {
+          this.data.books.push(inBook);
+        }
+        restoredBooks++;
+      });
+    }
+
+    // 2. Restore Users (preserve existing password hashes if incoming is protected)
+    if (Array.isArray(incoming.users)) {
+      incoming.users.forEach((inUser: User) => {
+        if (!inUser || !inUser.id) return;
+        const existingIdx = this.data.users.findIndex(
+          u => u.id === inUser.id || (inUser.email && u.email && u.email.toLowerCase() === inUser.email.toLowerCase())
+        );
+        if (existingIdx !== -1) {
+          const prevHash = this.data.users[existingIdx].passwordHash;
+          const newHash = (!inUser.passwordHash || inUser.passwordHash.includes('PROTECTED')) ? prevHash : inUser.passwordHash;
+          this.data.users[existingIdx] = {
+            ...this.data.users[existingIdx],
+            ...inUser,
+            passwordHash: newHash,
+          };
+        } else {
+          const safeUser = { ...inUser };
+          if (!safeUser.passwordHash || safeUser.passwordHash.includes('PROTECTED')) {
+            safeUser.passwordHash = hashPassword('admin123');
+          }
+          this.data.users.push(safeUser);
+        }
+        restoredUsers++;
+      });
+    }
+
+    // 3. Restore Custom Pages
+    if (Array.isArray(incoming.customPages)) {
+      if (!this.data.customPages) this.data.customPages = [];
+      incoming.customPages.forEach((inPage: CustomPage) => {
+        if (!inPage || !inPage.slug) return;
+        const existingIdx = this.data.customPages.findIndex(p => p.id === inPage.id || p.slug === inPage.slug);
+        if (existingIdx !== -1) {
+          this.data.customPages[existingIdx] = inPage;
+        } else {
+          this.data.customPages.push(inPage);
+        }
+        restoredPages++;
+      });
+    }
+
+    // 4. Restore Coupons
+    if (Array.isArray(incoming.coupons)) {
+      if (!this.data.coupons) this.data.coupons = [];
+      incoming.coupons.forEach((inCoupon: any) => {
+        if (!inCoupon || !inCoupon.code) return;
+        const existingIdx = this.data.coupons!.findIndex((c: any) => c.code.toUpperCase() === inCoupon.code.toUpperCase());
+        if (existingIdx !== -1) {
+          this.data.coupons![existingIdx] = inCoupon;
+        } else {
+          this.data.coupons!.push(inCoupon);
+        }
+        restoredCoupons++;
+      });
+    }
+
+    // 5. Restore Settings & HeaderFooter
+    if (incoming.settings && typeof incoming.settings === 'object') {
+      this.data.settings = { ...this.data.settings, ...incoming.settings };
+    }
+    if (incoming.headerFooterConfig && typeof incoming.headerFooterConfig === 'object') {
+      this.data.headerFooterConfig = { ...this.data.headerFooterConfig, ...incoming.headerFooterConfig };
+    }
+
+    // 6. Restore Transactions if present
+    if (Array.isArray(incoming.transactions)) {
+      if (!this.data.transactions) this.data.transactions = [];
+      incoming.transactions.forEach((inTx: TransactionRecord) => {
+        if (!inTx || !inTx.id) return;
+        if (!this.data.transactions.some(t => t.id === inTx.id)) {
+          this.data.transactions.push(inTx);
+        }
+      });
+    }
+
+    this.ensureDefaultUsers(this.data);
+    this.saveData(this.data);
+
+    return {
+      success: true,
+      message: `پشتیبان با موفقیت بازیابی شد (${restoredBooks} کتاب، ${restoredUsers} کاربر، ${restoredPages} برگه، ${restoredCoupons} کد تخفیف).`,
+      stats: {
+        restoredBooks,
+        restoredUsers,
+        restoredPages,
+        restoredCoupons,
+        totalBooksNow: this.data.books.length,
+        totalUsersNow: this.data.users.length,
       },
     };
   }

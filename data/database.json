@@ -10,7 +10,7 @@
       "walletBalance": 2500000,
       "status": "active",
       "createdAt": 1790179026712,
-      "lastLoginAt": 1793192680082
+      "lastLoginAt": 1793195336416
     },
     {
       "id": "usr_staff_default",
@@ -376,6 +376,10 @@
     "231f8e6629a6fd095c1f76b2b683c52c74076343e640c4e5fbfd0a92f84d8c70": {
       "userId": "usr_1793192688960_b53934c4",
       "expiresAt": 1793451888961
+    },
+    "bb9b4802816f9c342c1d6792ed6fdd0cdfbe35f86b851dcad80b316a88569011": {
+      "userId": "usr_admin_1",
+      "expiresAt": 1793454536417
     }
   },
   "settings": {
@@ -532,5 +536,6 @@
       "announcementEnabled": true,
       "announcementText": "🎉 به پلتفرم تجاری ترجمه کتاب خوش آمدید! با ثبت‌نام اولیه ۲۵,۰۰۰ تومان هدیه ترجمه دریافت کنید."
     }
-  }
+  },
+  "coupons": []
 }

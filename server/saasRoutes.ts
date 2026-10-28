@@ -9,8 +9,13 @@ import { zarinpalService } from './zarinpalService.ts';
 // Helper to extract authenticated user from Authorization header
 export function getAuthUser(req: express.Request): User | null {
   const authHeader = req.headers.authorization;
+  let token: string | undefined;
   if (authHeader && authHeader.startsWith('Bearer ')) {
-    const token = authHeader.slice(7).trim();
+    token = authHeader.slice(7).trim();
+  } else if (req.query && typeof req.query.token === 'string') {
+    token = req.query.token.trim();
+  }
+  if (token) {
     return db.getSessionUser(token);
   }
   return null;
@@ -1756,6 +1761,20 @@ export function setupSaasRoutes(app: express.Express) {
     res.setHeader('Content-Type', 'application/json');
     res.setHeader('Content-Disposition', `attachment; filename=book_translator_backup_${Date.now()}.json`);
     return res.json(backup);
+  });
+
+  // Admin Restore / Import Database Backup
+  app.post('/api/admin/restore', requireAdmin, (req, res) => {
+    try {
+      const backupData = req.body;
+      if (!backupData) {
+        return res.status(400).json({ error: 'محتوای فایل پشتیبان ارسال نشده است.' });
+      }
+      const result = db.importBackup(backupData);
+      return res.json(result);
+    } catch (err: any) {
+      return res.status(500).json({ error: err.message || 'خطا در بازیابی پایگاه داده' });
+    }
   });
 
   // ==========================================

@@ -27,6 +27,7 @@ import {
   X,
   ExternalLink,
   Download,
+  Upload,
   Tag,
   Database,
   BarChart3,
@@ -47,7 +48,8 @@ import {
   Save,
   Info,
   Edit3,
-  Calculator
+  Calculator,
+  HelpCircle
 } from 'lucide-react';
 import {
   User,
@@ -81,7 +83,8 @@ export type AdminTab =
   | 'header_footer'
   | 'cms'
   | 'seo'
-  | 'security';
+  | 'security'
+  | 'guides';
 
 export const PROVIDER_PRESET_MODELS: Record<string, string[]> = {
   gemini: ['gemini-3.5-flash-lite', 'gemini-3.8-flash', 'gemini-3.1-flash-lite', 'gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-pro'],
@@ -327,6 +330,10 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
   // All Transactions
   const [transactions, setTransactions] = useState<TransactionRecord[]>([]);
 
+  // Knowledge Base & Dedicated Guides Menu State
+  const [guideSearchQuery, setGuideSearchQuery] = useState('');
+  const [guideActiveCategory, setGuideActiveCategory] = useState<string>('all');
+
   // Test ZarinPal Gateway State
   const [testingZarinpal, setTestingZarinpal] = useState(false);
   const [zarinpalTestResult, setZarinpalTestResult] = useState<{ success: boolean; message: string; details?: any } | null>(null);
@@ -341,6 +348,11 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
   const [newCouponCredit, setNewCouponCredit] = useState(50000);
   const [newCouponDiscount, setNewCouponDiscount] = useState(0);
   const [newCouponMaxUses, setNewCouponMaxUses] = useState(100);
+
+  // Backup & Restore State
+  const [isDownloadingBackup, setIsDownloadingBackup] = useState(false);
+  const [isImportingBackup, setIsImportingBackup] = useState(false);
+  const [backupFileInputKey, setBackupFileInputKey] = useState(Date.now());
 
   const token = localStorage.getItem('auth_token') || '';
 
@@ -1149,6 +1161,100 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
     }
   };
 
+  // Direct Browser Download of Backup JSON
+  const handleDownloadBackup = async () => {
+    setIsDownloadingBackup(true);
+    try {
+      const res = await fetch('/api/admin/backup', {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || 'خطا در دریافت فایل پشتیبان از سرور');
+      }
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      const nowStr = new Date().toISOString().slice(0, 10);
+      a.download = `book_translator_backup_${nowStr}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+
+      setSettingsToast({
+        type: 'success',
+        message: 'فایل کامل پشتیبان پایگاه داده با موفقیت در مرورگر شما دانلود شد.',
+      });
+    } catch (e: any) {
+      setSettingsToast({
+        type: 'error',
+        message: e.message || 'خطا در دانلود فایل پشتیبان',
+      });
+    } finally {
+      setIsDownloadingBackup(false);
+    }
+  };
+
+  // Import and Restore Backup File
+  const handleFileUploadForRestore = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      try {
+        const jsonContent = JSON.parse(event.target?.result as string);
+        if (!jsonContent || (!jsonContent.data && !jsonContent.books && !jsonContent.users)) {
+          alert('فرمت فایل پشتیبان نامعتبر است. این فایل ساختار دیتابیس سامانه ترجمه کتاب را ندارد.');
+          return;
+        }
+
+        const confirmRestore = window.confirm(
+          `آیا از بازیابی و ایمپورت این فایل پشتیبان اطمینان دارید؟\nاین عملیات داده‌های پشتیبان شامل کتاب‌ها، کاربران، تنظیمات و صفحات را به پایگاه داده اضافه یا به‌روزرسانی می‌کند.`
+        );
+        if (!confirmRestore) return;
+
+        setIsImportingBackup(true);
+        const res = await fetch('/api/admin/restore', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify(jsonContent),
+        });
+
+        const data = await res.json();
+        if (!res.ok || !data.success) {
+          throw new Error(data.error || 'خطا در بازیابی نسخه پشتیبان');
+        }
+
+        setSettingsToast({
+          type: 'success',
+          message: data.message || 'پایگاه داده با موفقیت بازیابی و به‌روزرسانی شد.',
+        });
+
+        // Refresh all collections
+        fetchOverview();
+        fetchAllBooks();
+        fetchUsers();
+        fetchCustomPages();
+        fetchSettings();
+        fetchCoupons();
+      } catch (err: any) {
+        alert(`خطا در بازیابی فایل پشتیبان: ${err.message}`);
+      } finally {
+        setIsImportingBackup(false);
+        setBackupFileInputKey(Date.now());
+      }
+    };
+    reader.readAsText(file);
+  };
+
   // Fetch Monthly Analytics
   const fetchMonthlyAnalytics = async () => {
     setLoadingMonthly(true);
@@ -1420,17 +1526,29 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 sm:gap-3">
+            <button
+              onClick={() => setActiveTab('guides')}
+              className={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold border transition-all ${
+                activeTab === 'guides'
+                  ? 'bg-amber-500 text-slate-950 font-bold border-amber-400 shadow-md shadow-amber-500/20'
+                  : 'bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border-amber-500/30'
+              }`}
+              title="مشاهده تمام راهنماها و دستورالعمل‌های مدیریتی"
+            >
+              <HelpCircle className="w-4 h-4 text-amber-400" />
+              <span>راهنمای جامع مدیریت</span>
+            </button>
             <button
               onClick={onBackToUserPanel}
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 transition-all"
+              className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 transition-all"
             >
               <ArrowLeft className="w-4 h-4 text-amber-400" />
-              <span>بازگشت به میز کاربری</span>
+              <span>میز کاربری</span>
             </button>
             <button
               onClick={onLogout}
-              className="px-3.5 py-2 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 text-xs font-semibold transition-all"
+              className="px-3 py-2 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 text-xs font-semibold transition-all"
             >
               خروج
             </button>
@@ -1624,6 +1742,19 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
                 <span className="truncate">امنیت و پیامک</span>
               </button>
             )}
+
+            <button
+              onClick={() => setActiveTab('guides')}
+              className={`p-2.5 rounded-xl transition-all flex items-center justify-center gap-2 border ${
+                activeTab === 'guides'
+                  ? 'bg-amber-500 text-slate-950 font-bold border-amber-400 shadow-md shadow-amber-500/20'
+                  : 'bg-slate-950/60 text-slate-300 border-slate-800/80 hover:bg-slate-800 hover:text-white'
+              }`}
+            >
+              <HelpCircle className="w-4 h-4 shrink-0 text-amber-400" />
+              <span className="truncate">راهنمای جامع مدیریت</span>
+              <span className="text-[9px] px-1 rounded bg-amber-500/20 text-amber-300 font-bold">مرجع</span>
+            </button>
           </div>
         </div>
       </div>
@@ -1661,44 +1792,28 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
         {/* ========================================================= */}
         {activeTab === 'overview' && (
           <div className="space-y-8">
-            <AdminSectionGuide
-              title="داشبورد جامع، درآمد، ترافیک و صف پردازش ابری"
-              badge="نمای کلی سیستم"
-              badgeColor="emerald"
-              description="این بخش خلاصه زنده‌ای از درآمد تجمیعی، تعداد کاربران، کل کلمات ترجمه شده و وضعیت پردازش‌های جاری سرور را نمایش می‌دهد."
-              bullets={[
-                {
-                  title: 'پردازش مستقل ابری',
-                  text: 'کارهای ترجمه در صف پس‌زمینه سرور اجرا می‌شوند. هیچ کاربری نیازی به باز نگه داشتن تب مرورگر یا تهیه API Key ندارد.'
-                },
-                {
-                  title: 'محاسبه شفاف درآمد',
-                  text: 'درآمد کل بر اساس شارژهای موفق کیف پول از طریق درگاه‌های پرداخت متصل (زرین‌پال، نکست‌پی و ...) محاسبه می‌گردد.'
-                },
-                {
-                  title: 'تحلیل ماهیانه توکن و کلمات',
-                  text: 'نمودار تفکیکی مصرف مدل‌های مختلف و درآمد هر ماه میلادی/شمسی در پایین همین صفحه در دسترس است.'
-                },
-                {
-                  title: 'بروزرسانی لحظه‌ای',
-                  text: 'با کلیک روی دکمه بروزرسانی، آخرین تغییرات پایگاه داده سرور بدون نیاز به رفرش کل مرورگر لود می‌شود.'
-                }
-              ]}
-              tip="راهنمایی سریع: اگر پردازش‌های زیادی در صف مانده‌اند، به تب «استخر کلیدهای هوش مصنوعی» بروید و کلیدهای پرسرعت فعال بیشتری اضافه کنید."
-            />
-
             <div className="flex items-center justify-between">
               <div>
                 <h2 className="text-xl font-bold text-white">داشبورد جامع سامانه</h2>
                 <p className="text-xs text-slate-400">آمار لحظه‌ای فروش، مصرف توکن‌ها و پردازش‌های فعال ابری</p>
               </div>
-              <button
-                onClick={fetchOverview}
-                className="px-3.5 py-2 rounded-xl bg-slate-900 border border-slate-800 text-xs text-slate-300 hover:text-white flex items-center gap-1.5"
-              >
-                <RefreshCw className="w-4 h-4" />
-                <span>بروزرسانی داده‌ها</span>
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setActiveTab('guides')}
+                  title="مشاهده راهنمای این بخش در مرکز راهنما"
+                  className="px-3 py-2 rounded-xl bg-slate-900 border border-slate-800 text-xs text-slate-400 hover:text-amber-400 flex items-center gap-1.5 transition"
+                >
+                  <HelpCircle className="w-3.5 h-3.5 text-amber-400" />
+                  <span className="hidden sm:inline">راهنمای بخش</span>
+                </button>
+                <button
+                  onClick={fetchOverview}
+                  className="px-3.5 py-2 rounded-xl bg-slate-900 border border-slate-800 text-xs text-slate-300 hover:text-white flex items-center gap-1.5"
+                >
+                  <RefreshCw className="w-4 h-4" />
+                  <span>بروزرسانی داده‌ها</span>
+                </button>
+              </div>
             </div>
 
             {/* Quick Metrics Cards */}
@@ -2206,32 +2321,6 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
         {/* ========================================================= */}
         {activeTab === 'completed_books' && (
           <div className="space-y-6 animate-in fade-in">
-            <AdminSectionGuide
-              title="آرشیو کتاب‌های تکمیل‌شده کاربران و خروجی چندگانه"
-              badge="کتابخانه خروجی"
-              badgeColor="emerald"
-              description="در این بخش کلیه کتاب‌هایی که فرآیند ترجمه آنها با موفقیت به پایان رسیده است نگهداری می‌شوند. مدیر سامانه می‌تواند کتاب‌ها را مستقیماً در مرورگر مطالعه کرده یا با انواع فرمت‌های چاپی و دیجیتال دانلود نماید."
-              bullets={[
-                {
-                  title: 'مطالعه مستقیم در مرورگر',
-                  text: 'با زدن دکمه «مطالعه مستقیم»، متن کامل و فصول کتاب با قابلیت تنظیم اندازه فونت باز می‌شود.'
-                },
-                {
-                  title: 'خروجی Word و HTML کتابخوان',
-                  text: 'امکان دانلود فایل DOCX استاندارد با استایل‌بندی راست‌به‌چپ یا پکیج وب HTML سبک برای مطالعه آفلاین.'
-                },
-                {
-                  title: 'چاپ مستقیم و PDF',
-                  text: 'تولید نسخه بهینه‌سازی‌شده برای پرینتر با صفحه‌بندی منظم فصول کتاب بدون نیاز به نرم‌افزار جانبی.'
-                },
-                {
-                  title: 'جستجو در آرشیو',
-                  text: 'یافتن سریع کتاب‌ها بر اساس نام فارسی، نام زبان اصلی، نویسنده یا نام کاربر سفارش‌دهنده.'
-                }
-              ]}
-              tip="نکته: خروجی‌های تولید شده کاملاً مستقل هستند و کاربران نیز در پنل کاربری خود امکان دریافت همین فایل‌ها را دارند."
-            />
-
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
               <div>
                 <h2 className="text-xl font-bold text-white flex items-center gap-2">
@@ -2522,32 +2611,6 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
         {/* ========================================================= */}
         {activeTab === 'all_books' && (
           <div className="space-y-6 animate-in fade-in">
-            <AdminSectionGuide
-              title="نظارت سراسری، بازرسی محتوا و پروژه‌های کتاب"
-              badge="نظارت بر محتوا"
-              badgeColor="amber"
-              description="این بخش دید جامعی از کلیه کتاب‌های ثبت شده در کل پلتفرم ارائه می‌دهد؛ چه در حال ترجمه باشند، چه در مرحله پیش‌نویس یا تکمیل شده."
-              bullets={[
-                {
-                  title: 'محاسبه هزینه و کلمات',
-                  text: 'مشاهده تعداد دقیق کلمات هر کتاب و مبلغ محاسبه شده که از کاربر دریافت شده است.'
-                },
-                {
-                  title: 'نظارت بر روند پیشرفت',
-                  text: 'مشاهده تعداد بخش‌ها (چانک‌ها) ی تکمیل شده در برابر کل بخش‌های کتاب به همراه درصد پیشرفت زنده.'
-                },
-                {
-                  title: 'مدیریت و حذف پروژه‌های غیرمجاز',
-                  text: 'در صورت آپلود محتوای نامناسب، مدیر ارشد می‌تواند پروژه را به همراه تمام چانک‌های آن از دیتابیس حذف نماید.'
-                },
-                {
-                  title: 'ارتباط مستقیم با کاربر',
-                  text: 'شماره تلفن و ایمیل سفارش‌دهنده هر کتاب در دسترس است تا در صورت لزوم بتوانید با او تماس بگیرید.'
-                }
-              ]}
-              tip="راهنمایی: کتاب‌هایی که وضعیت آنها «در حال ترجمه» است هم‌اکنون در صف سرور به ترتیب اولویت و بدون نیاز به حضور کاربر در حال پردازش هستند."
-            />
-
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
               <div>
                 <h2 className="text-xl font-bold text-white">نظارت، بازرسی و مدیریت کلیه کتاب‌های سامانه</h2>
@@ -2659,32 +2722,6 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
         {/* ========================================================= */}
         {activeTab === 'users' && (
           <div className="space-y-6">
-            <AdminSectionGuide
-              title="مدیریت جامع کاربران، نقش‌ها و کنترل اعتبار کیف پول"
-              badge="کاربران و مشتریان"
-              badgeColor="blue"
-              description="در این بخش لیست کامل حساب‌های کاربری، شماره‌های تماس، اعتبار باقی‌مانده و کتاب‌های هر کاربر ثبت است. شما می‌توانید به هر کاربر شارژ هدیه اهدا کنید، دسترسی او را مسدود یا به مدیر ارشد ارتقا دهید."
-              bullets={[
-                {
-                  title: 'شارژ مستقیم و هدیه سریع',
-                  text: 'با دکمه‌های هدیه (+۵۰ و +۱۰۰ هزار تومان) می‌توانید فوراً بدون فرم‌های طولانی به کیف پول کاربر اعتبار اضافه کنید.'
-                },
-                {
-                  title: 'بازرسی کتاب‌های اختصاصی کاربر',
-                  text: 'با کلیک روی دکمه «مشاهده کتاب‌ها»، تمام پروژه‌ها، وضعیت ترجمه و کلمات ترجمه شده توسط آن کاربر به نمایش درمی‌آید.'
-                },
-                {
-                  title: 'تغییر نقش و مسدودسازی آنی',
-                  text: 'امکان ارتقای کاربر به مدیر سیستم یا مسدود کردن کاربران متخلف با یک کلیک و ثبت در دیتابیس سرور.'
-                },
-                {
-                  title: 'جستجوی پیشرفته',
-                  text: 'امکان فیلتر سریع بر اساس نام کاربر، شماره موبایل ثبت شده یا آدرس ایمیل.'
-                }
-              ]}
-              tip="راهنمایی: موجودی کیف پول کاربر برای کسر هزینه ترجمه هر چانک استفاده می‌شود؛ هر زمان موجودی کاربر صفر شود، سیستم به او هشدار افزایش اعتبار می‌دهد."
-            />
-
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
               <div>
                 <h2 className="text-xl font-bold text-white">مدیریت تمام کاربران سامانه</h2>
@@ -3444,32 +3481,6 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
         {/* ========================================================= */}
         {activeTab === 'coupons' && (
           <div className="space-y-6 animate-in fade-in">
-            <AdminSectionGuide
-              title="مدیریت کدهای تخفیف، بن‌های اعتباری و تشویقی"
-              badge="کمپین و بازاریابی"
-              badgeColor="emerald"
-              description="در این بخش می‌توانید کدهای تخفیف متنوع برای افزایش فروش و جذب کاربران و ناشران جدید تعریف کنید. کدها می‌توانند هم شارژ هدیه مستقیم (تومان) به کیف پول کاربر اضافه کنند و هم درصد تخفیف روی فاکتور ترجمه اعمال کنند."
-              bullets={[
-                {
-                  title: 'شارژ هدیه کیف پول (Credit Bonus)',
-                  text: 'مبلغ نقدی مشخصی (مثلاً ۵۰,۰۰۰ تومان) که به محض ثبت کد توسط کاربر به موجودی او افزوده می‌شود.'
-                },
-                {
-                  title: 'تخفیف درصدی (Discount Percent)',
-                  text: 'درصد کسر از کل هزینه ترجمه کتاب (مثلاً ۲۰٪ تخفیف برای سفارش اول).'
-                },
-                {
-                  title: 'سقف دفعات استفاده (Max Uses)',
-                  text: 'حداکثر دفعاتی که این کد در کل سیستم توسط کاربران مختلف قابل فعال‌سازی است.'
-                },
-                {
-                  title: 'کپی سریع کد',
-                  text: 'با یک کلیک روی متن کد، به کلیپ‌بورد کپی می‌شود تا بتوانید آن را در پیامک یا شبکه‌های اجتماعی برای کاربران ارسال کنید.'
-                }
-              ]}
-              tip="راهنمایی پرسنل: کدهای تبلیغاتی مانند NOWRUZ یا FIRST-BOOK برای ترغیب کاربران به ترجمه اولین کتاب بسیار اثربخش هستند."
-            />
-
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
               <div>
                 <h2 className="text-xl font-bold text-white flex items-center gap-2">
@@ -3682,32 +3693,6 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
         {/* ========================================================= */}
         {activeTab === 'api_pool' && (
           <div className="space-y-6">
-            <AdminSectionGuide
-              title="استخر مرکزی کلیدهای هوش مصنوعی و صف پس‌زمینه سرور (مستقل از مرورگر)"
-              badge="پردازش ۱۰۰٪ سمت سرور بدون نیاز به کاربر"
-              badgeColor="amber"
-              description="کلیه کلیدها و مدل‌های هوش مصنوعی مستقیماً روی سرور سیستم ذخیره و مدیریت می‌شوند. کاربران برای ترجمه نیازی به تهیه کلید، وارد کردن API Key یا باز نگه‌داشتن مرورگر خود ندارند. با شروع ترجمه، صف سرور به صورت خودکار کار را به پایان می‌رساند."
-              bullets={[
-                {
-                  title: 'امکان ویرایش کامل هر کلید',
-                  text: 'شما می‌توانید در هر زمان نام، توکن API، مدل انتخابی، آدرس پایه (Base URL پروکسی) یا اولویت هر کلید را در سرور ویرایش کنید.'
-                },
-                {
-                  title: 'ذخیره امن روی سرور و استقلال کاربر',
-                  text: 'کاربران بدون نیاز به وارد کردن هیچ کلیدی کتاب خود را بارگذاری می‌کنند و سرور کار ترجمه را مستقل پیش می‌برد.'
-                },
-                {
-                  title: 'تحمل خطا و سوئیچ خودکار (Failover)',
-                  text: 'اگر کلیدی با محدودیت نرخ (۴۲۹) یا خطای شبکه مواجه شود، درخواست بدون وقفه به کلید فعال بعدی منتقل می‌گردد.'
-                },
-                {
-                  title: 'تست پینگ همزمان کلیدها',
-                  text: 'با یک کلیک سرعت تاخیر پاسخگویی (Latency) و سلامت تمامی کلیدهای موجود در استخر به صورت موازی ارزیابی می‌شود.'
-                }
-              ]}
-              tip="نکته مهم: برای سرعت و اطمینان حداکثری، همواره ۲ الی ۳ کلید از مدل‌های پرسرعت مانند Gemini 3.8 Flash یا MiniMax/GLM را در استخر فعال نگه دارید."
-            />
-
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
               <div>
                 <h2 className="text-xl font-bold text-white flex items-center gap-2">
@@ -4586,32 +4571,6 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
         {/* ========================================================= */}
         {activeTab === 'finance' && settings && (
           <div className="space-y-8">
-            <AdminSectionGuide
-              title="امور مالی، درگاه‌های پرداخت اینترنتی و تعرفه کلمه‌ای"
-              badge="مالی و درگاه‌ها"
-              badgeColor="emerald"
-              description="در این بخش نرخ ترجمه بر مبنای کلمات، ضریب متون تخصصی، کد تخفیف‌ها و اتصال به درگاه‌های پرداخت شتابی (زرین‌پال، نکست‌پی، آیدی‌پی، پی‌پینگ یا شبیه‌ساز تست) تنظیم می‌شود."
-              bullets={[
-                {
-                  title: 'نرخ پایه به ازای هر کلمه',
-                  text: 'مبلغی که به ازای ترجمه هر کلمه کتاب از کیف پول کاربر کسر می‌شود (مثلاً ۴۵ تومان برای هر کلمه).'
-                },
-                {
-                  title: 'ضریب متون فوق‌تخصصی',
-                  text: 'ضریب افزایش قیمت برای کتاب‌های علمی، پزشکی، فلسفی یا دانشگاهی سنگین (مثلاً ۱.۳ برابر).'
-                },
-                {
-                  title: 'اتصال آسان درگاه‌های بانکی',
-                  text: 'تنها با وارد کردن مرچنت‌کد (Merchant ID) یا API Key زرین‌پال و نکست‌پی، درگاه پرداخت شاپرک فعال خواهد شد.'
-                },
-                {
-                  title: 'کوپن و کدهای تخفیف',
-                  text: 'در انتهای همین بخش می‌توانید کدهای تخفیف درصدی یا مبلغی برای جذب کاربران جدید ایجاد کنید.'
-                }
-              ]}
-              tip="نکته توسعه‌دهندگان: برای تست کامل فرآیند خرید بدون پرداخت وجه واقعی، درگاه پرداخت را روی حالت Sandbox یا شبیه‌ساز قرار دهید."
-            />
-
             <div className="flex items-center justify-between">
               <div>
                 <h2 className="text-xl font-bold text-white">درگاه‌های پرداخت، نرخ‌گذاری و امور مالی</h2>
@@ -6402,32 +6361,6 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
         {/* ========================================================= */}
         {activeTab === 'security' && settings && (
           <div className="space-y-8">
-            <AdminSectionGuide
-              title="امنیت سرور، احراز هویت پیامکی، سشن‌ها و پشتیبان‌گیری"
-              badge="امنیت و زیرساخت"
-              badgeColor="rose"
-              description="در این بخش کنترل پنل پیامک OTP (ملی‌پیامک، کاوه‌نگار، SMS.ir)، محافظت در برابر حملات بروت‌فورس، حالت تعمیر و نگهداری سایت و دریافت فایل پشتیبان دیتابیس JSON قرار دارد."
-              bullets={[
-                {
-                  title: 'پنل ارسال پیامک OTP',
-                  text: 'تنظیم کلید API و خط ارسال پیامک برای ورود و ثبت‌نام سریع کاربران با کد تایید یکبار مصرف.'
-                },
-                {
-                  title: 'حالت تعمیر و نگهداری (Maintenance)',
-                  text: 'در زمان ارتقای سرور یا به‌روزرسانی‌های اساسی، سایت را برای کاربران عادی موقتاً مسدود کنید در حالی که مدیران دسترسی دارند.'
-                },
-                {
-                  title: 'پشتیبان‌گیری کامل پایگاه داده',
-                  text: 'در پایین این بخش می‌توانید با یک کلیک فایل کامل پایگاه داده (database.json) را به همراه کلیه پروژه‌ها و تراکنش‌ها دانلود نمایید.'
-                },
-                {
-                  title: 'تست پیامک زنده',
-                  text: 'امکان تست ارسال آنی پیامک تستی به شماره موبایل دلخواه برای اطمینان از سلامت پنل پیامکی.'
-                }
-              ]}
-              tip="نکته امنیتی: در محیط عملیاتی، کلیدهای دسترسی پیامک و درگاه را به هیچ عنوان در اختیار افراد نامعتبر قرار ندهید."
-            />
-
             <div className="flex items-center justify-between">
               <div>
                 <h2 className="text-xl font-bold text-white">تنظیمات امنیتی، سشن‌ها و پنل پیامکی</h2>
@@ -6989,27 +6922,426 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
               </div>
             </div>
 
-            {/* Database Backup & Maintenance Card */}
-            <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 flex flex-col sm:flex-row items-center justify-between gap-4">
-              <div>
-                <div className="flex items-center gap-2 text-base font-bold text-white mb-1">
-                  <Database className="w-5 h-5 text-indigo-400" />
-                  <span>پشتیبان‌گیری کامل از پایگاه داده (JSON Backup)</span>
+            {/* Database Backup & Restore Center */}
+            <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl space-y-4">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-4 border-b border-slate-800/80">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-2xl bg-indigo-500/20 text-indigo-400 flex items-center justify-center border border-indigo-500/30 shrink-0">
+                    <Database className="w-5 h-5 text-indigo-400" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-base font-bold text-white">مرکز پشتیبان‌گیری و بازیابی پایگاه داده (JSON Backup & Restore)</h3>
+                      <span className="text-[10px] bg-indigo-500/20 text-indigo-300 px-2 py-0.5 rounded-full border border-indigo-500/30 font-mono">
+                        نسخه ۲.۰ آفلاین
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-400 mt-0.5">
+                      دانلود مستقیم فایل کامل پایگاه داده در مرورگر یا بازیابی و ایمپورت اطلاعات از روی فایل‌های پشتیبان قبلی
+                    </p>
+                  </div>
                 </div>
-                <p className="text-xs text-slate-400">
-                  دانلود فایل پشتیبان حاوی تمام کاربران، پروژه‌های کتاب، ترجمه‌ها، سوابق مالی و لاگ‌ها برای ذخیره‌سازی آفلاین.
-                </p>
               </div>
 
-              <a
-                href="/api/admin/backup"
-                target="_blank"
-                rel="noreferrer"
-                className="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs flex items-center gap-2 transition shadow-md shrink-0"
-              >
-                <Download className="w-4 h-4" />
-                <span>دانلود پشتیبان کامل پایگاه داده</span>
-              </a>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-1">
+                {/* Action 1: Direct Download in Browser */}
+                <div className="bg-slate-950/70 p-4 sm:p-5 rounded-2xl border border-slate-800/90 flex flex-col justify-between gap-3">
+                  <div>
+                    <div className="flex items-center gap-2 text-sm font-bold text-white mb-1">
+                      <Download className="w-4 h-4 text-emerald-400" />
+                      <span>دانلود مستقیم فایل پشتیبان در مرورگر</span>
+                    </div>
+                    <p className="text-xs text-slate-400 leading-relaxed">
+                      دریافت آنی فایل JSON شامل کاربران، کتاب‌ها، چانک‌های ترجمه‌شده، سوابق مالی، کوپن‌ها و تنظیمات روی کامپیوتر شما.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleDownloadBackup}
+                    disabled={isDownloadingBackup}
+                    className="w-full px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 text-white font-bold text-xs flex items-center justify-center gap-2 transition shadow-md shadow-emerald-500/10 disabled:opacity-50"
+                  >
+                    {isDownloadingBackup ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+                    <span>{isDownloadingBackup ? 'در حال آماده‌سازی و دانلود فایل...' : 'دانلود فایل پشتیبان (JSON)'}</span>
+                  </button>
+                </div>
+
+                {/* Action 2: Import & Restore Backup */}
+                <div className="bg-slate-950/70 p-4 sm:p-5 rounded-2xl border border-slate-800/90 flex flex-col justify-between gap-3">
+                  <div>
+                    <div className="flex items-center gap-2 text-sm font-bold text-white mb-1">
+                      <Upload className="w-4 h-4 text-indigo-400" />
+                      <span>ایمپورت و بازیابی فایل پشتیبان (Restore)</span>
+                    </div>
+                    <p className="text-xs text-slate-400 leading-relaxed">
+                      انتخاب فایل پشتیبان JSON برای بازگردانی و ادغام امن کتاب‌ها، کاربران و تنظیمات در پایگاه داده سرور.
+                    </p>
+                  </div>
+                  <div>
+                    <label className="w-full px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs flex items-center justify-center gap-2 transition shadow-md shadow-indigo-600/10 cursor-pointer text-center">
+                      {isImportingBackup ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+                      <span>{isImportingBackup ? 'در حال بازیابی اطلاعات روی سرور...' : 'انتخاب فایل JSON و بازیابی'}</span>
+                      <input
+                        key={backupFileInputKey}
+                        type="file"
+                        accept=".json,application/json"
+                        onChange={handleFileUploadForRestore}
+                        disabled={isImportingBackup}
+                        className="hidden"
+                      />
+                    </label>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ========================================================= */}
+        {/* TAB 7: DEDICATED ALL-IN-ONE GUIDES & KNOWLEDGE BASE */}
+        {/* ========================================================= */}
+        {activeTab === 'guides' && (
+          <div className="space-y-6 animate-in fade-in">
+            {/* Guide Header Banner */}
+            <div className="bg-gradient-to-r from-amber-500/15 via-slate-900 to-indigo-950/30 border border-amber-500/30 rounded-3xl p-6 shadow-xl relative overflow-hidden">
+              <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+                <div className="flex items-center gap-3.5">
+                  <div className="w-12 h-12 rounded-2xl bg-amber-500/20 text-amber-400 flex items-center justify-center border border-amber-500/30 shrink-0 shadow-lg shadow-amber-500/10">
+                    <HelpCircle className="w-6 h-6 text-amber-400" />
+                  </div>
+                  <div>
+                    <h2 className="text-lg sm:text-xl font-bold text-white flex items-center gap-2">
+                      <span>مرکز جامع راهنما و دانش‌نامه عملیاتی سامانه</span>
+                      <span className="text-[10px] bg-amber-500/20 text-amber-300 px-2.5 py-0.5 rounded-full border border-amber-500/30 font-mono">
+                        دستورالعمل‌های استاندارد
+                      </span>
+                    </h2>
+                    <p className="text-xs text-slate-300 mt-1 leading-relaxed">
+                      کلیه راهنماها، دستورالعمل‌های مدیریتی، نکات کلیدی و آموزش بخش‌های سامانه به تفکیک موضوع در این بخش جمع‌آوری شده‌اند.
+                    </p>
+                  </div>
+                </div>
+
+                {/* Quick Search */}
+                <div className="relative w-full md:w-80">
+                  <input
+                    type="text"
+                    value={guideSearchQuery}
+                    onChange={(e) => setGuideSearchQuery(e.target.value)}
+                    placeholder="جستجو در متن یا عنوان راهنماها..."
+                    className="w-full bg-slate-950 border border-slate-700/80 rounded-2xl px-4 py-2.5 pr-10 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-500 shadow-inner"
+                  />
+                  <Search className="w-4 h-4 text-slate-400 absolute right-3.5 top-3 pointer-events-none" />
+                  {guideSearchQuery && (
+                    <button
+                      onClick={() => setGuideSearchQuery('')}
+                      className="absolute left-3 top-2.5 text-xs text-slate-400 hover:text-white"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Category Pills */}
+              <div className="mt-5 pt-4 border-t border-slate-800/80 flex items-center gap-1.5 overflow-x-auto pb-1 text-xs scrollbar-none">
+                <span className="text-slate-400 font-semibold text-[11px] shrink-0 ml-1">دسته‌بندی:</span>
+                {[
+                  { id: 'all', label: 'همه بخش‌ها (۱۱ راهنما)' },
+                  { id: 'analytics', label: '📊 داشبورد و آمار' },
+                  { id: 'books', label: '📚 کتاب‌ها و ترجمه' },
+                  { id: 'users', label: '👤 کاربران و تعرفه' },
+                  { id: 'ai', label: '⚡ هوش مصنوعی و سرور' },
+                  { id: 'finance', label: '💳 مالی و درگاه‌ها' },
+                  { id: 'cms', label: '🎨 صفحه‌ساز و سئو' },
+                  { id: 'security', label: '🔒 امنیت و پیامک' },
+                ].map((cat) => (
+                  <button
+                    key={cat.id}
+                    onClick={() => setGuideActiveCategory(cat.id)}
+                    className={`px-3 py-1.5 rounded-xl transition-all font-semibold shrink-0 ${
+                      guideActiveCategory === cat.id
+                        ? 'bg-amber-500 text-slate-950 shadow-md font-bold'
+                        : 'bg-slate-950/80 text-slate-300 border border-slate-800 hover:bg-slate-800 hover:text-white'
+                    }`}
+                  >
+                    {cat.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Guides Cards List */}
+            <div className="space-y-4">
+              {[
+                {
+                  id: 'overview_guide',
+                  category: 'analytics',
+                  categoryLabel: 'داشبورد و آمار',
+                  badge: 'نمای کلی سیستم',
+                  badgeColor: 'emerald',
+                  targetTab: 'overview' as AdminTab,
+                  targetTabLabel: 'رفتن به پیشخوان زنده',
+                  title: 'داشبورد جامع، درآمد، ترافیک و صف پردازش ابری',
+                  description: 'این بخش خلاصه زنده‌ای از درآمد تجمیعی، تعداد کاربران، کل کلمات ترجمه شده و وضعیت پردازش‌های جاری سرور را نمایش می‌دهد.',
+                  bullets: [
+                    { title: 'پردازش مستقل ابری', text: 'کارهای ترجمه در صف پس‌زمینه سرور اجرا می‌شوند. هیچ کاربری نیازی به باز نگه داشتن تب مرورگر یا تهیه API Key ندارد.' },
+                    { title: 'محاسبه شفاف درآمد', text: 'درآمد کل بر اساس شارژهای موفق کیف پول از طریق درگاه‌های پرداخت متصل (زرین‌پال، نکست‌پی و ...) محاسبه می‌گردد.' },
+                    { title: 'تحلیل ماهیانه توکن و کلمات', text: 'نمودار تفکیکی مصرف مدل‌های مختلف و درآمد هر ماه میلادی/شمسی در پایین همان صفحه در دسترس است.' },
+                    { title: 'بروزرسانی لحظه‌ای', text: 'با کلیک روی دکمه بروزرسانی، آخرین تغییرات پایگاه داده سرور بدون نیاز به رفرش کل مرورگر لود می‌شود.' },
+                  ],
+                  tip: 'راهنمایی سریع: اگر پردازش‌های زیادی در صف مانده‌اند، به تب «استخر کلیدهای هوش مصنوعی» بروید و کلیدهای پرسرعت فعال بیشتری اضافه کنید.',
+                },
+                {
+                  id: 'daily_revenue_guide',
+                  category: 'finance',
+                  categoryLabel: 'مالی و درآمد',
+                  badge: 'گزارش مالی تفکیکی',
+                  badgeColor: 'emerald',
+                  targetTab: 'daily_revenue' as AdminTab,
+                  targetTabLabel: 'رفتن به درآمد روزانه',
+                  title: 'گزارش مالی و درآمد روزانه، تراکنش‌ها و صندوق فروش',
+                  description: 'مشاهده دقیق درآمد روز به روز سیستم به تفکیک تراکنش‌های شتابی درگاه‌ها، شارژهای دستی و مقایسه روند فروش در بازه‌های زمانی مختلف.',
+                  bullets: [
+                    { title: 'تفکیک روزانه درآمد', text: 'محاسبه درآمد هر روز به صورت تفکیک‌شده و نمایش نموداری جهت ارزیابی کمپین‌های فروش.' },
+                    { title: 'فیلتر بر اساس بازه زمانی', text: 'امکان مشاهده درآمد ۷ روز اخیر، ۳۰ روز گذشته، فصل جاری یا کل تاریخچه پلتفرم.' },
+                    { title: 'شفافیت تراکنش‌ها', text: 'کد رهگیری، مرجع پرداخت، شناسه کاربر و زمان دقیق هر تراکنش ثبت و قابل استعلام است.' },
+                    { title: 'صندوق ذخیره اعتبار', text: 'نظارت بر تعهدات مالی و کارهای در دست ترجمه متناسب با مانده کیف پول کاربران.' },
+                  ],
+                  tip: 'نکته: گزارش‌های مالی روزانه به شما کمک می‌کند روزهای اوج سفارش را شناسایی کرده و تبلیغات خود را برای آن روزها متمرکز کنید.',
+                },
+                {
+                  id: 'completed_books_guide',
+                  category: 'books',
+                  categoryLabel: 'کتاب‌ها و ترجمه',
+                  badge: 'کتابخانه خروجی',
+                  badgeColor: 'emerald',
+                  targetTab: 'completed_books' as AdminTab,
+                  targetTabLabel: 'رفتن به کتاب‌های تکمیل‌شده',
+                  title: 'آرشیو کتاب‌های تکمیل‌شده کاربران و خروجی چندگانه',
+                  description: 'در این بخش کلیه کتاب‌هایی که فرآیند ترجمه آنها با موفقیت به پایان رسیده است نگهداری می‌شوند. مدیر سامانه می‌تواند کتاب‌ها را مستقیماً در مرورگر مطالعه کرده یا با انواع فرمت‌های چاپی و دیجیتال دانلود نماید.',
+                  bullets: [
+                    { title: 'مطالعه مستقیم در مرورگر', text: 'با زدن دکمه «مطالعه مستقیم»، متن کامل و فصول کتاب با قابلیت تنظیم اندازه فونت باز می‌شود.' },
+                    { title: 'خروجی Word و HTML کتابخوان', text: 'امکان دانلود فایل DOCX استاندارد با استایل‌بندی راست‌به‌چپ یا پکیج وب HTML سبک برای مطالعه آفلاین.' },
+                    { title: 'چاپ مستقیم و PDF', text: 'تولید نسخه بهینه‌سازی‌شده برای پرینتر با صفحه‌بندی منظم فصول کتاب بدون نیاز به نرم‌افزار جانبی.' },
+                    { title: 'جستجو در آرشیو', text: 'یافتن سریع کتاب‌ها بر اساس نام فارسی، نام زبان اصلی، نویسنده یا نام کاربر سفارش‌دهنده.' },
+                  ],
+                  tip: 'نکته: خروجی‌های تولید شده کاملاً مستقل هستند و کاربران نیز در پنل کاربری خود امکان دریافت همین فایل‌ها را دارند.',
+                },
+                {
+                  id: 'all_books_guide',
+                  category: 'books',
+                  categoryLabel: 'کتاب‌ها و ترجمه',
+                  badge: 'نظارت بر محتوا',
+                  badgeColor: 'amber',
+                  targetTab: 'all_books' as AdminTab,
+                  targetTabLabel: 'رفتن به کل کتاب‌ها',
+                  title: 'نظارت سراسری، بازرسی محتوا و پروژه‌های کتاب',
+                  description: 'این بخش دید جامعی از کلیه کتاب‌های ثبت شده در کل پلتفرم ارائه می‌دهد؛ چه در حال ترجمه باشند، چه در مرحله پیش‌نویس یا تکمیل شده.',
+                  bullets: [
+                    { title: 'محاسبه هزینه و کلمات', text: 'مشاهده تعداد دقیق کلمات هر کتاب و مبلغ محاسبه شده که از کاربر دریافت شده است.' },
+                    { title: 'نظارت بر روند پیشرفت', text: 'مشاهده تعداد بخش‌ها (چانک‌ها) ی تکمیل شده در برابر کل بخش‌های کتاب به همراه درصد پیشرفت زنده.' },
+                    { title: 'مدیریت و حذف پروژه‌های غیرمجاز', text: 'در صورت آپلود محتوای نامناسب، مدیر ارشد می‌تواند پروژه را به همراه تمام چانک‌های آن از دیتابیس حذف نماید.' },
+                    { title: 'ارتباط مستقیم با کاربر', text: 'شماره تلفن و ایمیل سفارش‌دهنده هر کتاب در دسترس است تا در صورت لزوم بتوانید با او تماس بگیرید.' },
+                  ],
+                  tip: 'راهنمایی: کتاب‌هایی که وضعیت آنها «در حال ترجمه» است هم‌اکنون در صف سرور به ترتیب اولویت و بدون نیاز به حضور کاربر در حال پردازش هستند.',
+                },
+                {
+                  id: 'users_guide',
+                  category: 'users',
+                  categoryLabel: 'کاربران و تعرفه',
+                  badge: 'کاربران و مشتریان',
+                  badgeColor: 'blue',
+                  targetTab: 'users' as AdminTab,
+                  targetTabLabel: 'رفتن به بخش کاربران',
+                  title: 'مدیریت جامع کاربران، نقش‌ها و کنترل اعتبار کیف پول و نرخ اختصاصی',
+                  description: 'در این بخش لیست کامل حساب‌های کاربری، شماره‌های تماس، اعتبار باقی‌مانده و کتاب‌های هر کاربر ثبت است. شما می‌توانید به هر کاربر شارژ هدیه اهدا کنید، دسترسی او را مسدود یا به مدیر ارشد یا ناشر ارتقا دهید.',
+                  bullets: [
+                    { title: 'تعیین نرخ اختصاصی هر کلمه', text: 'برای مشتریان خاص، انتشارات همکار یا ناشران می‌توانید نرخ تخفیفی یا ثابت جداگانه تعیین کنید.' },
+                    { title: 'شارژ مستقیم و هدیه سریع', text: 'با دکمه‌های هدیه (+۵۰ و +۱۰۰ هزار تومان) می‌توانید فوراً بدون فرم‌های طولانی به کیف پول کاربر اعتبار اضافه کنید.' },
+                    { title: 'تفکیک دسترسی پرسنل و مدیران', text: 'کارمندان به کارهای عملیاتی و کاربران دسترسی دارند اما آمار درآمدهای کل برای آنها پنهان است.' },
+                    { title: 'بازرسی کتاب‌های اختصاصی کاربر', text: 'با کلیک روی دکمه «مشاهده کتاب‌ها»، تمام پروژه‌ها، وضعیت ترجمه و کلمات ترجمه شده توسط آن کاربر به نمایش درمی‌آید.' },
+                  ],
+                  tip: 'راهنمایی: موجودی کیف پول کاربر برای کسر هزینه ترجمه هر چانک استفاده می‌شود؛ هر زمان موجودی کاربر صفر شود، سیستم به او هشدار افزایش اعتبار می‌دهد.',
+                },
+                {
+                  id: 'coupons_guide',
+                  category: 'finance',
+                  categoryLabel: 'مالی و درآمد',
+                  badge: 'کمپین و بازاریابی',
+                  badgeColor: 'emerald',
+                  targetTab: 'coupons' as AdminTab,
+                  targetTabLabel: 'رفتن به کدهای تخفیف',
+                  title: 'مدیریت کدهای تخفیف، بن‌های اعتباری و تشویقی',
+                  description: 'در این بخش می‌توانید کدهای تخفیف متنوع برای افزایش فروش و جذب کاربران و ناشران جدید تعریف کنید. کدها می‌توانند هم شارژ هدیه مستقیم (تومان) به کیف پول کاربر اضافه کنند و هم درصد تخفیف روی فاکتور ترجمه اعمال کنند.',
+                  bullets: [
+                    { title: 'شارژ هدیه کیف پول (Credit Bonus)', text: 'مبلغ نقدی مشخصی (مثلاً ۵۰,۰۰۰ تومان) که به محض ثبت کد توسط کاربر به موجودی او افزوده می‌شود.' },
+                    { title: 'تخفیف درصدی (Discount Percent)', text: 'درصد کسر از کل هزینه ترجمه کتاب (مثلاً ۲۰٪ تخفیف برای سفارش اول).' },
+                    { title: 'سقف دفعات استفاده (Max Uses)', text: 'حداکثر دفعاتی که این کد در کل سیستم توسط کاربران مختلف قابل فعال‌سازی است.' },
+                    { title: 'کپی سریع کد', text: 'با یک کلیک روی متن کد، به کلیپ‌بورد کپی می‌شود تا بتوانید آن را در پیامک یا شبکه‌های اجتماعی برای کاربران ارسال کنید.' },
+                  ],
+                  tip: 'راهنمایی پرسنل: کدهای تبلیغاتی مانند NOWRUZ یا FIRST-BOOK برای ترغیب کاربران به ترجمه اولین کتاب بسیار اثربخش هستند.',
+                },
+                {
+                  id: 'api_pool_guide',
+                  category: 'ai',
+                  categoryLabel: 'هوش مصنوعی و سرور',
+                  badge: 'پردازش ۱۰۰٪ سمت سرور',
+                  badgeColor: 'amber',
+                  targetTab: 'api_pool' as AdminTab,
+                  targetTabLabel: 'رفتن به استخر کلیدها',
+                  title: 'استخر مرکزی کلیدهای هوش مصنوعی و صف پس‌زمینه سرور (مستقل از مرورگر)',
+                  description: 'کلیه کلیدها و مدل‌های هوش مصنوعی مستقیماً روی سرور سیستم ذخیره و مدیریت می‌شوند. کاربران برای ترجمه نیازی به تهیه کلید، وارد کردن API Key یا باز نگه‌داشتن مرورگر خود ندارند. با شروع ترجمه، صف سرور به صورت خودکار کار را به پایان می‌رساند.',
+                  bullets: [
+                    { title: 'امکان ویرایش کامل هر کلید', text: 'شما می‌توانید در هر زمان نام، توکن API، مدل انتخابی، آدرس پایه (Base URL پروکسی) یا اولویت هر کلید را در سرور ویرایش کنید.' },
+                    { title: 'ذخیره امن روی سرور و استقلال کاربر', text: 'کاربران بدون نیاز به وارد کردن هیچ کلیدی کتاب خود را بارگذاری می‌کنند و سرور کار ترجمه را مستقل پیش می‌برد.' },
+                    { title: 'تحمل خطا و سوئیچ خودکار (Failover)', text: 'اگر کلیدی با محدودیت نرخ (۴۲۹) یا خطای شبکه مواجه شود، درخواست بدون وقفه به کلید فعال بعدی منتقل می‌گردد.' },
+                    { title: 'تست پینگ همزمان کلیدها', text: 'با یک کلیک سرعت تاخیر پاسخگویی (Latency) و سلامت تمامی کلیدهای موجود در استخر به صورت موازی ارزیابی می‌شود.' },
+                  ],
+                  tip: 'نکته مهم: برای سرعت و اطمینان حداکثری، همواره ۲ الی ۳ کلید از مدل‌های پرسرعت مانند Gemini 3.8 Flash یا MiniMax/GLM را در استخر فعال نگه دارید.',
+                },
+                {
+                  id: 'finance_guide',
+                  category: 'finance',
+                  categoryLabel: 'مالی و درآمد',
+                  badge: 'مالی و درگاه‌ها',
+                  badgeColor: 'emerald',
+                  targetTab: 'finance' as AdminTab,
+                  targetTabLabel: 'رفتن به تنظیمات مالی',
+                  title: 'امور مالی، درگاه‌های پرداخت اینترنتی و تعرفه کلمه‌ای',
+                  description: 'در این بخش نرخ ترجمه بر مبنای کلمات، ضریب متون تخصصی، کد تخفیف‌ها و اتصال به درگاه‌های پرداخت شتابی (زرین‌پال، نکست‌پی، آیدی‌پی، پی‌پینگ یا شبیه‌ساز تست) تنظیم می‌شود.',
+                  bullets: [
+                    { title: 'نرخ پایه به ازای هر کلمه', text: 'مبلغی که به ازای ترجمه هر کلمه کتاب از کیف پول کاربر کسر می‌شود (مثلاً ۴۵ تومان برای هر کلمه).' },
+                    { title: 'ضریب متون فوق‌تخصصی', text: 'ضریب افزایش قیمت برای کتاب‌های علمی، پزشکی، فلسفی یا دانشگاهی سنگین (مثلاً ۱.۳ برابر).' },
+                    { title: 'اتصال آسان درگاه‌های بانکی', text: 'تنها با وارد کردن مرچنت‌کد (Merchant ID) یا API Key زرین‌پال و نکست‌پی، درگاه پرداخت شاپرک فعال خواهد شد.' },
+                    { title: 'شبیه‌ساز پرداخت (Sandbox)', text: 'امکان تست کامل گردش مالی و شارژ کیف پول بدون اتصال به بانکی واقعی در محیط تست.' },
+                  ],
+                  tip: 'نکته توسعه‌دهندگان: برای تست کامل فرآیند خرید بدون پرداخت وجه واقعی، درگاه پرداخت را روی حالت Sandbox یا شبیه‌ساز قرار دهید.',
+                },
+                {
+                  id: 'cms_pages_guide',
+                  category: 'cms',
+                  categoryLabel: 'صفحه‌ساز و سئو',
+                  badge: 'مدیریت محتوا و قالب',
+                  badgeColor: 'purple',
+                  targetTab: 'page_builder' as AdminTab,
+                  targetTabLabel: 'رفتن به صفحه‌ساز HTML',
+                  title: 'صفحه‌ساز اختصاصی HTML، طراحی هدر و فوتر و مدیریت لندینگ',
+                  description: 'طراحی آسان صفحات مجزا مانند «درباره ما»، «تعرفه‌ها»، «قوانین»، یا «راهنمای چاپ کتاب» با آدرس‌دهی مستقیم (مثل /page/about-us) بدون نیاز به کدنویسی در هسته برنامه.',
+                  bullets: [
+                    { title: 'ساخت صفحات با URL تمیز', text: 'تعیین نام پیوند یکتا (Slug) اختصاصی برای هر صفحه که مستقیماً در مرورگر باز می‌شود.' },
+                    { title: 'طراحی آزاد هدر و فوتر', text: 'امکان درج کدهای HTML سفارشی، شماره تماس، نماد اعتماد الکترونیکی (اینماد) و شبکه‌های اجتماعی در سراسر سایت.' },
+                    { title: 'محتوای صفحه نخست (Landing CMS)', text: 'تغییر عنوان‌ها، بنرها، متون معرفی و تضمین‌های صفحه اصلی از طریق تب محتوای لندینگ.' },
+                  ],
+                  tip: 'راهنمایی: صفحاتی که در صفحه‌ساز می‌سازید، در گوگل نیز ایندکس می‌شوند و می‌توانید برای هر کدام عنوان سئو و توضیحات اختصاصی قرار دهید.',
+                },
+                {
+                  id: 'seo_guide',
+                  category: 'cms',
+                  categoryLabel: 'صفحه‌ساز و سئو',
+                  badge: 'سئو و برندینگ',
+                  badgeColor: 'blue',
+                  targetTab: 'seo' as AdminTab,
+                  targetTabLabel: 'رفتن به تنظیمات سئو',
+                  title: 'بهینه‌سازی سئو (SEO)، عنوان و متاتگ‌های گوگل و شبکه‌های اجتماعی',
+                  description: 'تنظیم متادیتاهای موتورهای جستجو، کارت‌های اشتراک‌گذاری تلگرام، توییتر و واتساپ (OpenGraph) و اسکریپت‌های تحلیلی مانند گوگل آنالیتیکس.',
+                  bullets: [
+                    { title: 'عنوان و توضیحات سایت', text: 'تنظیم تگ Title و Meta Description که در نتایج جستجوی گوگل نمایش داده می‌شود.' },
+                    { title: 'کارت‌های OpenGraph', text: 'نمایش پیش‌نمایش گرافیکی زیبا به همراه لوگو و عنوان به هنگام ارسال لینک سایت در تلگرام، واتساپ یا شبکه‌های اجتماعی.' },
+                    { title: 'کدهای تاییدیه وب‌مستر', text: 'درج آسان متاتگ تایید مالکیت گوگل سرچ کنسول (Google Search Console).' },
+                  ],
+                  tip: 'نکته: متن متای سایت را با کلمات کلیدی نظیر «ترجمه تخصصی کتاب»، «هوش مصنوعی ترجمه رمان» و «خروجی Word و PDF» غنی کنید.',
+                },
+                {
+                  id: 'security_guide',
+                  category: 'security',
+                  categoryLabel: 'امنیت و پیامک',
+                  badge: 'امنیت و زیرساخت',
+                  badgeColor: 'rose',
+                  targetTab: 'security' as AdminTab,
+                  targetTabLabel: 'رفتن به تنظیمات امنیت',
+                  title: 'امنیت سرور، احراز هویت پیامکی OTP، سشن‌ها و پشتیبان‌گیری دیتابیس',
+                  description: 'در این بخش کنترل پنل پیامک OTP (ملی‌پیامک، کاوه‌نگار، SMS.ir)، محافظت در برابر حملات بروت‌فورس، حالت تعمیر و نگهداری سایت و دریافت فایل پشتیبان دیتابیس JSON قرار دارد.',
+                  bullets: [
+                    { title: 'پنل ارسال پیامک OTP', text: 'تنظیم کلید API و خط ارسال پیامک برای ورود و ثبت‌نام سریع کاربران با کد تایید یکبار مصرف.' },
+                    { title: 'حالت تعمیر و نگهداری (Maintenance)', text: 'در زمان ارتقای سرور یا به‌روزرسانی‌های اساسی، سایت را برای کاربران عادی موقتاً مسدود کنید در حالی که مدیران دسترسی دارند.' },
+                    { title: 'پشتیبان‌گیری کامل پایگاه داده', text: 'در پایین همان بخش می‌توانید با یک کلیک فایل کامل پایگاه داده (database.json) را به همراه کلیه پروژه‌ها و تراکنش‌ها دانلود نمایید.' },
+                    { title: 'تست پیامک زنده', text: 'امکان تست ارسال آنی پیامک تستی به شماره موبایل دلخواه برای اطمینان از سلامت پنل پیامکی.' },
+                  ],
+                  tip: 'نکته امنیتی: در محیط عملیاتی، کلیدهای دسترسی پیامک و درگاه را به هیچ عنوان در اختیار افراد نامعتبر قرار ندهید.',
+                },
+              ]
+                .filter((guide) => {
+                  if (guideActiveCategory !== 'all' && guide.category !== guideActiveCategory) {
+                    return false;
+                  }
+                  if (!guideSearchQuery.trim()) return true;
+                  const q = guideSearchQuery.toLowerCase();
+                  return (
+                    guide.title.toLowerCase().includes(q) ||
+                    guide.description.toLowerCase().includes(q) ||
+                    guide.bullets.some((b) => b.title.toLowerCase().includes(q) || b.text.toLowerCase().includes(q))
+                  );
+                })
+                .map((guide) => (
+                  <div
+                    key={guide.id}
+                    className="bg-slate-900 border border-slate-800 rounded-3xl p-5 sm:p-6 shadow-xl space-y-4 hover:border-slate-700/80 transition-all"
+                  >
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <div className="flex items-center gap-3">
+                        <div className="w-9 h-9 rounded-xl bg-amber-500/10 text-amber-400 flex items-center justify-center border border-amber-500/20 shrink-0">
+                          <BookOpen className="w-4 h-4 text-amber-400" />
+                        </div>
+                        <div>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <h3 className="text-base font-bold text-white">{guide.title}</h3>
+                            <span className="text-[10px] font-semibold bg-amber-500/10 border border-amber-500/20 text-amber-300 px-2.5 py-0.5 rounded-full">
+                              {guide.badge}
+                            </span>
+                            <span className="text-[10px] text-slate-500 font-normal">
+                              ({guide.categoryLabel})
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <button
+                        onClick={() => setActiveTab(guide.targetTab)}
+                        className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-amber-500 hover:text-slate-950 text-slate-200 text-xs font-bold border border-slate-700 hover:border-amber-400 flex items-center justify-center gap-1.5 transition shadow-sm shrink-0"
+                      >
+                        <span>{guide.targetTabLabel}</span>
+                        <ArrowLeft className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+
+                    <p className="text-xs text-slate-300 leading-relaxed">
+                      {guide.description}
+                    </p>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5 pt-2">
+                      {guide.bullets.map((b, idx) => (
+                        <div
+                          key={idx}
+                          className="bg-slate-950/70 p-3 rounded-2xl border border-slate-800/80 flex items-start gap-2.5 text-xs"
+                        >
+                          <span className="w-2 h-2 rounded-full bg-amber-400 mt-1.5 shrink-0" />
+                          <div>
+                            <strong className="text-amber-300 font-bold block mb-0.5">{b.title}</strong>
+                            <span className="text-slate-300 text-[11px] leading-relaxed">{b.text}</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    {guide.tip && (
+                      <div className="p-3 rounded-2xl bg-amber-500/10 border border-amber-500/25 flex items-start gap-2 text-xs text-amber-200">
+                        <Sparkles className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                        <span className="leading-relaxed text-[11px] font-medium">{guide.tip}</span>
+                      </div>
+                    )}
+                  </div>
+                ))}
             </div>
           </div>
         )}
