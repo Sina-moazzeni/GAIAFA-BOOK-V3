@@ -5047,12 +5047,13 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
                     </div>
 
                     {/* Referer Header Domain (Mandatory for subdomains like book.gaiafa.ir using gaiafa.ir merchant) */}
+                    {/* Referer Header Domain (Mandatory for subdomains like book.gaiafa.ir using gaiafa.ir merchant) */}
                     <div>
                       <div className="flex items-center justify-between mb-1">
                         <label className="text-xs font-semibold text-slate-300">
                           دامنه ریفرر درگاه زرین‌پال (Referer / Origin Header):
                         </label>
-                        <span className="text-[10px] text-amber-400 font-mono">الزامی برای زیردامنه‌ها</span>
+                        <span className="text-[10px] text-amber-400 font-mono">الزامی برای زیردامنه‌ها طبق دستور شاپرک</span>
                       </div>
                       <input
                         type="text"
@@ -5071,7 +5072,7 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
                         className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-white font-mono text-xs focus:border-amber-500 focus:outline-none text-left"
                       />
                       <p className="text-[10px] text-slate-400 mt-1 leading-relaxed">
-                        چون مرچنت کد برای دامنه اصلی <code className="text-amber-400">gaiafa.ir</code> صادر شده است، برای فعالیت روی زیردامنه <code className="text-amber-400">book.gaiafa.ir</code> این هدر به زرین‌پال ارسال می‌شود تا تراکنش مسدود نگردد.
+                        چون مرچنت کد برای دامنه اصلی <code className="text-amber-400">gaiafa.ir</code> ثبت شده، هنگام فراخوانی درگاه از زیردامنه <code className="text-amber-400">book.gaiafa.ir</code>، هدر <code className="text-amber-400">Referer: https://gaiafa.ir/</code> در پشت صحنه به زرین‌پال ارسال می‌شود تا تراکنش شاپرک مسدود نشود.
                       </p>
                     </div>
 
@@ -5081,12 +5082,12 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
                         <label className="text-xs font-semibold text-slate-300">
                           دامنه پایه بازگشت از درگاه (Callback Base URL):
                         </label>
-                        <span className="text-[10px] text-emerald-400 font-mono">حل خطای -14</span>
+                        <span className="text-[10px] text-emerald-400 font-mono">آدرس بازگشت خریدار</span>
                       </div>
                       <input
                         type="text"
                         dir="ltr"
-                        placeholder="https://book.gaiafa.ir (یا https://gaiafa.ir)"
+                        placeholder="https://book.gaiafa.ir"
                         value={(settings.gateways.zarinpal as any).callbackDomain || ''}
                         onChange={(e) =>
                           setSettings({
@@ -5100,7 +5101,7 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
                         className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-white font-mono text-xs focus:border-amber-500 focus:outline-none text-left"
                       />
                       <p className="text-[10px] text-slate-400 mt-1 leading-relaxed">
-                        زرین‌پال برای تایید تراکنش، دامنه بازگشت را با ترمینال تطبیق می‌دهد. اگر در دمو با خطای -14 روبه‌رو می‌شوید، یا دامنه رسمی خود را اینجا وارد کنید یا تیک Sandbox را بزنید.
+                        برای سایت شما خالی بگذارید یا مقدار <code className="text-emerald-400">https://book.gaiafa.ir</code> را وارد کنید تا خریدار پس از پرداخت به زیردامنه کتاب بازگردد.
                       </p>
                     </div>
 
@@ -5125,11 +5126,11 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
                           className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs focus:border-amber-500 focus:outline-none"
                         >
                           <option value="IRT">تومان (IRT - استاندارد)</option>
-                          <option value="IRR">ریال (IRR)</option>
+                          <option value="IRR">ریال (IRR - در صورت الزام درگاه به ریال)</option>
                         </select>
                       </div>
 
-                      <div className="flex items-center pt-5">
+                      <div className="flex flex-col justify-center pt-2">
                         <label className="flex items-center gap-2 cursor-pointer text-xs text-slate-300">
                           <input
                             type="checkbox"
@@ -5147,6 +5148,9 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
                           />
                           <span>حالت آزمایشی زرین‌پال (Sandbox)</span>
                         </label>
+                        <span className="text-[10px] text-rose-400 mt-1">
+                          توجه: در صورت استفاده از مرچنت کد واقعی gaiafa.ir، تیک Sandbox باید <strong>غیرفعال</strong> باشد.
+                        </span>
                       </div>
                     </div>
 
@@ -5222,9 +5226,9 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
                         <span>گردش کار رسمی وب‌سرویس زرین‌پال (REST v4):</span>
                       </div>
                       <div className="text-[10px] text-slate-400 space-y-1 leading-relaxed">
-                        <div>۱. ارسال اولیه به <code className="text-amber-300 bg-slate-900 px-1 rounded">/pg/v4/payment/request.json</code> و دریافت شناسه Authority</div>
-                        <div>۲. ریدایرکت مستقیم خریدار به <code className="text-amber-300 bg-slate-900 px-1 rounded">https://payment.zarinpal.com/pg/StartPay/[Authority]</code></div>
-                        <div>۳. بازگشت خریدار به Callback و تایید قطعی با <code className="text-amber-300 bg-slate-900 px-1 rounded">/pg/v4/payment/verify.json</code></div>
+                        <div>۱. ارسال اولیه به <code className="text-amber-300 bg-slate-900 px-1 rounded">https://api.zarinpal.com/pg/v4/payment/request.json</code> همراه با هدر <code className="text-emerald-400 font-mono">Referer: https://gaiafa.ir/</code></div>
+                        <div>۲. ریدایرکت مستقیم خریدار به <code className="text-amber-300 bg-slate-900 px-1 rounded">https://www.zarinpal.com/pg/StartPay/[Authority]</code></div>
+                        <div>۳. بازگشت خریدار به Callback و تایید قطعی با <code className="text-amber-300 bg-slate-900 px-1 rounded">https://api.zarinpal.com/pg/v4/payment/verify.json</code></div>
                       </div>
                     </div>
                   </div>

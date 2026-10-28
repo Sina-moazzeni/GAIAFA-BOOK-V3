@@ -4,7 +4,7 @@
  */
 
 if (typeof (Promise as any).withResolvers === 'undefined') {
-  (Promise as any).withResolvers = function <T>() {
+  const withResolvers = function <T>() {
     let resolve!: (value: T | PromiseLike<T>) => void;
     let reject!: (reason?: any) => void;
     const promise = new Promise<T>((res, rej) => {
@@ -13,4 +13,12 @@ if (typeof (Promise as any).withResolvers === 'undefined') {
     });
     return { promise, resolve, reject };
   };
+  (Promise as any).withResolvers = withResolvers;
+  if (typeof globalThis !== 'undefined' && (globalThis as any).Promise) {
+    (globalThis as any).Promise.withResolvers = withResolvers;
+  }
+  if (typeof global !== 'undefined' && (global as any).Promise) {
+    (global as any).Promise.withResolvers = withResolvers;
+  }
 }
+

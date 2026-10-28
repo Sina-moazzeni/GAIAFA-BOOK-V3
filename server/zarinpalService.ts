@@ -86,7 +86,13 @@ export const ZARINPAL_ERROR_MESSAGES: Record<number, string> = {
 
 export class ZarinpalService {
   private getBaseUrl(isSandbox = false): string {
-    return isSandbox ? 'https://sandbox.zarinpal.com' : 'https://payment.zarinpal.com';
+    return isSandbox ? 'https://sandbox.zarinpal.com' : 'https://api.zarinpal.com';
+  }
+
+  private getStartPayUrl(isSandbox = false, authority: string): string {
+    return isSandbox
+      ? `https://sandbox.zarinpal.com/pg/StartPay/${authority}`
+      : `https://www.zarinpal.com/pg/StartPay/${authority}`;
   }
 
   /**
@@ -140,7 +146,7 @@ export class ZarinpalService {
         headers: {
           'Content-Type': 'application/json',
           'Accept': 'application/json',
-          'User-Agent': 'SmartBookTranslator/1.0',
+          'User-Agent': 'ZarinPal Rest Api v4',
           'Referer': refererHeader,
           'Origin': originHeader,
         },
@@ -170,7 +176,7 @@ export class ZarinpalService {
       const data = json.data;
       if (data && (data.code === 100 || data.authority)) {
         const authority = data.authority;
-        const paymentUrl = `${baseUrl}/pg/StartPay/${authority}`;
+        const paymentUrl = this.getStartPayUrl(isSandbox, authority);
         return {
           success: true,
           code: data.code,
@@ -235,7 +241,7 @@ export class ZarinpalService {
         headers: {
           'Content-Type': 'application/json',
           'Accept': 'application/json',
-          'User-Agent': 'SmartBookTranslator/1.0',
+          'User-Agent': 'ZarinPal Rest Api v4',
           'Referer': refererHeader,
           'Origin': originHeader,
         },

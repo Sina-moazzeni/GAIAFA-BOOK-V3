@@ -1059,8 +1059,10 @@ export function setupSaasRoutes(app: express.Express) {
 
     // If transaction already has authority, redirect directly to official ZarinPal StartPay
     if (tx.authority) {
-      const baseUrl = zpConfig.isSandbox ? 'https://sandbox.zarinpal.com' : 'https://payment.zarinpal.com';
-      return res.redirect(`${baseUrl}/pg/StartPay/${tx.authority}`);
+      const startPayUrl = zpConfig.isSandbox
+        ? `https://sandbox.zarinpal.com/pg/StartPay/${tx.authority}`
+        : `https://www.zarinpal.com/pg/StartPay/${tx.authority}`;
+      return res.redirect(startPayUrl);
     }
 
     // If merchant is unconfigured
