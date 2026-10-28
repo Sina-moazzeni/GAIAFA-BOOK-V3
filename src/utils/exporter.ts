@@ -78,6 +78,8 @@ export function formatToDistinctParagraphs(html: string): string {
 export function sanitizeTranslatedHtml(html: string): string {
   if (!html) return '';
   return html
+    .replace(/<span[^>]*style=["'][^"']*#(?:9b2c2c|c53030|e53e3e)[^"']*["'][^>]*>([\s\S]*?)<\/span>/gi, '$1')
+    .replace(/<span[^>]*class=["'][^"']*highlight[^"']*["'][^>]*>([\s\S]*?)<\/span>/gi, '$1')
     .replace(/<h[1-3][^>]*>\s*مقدمه و بخش نخست\s*(?:\([^\)]*\))?\s*<\/h[1-3]>/gi, '')
     .replace(/<h[1-3][^>]*>[^<]*[\(\[\{]\s*بخش\s*[0-9۰-۹IVXLCDMivxlcdm]+\s*[\)\]\}][^<]*<\/h[1-3]>/gi, '')
     .replace(/<p[^>]*>\s*[\(\[\{]?\s*بخش\s*[0-9۰-۹IVXLCDMivxlcdm]+\s*[\)\]\}]?\s*<\/p>/gi, '')
@@ -346,14 +348,13 @@ export function parseHtmlToTextRuns(html: string, fontName: string = 'Vazirmatn'
   let match;
   while ((match = regex.exec(html)) !== null) {
     if (match[1]) {
-      // Highlighted glossary term (Bold Crimson)
+      // Glossary term treated with standard body styling (no crimson highlight)
       runs.push(
         makeRun({
           text: match[1].replace(/<[^>]+>/g, ''),
           font: fontDef,
           size: 24, // 12pt
-          bold: true,
-          color: '9B2C2C',
+          color: '2D3748',
           rightToLeft: true,
         })
       );

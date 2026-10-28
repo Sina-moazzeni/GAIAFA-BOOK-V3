@@ -10,7 +10,9 @@ import {
   BookMarked,
   RotateCcw,
   Check,
-  AlertCircle
+  AlertCircle,
+  ListPlus,
+  FileText
 } from 'lucide-react';
 import { GlossaryItem, BookProject } from '../types.ts';
 import { DEFAULT_GLOSSARIES } from '../constants/tones.ts';
@@ -32,12 +34,83 @@ export const GlossaryModal: React.FC<GlossaryModalProps> = ({
   isAdmin = false,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
+  const [entryMode, setEntryMode] = useState<'single' | 'bulk'>('single');
   const [newEn, setNewEn] = useState('');
   const [newFa, setNewFa] = useState('');
   const [newNote, setNewNote] = useState('');
+  const [bulkText, setBulkText] = useState('');
   const [isExtracting, setIsExtracting] = useState(false);
   const [extractedItems, setExtractedItems] = useState<{ en: string; fa: string; note?: string }[]>([]);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
+
+  // Helper to parse colon-separated bulk text (e.g. hi:سلام:برای احوال پرسی استفاده میشود)
+  const parseBulkInput = (raw: string) => {
+    if (!raw || !raw.trim()) return [];
+    const lines = raw.split('\n');
+    const parsed: { en: string; fa: string; note?: string }[] = [];
+    for (const l of lines) {
+      const line = l.trim();
+      if (!line || line.startsWith('#') || line.startsWith('//')) continue;
+      let parts: string[] = [];
+      if (line.includes(':')) {
+        parts = line.split(':');
+      } else if (line.includes('：')) {
+        parts = line.split('：');
+      } else if (line.includes('\t')) {
+        parts = line.split('\t');
+      } else if (line.includes(',')) {
+        parts = line.split(',');
+      }
+
+      if (parts.length >= 2) {
+        const en = parts[0].trim();
+        const fa = parts[1].trim();
+        const note = parts.slice(2).join(':').trim() || undefined;
+        if (en && fa) {
+          parsed.push({ en, fa, note });
+        }
+      }
+    }
+    return parsed;
+  };
+
+  const handleAddBulkTerms = (e: React.FormEvent) => {
+    e.preventDefault();
+    const parsed = parseBulkInput(bulkText);
+    if (parsed.length === 0) {
+      alert('هیچ واژه معتبری در متن واردشده یافت نشد. لطفاً از فرمت «انگلیسی:فارسی:توضیحات» استفاده فرمایید.');
+      return;
+    }
+
+    const currentList = Array.isArray(project.glossary) ? [...project.glossary] : [];
+    let addedCount = 0;
+    let updatedCount = 0;
+
+    parsed.forEach(item => {
+      const existingIndex = currentList.findIndex(x => x.en.toLowerCase() === item.en.toLowerCase());
+      if (existingIndex !== -1) {
+        currentList[existingIndex] = {
+          ...currentList[existingIndex],
+          fa: item.fa,
+          note: item.note || currentList[existingIndex].note,
+        };
+        updatedCount++;
+      } else {
+        currentList.push({
+          id: `term_${Date.now()}_${Math.random().toString(36).substring(2, 6)}_${addedCount}`,
+          en: item.en,
+          fa: item.fa,
+          note: item.note,
+        });
+        addedCount++;
+      }
+    });
+
+    onUpdateGlossary(currentList);
+    setBulkText('');
+    setStatusMessage(`با موفقیت ${addedCount} واژه جدید افزوده شد${updatedCount > 0 ? ` و ${updatedCount} واژه به‌روزرسانی گردید` : ''}.`);
+    setTimeout(() => setStatusMessage(null), 4000);
+  };
 
   if (!isOpen) return null;
 
@@ -274,54 +347,136 @@ export const GlossaryModal: React.FC<GlossaryModalProps> = ({
             </div>
           )}
 
-          {/* Add New Term Form */}
-          <form onSubmit={handleAddTerm} className="bg-slate-800/50 p-4 rounded-xl border border-slate-700/60 space-y-3">
-            <div className="text-xs font-bold text-slate-300">افزودن دستی واژه یا معادل دلخواه:</div>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <div>
-                <label className="block text-[11px] text-slate-400 mb-1">کلمه انگلیسی (English Term):</label>
-                <input
-                  type="text"
-                  dir="ltr"
-                  value={newEn}
-                  onChange={e => setNewEn(e.target.value)}
-                  placeholder="e.g. Awareness"
-                  className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none focus:border-blue-500 font-mono"
-                  required
-                />
-              </div>
-              <div>
-                <label className="block text-[11px] text-slate-400 mb-1">ترجمه دقیق فارسی:</label>
-                <input
-                  type="text"
-                  value={newFa}
-                  onChange={e => setNewFa(e.target.value)}
-                  placeholder="مثلاً: آگاهی ناب"
-                  className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none focus:border-blue-500"
-                  required
-                />
-              </div>
-              <div>
-                <label className="block text-[11px] text-slate-400 mb-1">توضیح یا یادداشت برای هوش مصنوعی (اختیاری):</label>
-                <input
-                  type="text"
-                  value={newNote}
-                  onChange={e => setNewNote(e.target.value)}
-                  placeholder="مثلاً: فقط در زمینه خودشناسی"
-                  className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none focus:border-blue-500"
-                />
+          {/* Add New Term Form (Single or Bulk) */}
+          <div className="bg-slate-800/50 p-4 rounded-xl border border-slate-700/60 space-y-3">
+            {/* Mode Selector Tabs */}
+            <div className="flex items-center justify-between border-b border-slate-750 pb-2.5">
+              <div className="text-xs font-bold text-slate-300">افزودن واژگان به دانشنامه:</div>
+              <div className="flex items-center gap-1.5 bg-slate-900/80 p-1 rounded-lg border border-slate-750 text-xs">
+                <button
+                  type="button"
+                  onClick={() => setEntryMode('single')}
+                  className={`px-3 py-1 rounded-md transition font-medium flex items-center gap-1.5 ${
+                    entryMode === 'single'
+                      ? 'bg-blue-600 text-white shadow-sm'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  <Plus className="w-3 h-3" />
+                  <span>ورود تکی</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setEntryMode('bulk')}
+                  className={`px-3 py-1 rounded-md transition font-medium flex items-center gap-1.5 ${
+                    entryMode === 'bulk'
+                      ? 'bg-blue-600 text-white shadow-sm'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  <ListPlus className="w-3 h-3" />
+                  <span>ورود دسته‌جمعی (لیست با :)</span>
+                </button>
               </div>
             </div>
-            <div className="flex justify-end">
-              <button
-                type="submit"
-                className="px-4 py-1.5 rounded-lg text-xs font-semibold bg-blue-600 hover:bg-blue-500 text-white transition flex items-center gap-1.5 shadow-sm"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                <span>ثبت واژه در فرهنگ لغت</span>
-              </button>
-            </div>
-          </form>
+
+            {entryMode === 'single' ? (
+              <form onSubmit={handleAddTerm} className="space-y-3">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div>
+                    <label className="block text-[11px] text-slate-400 mb-1">کلمه انگلیسی (English Term):</label>
+                    <input
+                      type="text"
+                      dir="ltr"
+                      value={newEn}
+                      onChange={e => setNewEn(e.target.value)}
+                      placeholder="e.g. Awareness"
+                      className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none focus:border-blue-500 font-mono"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] text-slate-400 mb-1">ترجمه دقیق فارسی:</label>
+                    <input
+                      type="text"
+                      value={newFa}
+                      onChange={e => setNewFa(e.target.value)}
+                      placeholder="مثلاً: آگاهی ناب"
+                      className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none focus:border-blue-500"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] text-slate-400 mb-1">توضیح یا یادداشت برای هوش مصنوعی (اختیاری):</label>
+                    <input
+                      type="text"
+                      value={newNote}
+                      onChange={e => setNewNote(e.target.value)}
+                      placeholder="مثلاً: فقط در زمینه خودشناسی"
+                      className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none focus:border-blue-500"
+                    />
+                  </div>
+                </div>
+                <div className="flex justify-end">
+                  <button
+                    type="submit"
+                    className="px-4 py-1.5 rounded-lg text-xs font-semibold bg-blue-600 hover:bg-blue-500 text-white transition flex items-center gap-1.5 shadow-sm"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>ثبت واژه در فرهنگ لغت</span>
+                  </button>
+                </div>
+              </form>
+            ) : (
+              <form onSubmit={handleAddBulkTerms} className="space-y-3">
+                <div className="bg-slate-900/60 p-3 rounded-lg border border-slate-750 text-xs space-y-1.5">
+                  <div className="text-slate-300 font-semibold flex items-center gap-1.5 text-amber-300">
+                    <FileText className="w-3.5 h-3.5" />
+                    <span>فرمت ورود دسته‌جمعی واژگان (تفکیک با دو نقطه :):</span>
+                  </div>
+                  <p className="text-slate-400 text-[11px]">
+                    در هر خط یک اصطلاح را به فرمت <strong className="text-white font-mono" dir="ltr">انگلیسی:فارسی:توضیحات</strong> وارد نمایید (بخش توضیحات اختیاری است).
+                  </p>
+                  <div className="bg-slate-950 p-2.5 rounded-lg text-[11px] text-slate-300 font-mono space-y-1 border border-slate-800" dir="ltr">
+                    <div>hi:سلام:برای احوال پرسی استفاده میشود</div>
+                    <div>awareness:آگاهی ناب:در زمینه فلسفه ذهن</div>
+                    <div>soul:روح</div>
+                  </div>
+                </div>
+
+                <div>
+                  <textarea
+                    rows={6}
+                    value={bulkText}
+                    onChange={e => setBulkText(e.target.value)}
+                    placeholder={`hi:سلام:برای احوال پرسی استفاده میشود\nawareness:آگاهی:در زمینه فلسفه ذهن\nsoul:روح\nmind:ذهن`}
+                    className="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-xs text-white focus:outline-none focus:border-blue-500 font-mono leading-relaxed placeholder:text-slate-600"
+                  />
+                </div>
+
+                <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-1">
+                  <div className="text-xs text-slate-400 w-full sm:w-auto text-right">
+                    {bulkText.trim() ? (
+                      <span className="text-emerald-400 font-semibold flex items-center gap-1.5">
+                        <Check className="w-3.5 h-3.5" />
+                        <span>{parseBulkInput(bulkText).length} واژه معتبر در متن شناسایی شد</span>
+                      </span>
+                    ) : (
+                      <span>می‌توانید لیست کلمات خود را از اکسل یا فایل متنی کپی و اینجا پیست کنید.</span>
+                    )}
+                  </div>
+                  <button
+                    type="submit"
+                    disabled={parseBulkInput(bulkText).length === 0}
+                    className="w-full sm:w-auto px-4 py-2 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 disabled:cursor-not-allowed text-white transition flex items-center justify-center gap-1.5 shadow-sm"
+                  >
+                    <ListPlus className="w-4 h-4" />
+                    <span>افزودن دسته‌جمعی به دانشنامه ({parseBulkInput(bulkText).length} واژه)</span>
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
 
           {/* Search & Terms Table */}
           <div className="space-y-3">

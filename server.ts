@@ -32,6 +32,8 @@ function cleanChapterTitle(title: string): string {
 function sanitizeTranslatedHtml(html: string): string {
   if (!html) return '';
   let clean = html
+    .replace(/<span[^>]*style=["'][^"']*#(?:9b2c2c|c53030|e53e3e)[^"']*["'][^>]*>([\s\S]*?)<\/span>/gi, '$1')
+    .replace(/<span[^>]*class=["'][^"']*highlight[^"']*["'][^>]*>([\s\S]*?)<\/span>/gi, '$1')
     .replace(/<h[1-3][^>]*>\s*مقدمه و بخش نخست\s*(?:\([^\)]*\))?\s*<\/h[1-3]>/gi, '')
     .replace(/<h[1-3][^>]*>[^<]*[\(\[\{]\s*بخش\s*[0-9۰-۹IVXLCDMivxlcdm]+\s*[\)\]\}][^<]*<\/h[1-3]>/gi, '')
     .replace(/<p[^>]*>\s*[\(\[\{]?\s*بخش\s*[0-9۰-۹IVXLCDMivxlcdm]+\s*[\)\]\}]?\s*<\/p>/gi, '')
@@ -227,7 +229,7 @@ Translation Principles:
    - Novel / Narrative: Engaging, fluid, descriptive, preserving literary rhythm and dialogue dynamics.
    - Self-Help / Psychology: Clear, empowering, instructional, and modern Persian.
    - Academic / Technical: Precise, formal, and structured.
-3. Custom Glossary Priority: Strictly prioritize the provided custom glossary mapping over default translations. Never translate proprietary terms inconsistently.
+3. Custom Glossary Priority & Natural Text Integration: Strictly prioritize the provided custom glossary mapping over default translations. Never translate proprietary terms inconsistently. CRITICAL: In the translated Persian text, treat glossary words just like all other normal words in the sentence. Do NOT change their color, do NOT wrap them in <span style="color: #9b2c2c">, and do NOT highlight them with any special color. They must blend seamlessly into the body text with regular styling.
 4. Strict No-Summarization Guarantee: Under NO circumstances are you allowed to summarize, condense, abbreviate, skip, or omit any paragraph, sentence, metaphor, example, or dialogue. Every single paragraph and thought must be translated in full completeness.
 5. Faithful & Uncensored Translation: This is an official literary and scholarly book translation. Translate all text faithfully, directly, and without censorship, puritanical sanitization, moralizing, or softening. Preserve the author's original voice, register, realism, and vocabulary completely.
 6. Strict Chunk Cleanliness & Continuity (Zero Artificial Headers): Under NO circumstances are you allowed to output artificial chunk markers, part numbers, or invented headings such as «مقدمه و بخش نخست (بخش ۱)»، «بخش ۱»، «بخش ۲»، «(بخش ۱)»، "Part 1", "[Part 1]", etc., into the translation. Do NOT invent or inject a chapter heading unless the original English input text explicitly starts with an author's original title/heading. The chunks must flow together as seamless, continuous prose without artificial breaks.
@@ -242,7 +244,6 @@ To allow seamless export to DOCX and PDF with color-coded typography:
   - Minor Sections: <h3 style="color: #2c5282; font-size: 14pt; margin-top: 18px; margin-bottom: 10px;">...</h3>
   - Body Paragraphs: <p style="line-height: 2.2; font-size: 12.5pt; text-align: justify; margin-bottom: 24px;">...</p>
   - Quotes / Callouts: <blockquote style="border-right: 4px solid #3182ce; padding: 12px 18px; margin: 18px 0; background: #f7fafc; color: #4a5568; font-style: italic;">...</blockquote>
-  - Key Terms / Glossary Highlights: <span style="color: #9b2c2c; font-weight: bold;">...</span>
 
 Output Expectation:
 Return ONLY the formatted, translated Persian text inside the specified HTML structure. Do not include conversational filler, introductory remarks, or concluding notes.`;
@@ -1798,14 +1799,13 @@ function parseHtmlToTextRuns(html: string, fontName: string = 'Vazirmatn Medium'
   let match;
   while ((match = regex.exec(html)) !== null) {
     if (match[1]) {
-      // Highlighted glossary term in red bold
+      // Glossary term treated with standard body styling (no crimson highlight)
       runs.push(
         new TextRun({
           text: match[1].replace(/<[^>]+>/g, ''),
           font: fontDef,
           size: 24,
-          bold: true,
-          color: '9B2C2C',
+          color: '2D3748',
           rightToLeft: true,
         })
       );
