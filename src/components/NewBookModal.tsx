@@ -180,7 +180,21 @@ export const NewBookModal: React.FC<NewBookModalProps> = ({
             }),
           });
 
-          const data = await res.json();
+          let data: any;
+          const contentType = res.headers.get('content-type') || '';
+          if (contentType.includes('application/json')) {
+            data = await res.json();
+          } else {
+            const rawHtml = await res.text();
+            if (res.status === 413 || rawHtml.includes('413 Request Entity Too Large')) {
+              throw new Error('حجم فایل ارسالی بیشتر از حد مجاز سرور Nginx است (خطای 413). لطفاً عبارت «client_max_body_size 100M;» را در کانفیگ Nginx سرور اوبونتو قرار دهید.');
+            }
+            if (res.status === 502 || res.status === 504) {
+              throw new Error(`خطای وب‌سرور (${res.status}): پردازش فایل PDF طول کشید یا وب‌سرور قطع شد. مقادیر proxy_read_timeout و proxy_send_timeout را در Nginx افزایش دهید.`);
+            }
+            throw new Error(`پاسخ وب‌سرور (${res.status}): ${rawHtml.slice(0, 100)}`);
+          }
+
           if (!res.ok || !data.success) {
             if (data.isScannedPdf) {
               setScannedPdfError(data.error);

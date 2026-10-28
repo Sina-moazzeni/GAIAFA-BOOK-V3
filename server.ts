@@ -93,8 +93,8 @@ app.use((req, res, next) => {
   next();
 });
 
-app.use(express.json({ limit: '50mb' }));
-app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+app.use(express.json({ limit: '100mb' }));
+app.use(express.urlencoded({ extended: true, limit: '100mb' }));
 
 // Mount Commercial SaaS API Routes (Auth, Background Queue, Pricing, Admin, Gateways)
 setupSaasRoutes(app);
@@ -1332,7 +1332,12 @@ app.post('/api/import/file', async (req, res) => {
       });
 
     } else if (detectedType === 'pdf') {
-      const loadingTask = pdfjsLib.getDocument({ data: new Uint8Array(buffer) });
+      const uint8Data = new Uint8Array(buffer.buffer, buffer.byteOffset, buffer.byteLength);
+      const loadingTask = pdfjsLib.getDocument({
+        data: uint8Data,
+        useSystemFonts: true,
+        disableFontFace: true,
+      });
       const pdfDoc = await loadingTask.promise;
 
       // Extract embedded JPEG & PNG stream images from PDF binary
@@ -1383,48 +1388,52 @@ app.post('/api/import/file', async (req, res) => {
       let imgIndex = 0;
 
       for (let pageNum = 1; pageNum <= pdfDoc.numPages; pageNum++) {
-        const page = await pdfDoc.getPage(pageNum);
-        const textContent = await page.getTextContent();
-        const pageLines: string[] = [];
-        let currentLine = '';
-        let lastY: number | null = null;
+        try {
+          const page = await pdfDoc.getPage(pageNum);
+          const textContent = await page.getTextContent();
+          const pageLines: string[] = [];
+          let currentLine = '';
+          let lastY: number | null = null;
 
-        for (const item of textContent.items as any[]) {
-          if (lastY !== null && Math.abs(item.transform[5] - lastY) > 5) {
-            if (currentLine.trim()) pageLines.push(currentLine.trim());
-            currentLine = item.str;
-          } else {
-            currentLine += (currentLine ? ' ' : '') + item.str;
+          for (const item of textContent.items as any[]) {
+            if (lastY !== null && Math.abs(item.transform[5] - lastY) > 5) {
+              if (currentLine.trim()) pageLines.push(currentLine.trim());
+              currentLine = item.str;
+            } else {
+              currentLine += (currentLine ? ' ' : '') + item.str;
+            }
+            lastY = item.transform[5];
           }
-          lastY = item.transform[5];
+          if (currentLine.trim()) pageLines.push(currentLine.trim());
+
+          const pageText = pageLines.join('\n\n');
+          const words = pageText.split(/\s+/).filter(Boolean).length;
+          if (words === 0 && extractedImages.length === 0) continue;
+
+          let pageHtml = pageLines.map(l => `<p>${l}</p>`).join('\n');
+          let pageImageCount = 0;
+          if (imgIndex < extractedImages.length) {
+            pageHtml += `\n<div class="book-illustration-wrap my-4 text-center"><img src="${extractedImages[imgIndex]}" class="book-embedded-image rounded-xl shadow-md my-3 max-w-full mx-auto block border border-slate-300" alt="تصویر صفحه ${pageNum} کتاب" /></div>`;
+            imgIndex++;
+            pageImageCount++;
+          }
+
+          chunks.push({
+            id: `chk_${Date.now()}_${globalChunkCounter}`,
+            chapterNumber: pageNum,
+            chapterTitle: `صفحه ${pageNum}`,
+            chunkNumber: 1,
+            englishText: pageHtml,
+            wordCount: Math.max(1, words),
+            estimatedTokens: Math.ceil(words * 1.35),
+            status: 'idle',
+            hasImages: pageImageCount > 0,
+            imageCount: pageImageCount,
+          });
+          globalChunkCounter++;
+        } catch (pageErr) {
+          console.warn(`Error extracting text from PDF page ${pageNum}:`, pageErr);
         }
-        if (currentLine.trim()) pageLines.push(currentLine.trim());
-
-        const pageText = pageLines.join('\n\n');
-        const words = pageText.split(/\s+/).filter(Boolean).length;
-        if (words === 0 && extractedImages.length === 0) continue;
-
-        let pageHtml = pageLines.map(l => `<p>${l}</p>`).join('\n');
-        let pageImageCount = 0;
-        if (imgIndex < extractedImages.length) {
-          pageHtml += `\n<div class="book-illustration-wrap my-4 text-center"><img src="${extractedImages[imgIndex]}" class="book-embedded-image rounded-xl shadow-md my-3 max-w-full mx-auto block border border-slate-300" alt="تصویر صفحه ${pageNum} کتاب" /></div>`;
-          imgIndex++;
-          pageImageCount++;
-        }
-
-        chunks.push({
-          id: `chk_${Date.now()}_${globalChunkCounter}`,
-          chapterNumber: pageNum,
-          chapterTitle: `صفحه ${pageNum}`,
-          chunkNumber: 1,
-          englishText: pageHtml,
-          wordCount: Math.max(1, words),
-          estimatedTokens: Math.ceil(words * 1.35),
-          status: 'idle',
-          hasImages: pageImageCount > 0,
-          imageCount: pageImageCount,
-        });
-        globalChunkCounter++;
       }
 
       // تشخیص هوشمند فایل‌های PDF اسکن‌شده (Scanned PDF Detection)
