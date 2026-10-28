@@ -258,8 +258,15 @@ export interface GroupedChapter {
  * Groups consecutive chunks belonging to the same chapter into one continuous chapter flow.
  * Ensures the chapter title is displayed only ONCE and sub-chunks flow seamlessly without repeating headers or mid-chapter page breaks.
  */
-export function groupChunksIntoChapters(chunks: BookChunk[]): GroupedChapter[] {
-  const validChunks = (chunks || []).filter(c => c && c.translatedHtml && c.translatedHtml.trim().length > 0);
+export function groupChunksIntoChapters(chunks: BookChunk[], excludedChunkIds?: string[]): GroupedChapter[] {
+  const excludedSet = new Set(excludedChunkIds || []);
+  const validChunks = (chunks || []).filter(c =>
+    c &&
+    !c.isExcludedFromBook &&
+    !excludedSet.has(c.id) &&
+    c.translatedHtml &&
+    c.translatedHtml.trim().length > 0
+  );
   if (validChunks.length === 0) return [];
 
   // Check if chunks are primarily page-based (imported from PDF pages like "صفحه 1", "صفحه 2")
@@ -533,7 +540,7 @@ export async function buildClientDocxDocument(project: BookProject): Promise<Doc
   );
 
   // Chapters & paragraphs grouped seamlessly by genuine chapter
-  const groupedChapters = groupChunksIntoChapters(project.chunks);
+  const groupedChapters = groupChunksIntoChapters(project.chunks, project.designConfig?.excludedChunkIds);
 
   groupedChapters.forEach((ch, chIdx) => {
     if (chIdx > 0) {
@@ -970,7 +977,7 @@ export function downloadWordHtml(project: BookProject) {
       ? '16px'
       : '24px';
 
-  const groupedChapters = groupChunksIntoChapters(project.chunks);
+  const groupedChapters = groupChunksIntoChapters(project.chunks, project.designConfig?.excludedChunkIds);
 
   const chaptersHtml = groupedChapters
     .map((ch, idx) => `
@@ -1054,7 +1061,7 @@ export function downloadWordHtml(project: BookProject) {
 }
 
 export function downloadStyledHtml(project: BookProject) {
-  const groupedChapters = groupChunksIntoChapters(project.chunks);
+  const groupedChapters = groupChunksIntoChapters(project.chunks, project.designConfig?.excludedChunkIds);
   const content = groupedChapters
     .map(ch => `
       <section class="chapter-section" style="margin-bottom: 50px; border-bottom: 1px solid #e2e8f0; padding-bottom: 30px;">
@@ -1131,7 +1138,7 @@ export function downloadPlainText(project: BookProject) {
   if (project.translator) plain += `مترجم: ${project.translator}\n`;
   plain += `\n=========================================\n\n`;
 
-  const groupedChapters = groupChunksIntoChapters(project.chunks);
+  const groupedChapters = groupChunksIntoChapters(project.chunks, project.designConfig?.excludedChunkIds);
   groupedChapters.forEach(ch => {
     plain += `## ${ch.title}\n\n`;
     const textOnly = (ch.htmlContent || '')

@@ -338,6 +338,7 @@ export interface BookChunk {
   translatedAt?: number;
   hasImages?: boolean;
   imageCount?: number;
+  isExcludedFromBook?: boolean; // مستثنی کردن این چانک از خروجی نهایی، کتاب چاپی و PDF
 }
 
 export type BookThemeId =
@@ -389,9 +390,11 @@ export interface BookDesignConfig {
   backgroundPattern: BackgroundPatternId;
   watermarkText?: string;
   pageMargin?: 'compact' | 'normal' | 'generous';
+  topMargin?: 'compact' | 'normal' | 'generous' | 'extra_generous'; // فاصله از بالای صفحه (تنظیم فاصله متن از هدر و لبه کاغذ)
   trimSize?: BookTrimSize;
   customColors?: CustomColorPalette;
   continuousFlow?: boolean; // چیدمان پیوسته روان زیر هم و بدون صفحه خالی اجباری بین فصول
+  excludedChunkIds?: string[]; // شناسه‌های صفحات/بخش‌های انتخابی برای حذف از خروجی PDF و Word
 }
 
 export interface BookProject {

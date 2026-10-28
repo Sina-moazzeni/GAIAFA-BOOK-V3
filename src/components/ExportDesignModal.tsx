@@ -20,11 +20,16 @@ import {
   Minimize2,
   ShieldCheck,
   Feather,
-  Paintbrush
+  Paintbrush,
+  EyeOff,
+  CheckSquare,
+  Square,
+  Trash2,
+  Filter
 } from 'lucide-react';
 import { BookProject, BookDesignConfig, BookThemeId, BorderStyleId, BackgroundPatternId, CustomColorPalette } from '../types.ts';
 import { BOOK_THEMES, BORDER_STYLES, BACKGROUND_PATTERNS, DEFAULT_DESIGN_CONFIG, BOOK_TRIM_SIZES } from '../constants/themes.ts';
-import { downloadDocx, downloadWordHtml, downloadStyledHtml, downloadPlainText } from '../utils/exporter.ts';
+import { downloadDocx, downloadWordHtml, downloadStyledHtml, downloadPlainText, cleanChapterTitle } from '../utils/exporter.ts';
 
 interface ExportDesignModalProps {
   isOpen: boolean;
@@ -82,10 +87,24 @@ export const ExportDesignModal: React.FC<ExportDesignModalProps> = ({
   const [backgroundPattern, setBackgroundPattern] = useState<BackgroundPatternId>(initialConfig.backgroundPattern || 'none');
   const [watermarkText, setWatermarkText] = useState(initialConfig.watermarkText || '');
   const [pageMargin, setPageMargin] = useState<'compact' | 'normal' | 'generous'>(initialConfig.pageMargin || 'normal');
+  const [topMargin, setTopMargin] = useState<BookDesignConfig['topMargin']>(initialConfig.topMargin || 'normal');
   const [trimSize, setTrimSize] = useState<'ruqai' | 'vaziri' | 'rahli' | 'pocket'>(initialConfig.trimSize || 'ruqai');
   const [customColors, setCustomColors] = useState<CustomColorPalette>(initialConfig.customColors || {});
 
-  const [activeTab, setActiveTab] = useState<'themes' | 'colors' | 'headers' | 'typography'>('themes');
+  // Excluded pages from export (combining config.excludedChunkIds and individual chunk isExcludedFromBook)
+  const [excludedChunkIds, setExcludedChunkIds] = useState<string[]>(() => {
+    const list = [...(initialConfig.excludedChunkIds || [])];
+    (project.chunks || []).forEach(c => {
+      if (c.isExcludedFromBook && !list.includes(c.id)) {
+        list.push(c.id);
+      }
+    });
+    return list;
+  });
+  const [pageNumberInput, setPageNumberInput] = useState('');
+  const [pageExcludeFeedback, setPageExcludeFeedback] = useState<string | null>(null);
+
+  const [activeTab, setActiveTab] = useState<'themes' | 'colors' | 'headers' | 'typography' | 'pages'>('themes');
   const [isExportingDocx, setIsExportingDocx] = useState(false);
   const [savedBanner, setSavedBanner] = useState<string | null>(null);
   const [isFullScreenPreview, setIsFullScreenPreview] = useState(false);
@@ -112,9 +131,80 @@ export const ExportDesignModal: React.FC<ExportDesignModalProps> = ({
     backgroundPattern,
     watermarkText,
     pageMargin,
+    topMargin,
     trimSize,
     customColors,
     continuousFlow,
+    excludedChunkIds,
+  };
+
+  const handleToggleChunkExcluded = (chunkId: string) => {
+    setExcludedChunkIds(prev =>
+      prev.includes(chunkId) ? prev.filter(id => id !== chunkId) : [...prev, chunkId]
+    );
+  };
+
+  const handleApplyExcludeByNumbers = () => {
+    if (!pageNumberInput.trim()) return;
+    const parts = pageNumberInput.split(/[,،\s]+/).filter(Boolean);
+    const numbersToExclude = new Set<number>();
+
+    parts.forEach(p => {
+      if (p.includes('-')) {
+        const [startStr, endStr] = p.split('-');
+        const start = parseInt(startStr, 10);
+        const end = parseInt(endStr, 10);
+        if (!isNaN(start) && !isNaN(end)) {
+          for (let i = Math.min(start, end); i <= Math.max(start, end); i++) {
+            numbersToExclude.add(i);
+          }
+        }
+      } else {
+        const num = parseInt(p.replace(/[^0-9]/g, ''), 10);
+        if (!isNaN(num)) numbersToExclude.add(num);
+      }
+    });
+
+    if (numbersToExclude.size === 0) {
+      setPageExcludeFeedback('لطفاً شماره صفحه یا بازه معتبر وارد فرمایید (مثال: 3 یا 2, 4 یا 5-7).');
+      setTimeout(() => setPageExcludeFeedback(null), 3500);
+      return;
+    }
+
+    const matchingIds: string[] = [];
+    (project.chunks || []).forEach((c, idx) => {
+      if (numbersToExclude.has(c.chunkNumber) || numbersToExclude.has(idx + 1)) {
+        matchingIds.push(c.id);
+      }
+    });
+
+    if (matchingIds.length > 0) {
+      setExcludedChunkIds(prev => Array.from(new Set([...prev, ...matchingIds])));
+      setPageExcludeFeedback(`✓ تعداد ${matchingIds.length} صفحه از خروجی PDF و چاپ حذف شدند.`);
+      setPageNumberInput('');
+    } else {
+      setPageExcludeFeedback('هیچ صفحه‌ای با این شماره‌ها پیدا نشد.');
+    }
+    setTimeout(() => setPageExcludeFeedback(null), 3500);
+  };
+
+  const handleIncludeAllPages = () => {
+    setExcludedChunkIds([]);
+    setPageExcludeFeedback('✓ تمام صفحات برای چاپ و خروجی فعال شدند.');
+    setTimeout(() => setPageExcludeFeedback(null), 3000);
+  };
+
+  const handleExcludeEmptyPages = () => {
+    const emptyIds = (project.chunks || [])
+      .filter(c => !c.translatedHtml || c.translatedHtml.trim().length === 0)
+      .map(c => c.id);
+    if (emptyIds.length === 0) {
+      setPageExcludeFeedback('صفحه خالی یا ترجمه‌نشده‌ای وجود ندارد.');
+    } else {
+      setExcludedChunkIds(prev => Array.from(new Set([...prev, ...emptyIds])));
+      setPageExcludeFeedback(`✓ تعداد ${emptyIds.length} صفحه خالی از خروجی PDF حذف گردید.`);
+    }
+    setTimeout(() => setPageExcludeFeedback(null), 3500);
   };
 
   const handleApplyConfig = () => {
@@ -300,7 +390,24 @@ export const ExportDesignModal: React.FC<ExportDesignModalProps> = ({
               }`}
             >
               <Type className="w-3.5 h-3.5" />
-              <span>قلم، فواصل و پاراگراف‌بندی</span>
+              <span>قلم، حاشیه و فواصل</span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('pages')}
+              className={`px-3 py-1.5 rounded-xl font-semibold transition flex items-center gap-1.5 ${
+                activeTab === 'pages'
+                  ? 'bg-rose-600 text-white shadow-sm'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-800'
+              }`}
+            >
+              <FileText className="w-3.5 h-3.5" />
+              <span>حذف و انتخاب صفحات</span>
+              {excludedChunkIds.length > 0 && (
+                <span className="bg-rose-500/30 text-rose-200 px-1.5 py-0.2 rounded-full text-[10px] font-mono font-bold">
+                  {excludedChunkIds.length} حذف‌شده
+                </span>
+              )}
             </button>
           </div>
 
@@ -1224,31 +1331,71 @@ export const ExportDesignModal: React.FC<ExportDesignModalProps> = ({
                 </div>
 
                 {/* Margins */}
-                <div className="bg-slate-850 p-4 rounded-2xl border border-slate-750 space-y-2.5 text-xs">
-                  <label className="block font-bold text-white flex items-center gap-1.5">
-                    <Sliders className="w-3.5 h-3.5 text-blue-400" />
-                    <span>فاصله حاشیه صفحه از لبه کاغذ (Margins):</span>
-                  </label>
-                  <div className="grid grid-cols-3 gap-2.5">
-                    {[
-                      { id: 'compact', name: 'فشرده و اقتصادی', desc: 'حداکثر متن در هر صفحه' },
-                      { id: 'normal', name: 'استاندارد کتابی (پیشنهادی)', desc: 'تعادل بین زیبایی و مصرف کاغذ' },
-                      { id: 'generous', name: 'لوکس و عریض', desc: 'حاشیه باز برای کتب نفیس' },
-                    ].map(m => (
-                      <button
-                        key={m.id}
-                        type="button"
-                        onClick={() => setPageMargin(m.id as any)}
-                        className={`p-2.5 rounded-xl border text-right transition ${
-                          pageMargin === m.id
-                            ? 'bg-slate-800 border-blue-500 text-blue-300 font-bold'
-                            : 'bg-slate-900 border-slate-700 text-slate-300 hover:bg-slate-800'
-                        }`}
-                      >
-                        <div className="text-xs">{m.name}</div>
-                        <div className="text-[10px] text-slate-400 font-normal mt-0.5">{m.desc}</div>
-                      </button>
-                    ))}
+                <div className="bg-slate-850 p-4 rounded-2xl border border-slate-750 space-y-3 text-xs">
+                  <div>
+                    <label className="block font-bold text-white flex items-center gap-1.5 mb-1.5">
+                      <Sliders className="w-3.5 h-3.5 text-blue-400" />
+                      <span>فاصله حاشیه صفحه از لبه کاغذ (Margins):</span>
+                    </label>
+                    <div className="grid grid-cols-3 gap-2.5">
+                      {[
+                        { id: 'compact', name: 'فشرده و اقتصادی', desc: 'حداکثر متن در هر صفحه' },
+                        { id: 'normal', name: 'استاندارد کتابی (پیشنهادی)', desc: 'تعادل بین زیبایی و مصرف کاغذ' },
+                        { id: 'generous', name: 'لوکس و عریض', desc: 'حاشیه باز برای کتب نفیس' },
+                      ].map(m => (
+                        <button
+                          key={m.id}
+                          type="button"
+                          onClick={() => setPageMargin(m.id as any)}
+                          className={`p-2.5 rounded-xl border text-right transition ${
+                            pageMargin === m.id
+                              ? 'bg-slate-800 border-blue-500 text-blue-300 font-bold'
+                              : 'bg-slate-900 border-slate-700 text-slate-300 hover:bg-slate-800'
+                          }`}
+                        >
+                          <div className="text-xs">{m.name}</div>
+                          <div className="text-[10px] text-slate-400 font-normal mt-0.5">{m.desc}</div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Top Margin & Header Spacing (فاصله متن از هدر و بالای صفحه) */}
+                  <div className="pt-2 border-t border-slate-750/80">
+                    <div className="flex items-center justify-between mb-1.5">
+                      <label className="font-bold text-white flex items-center gap-1.5">
+                        <Sliders className="w-3.5 h-3.5 text-amber-400" />
+                        <span>فاصله متن از بالای صفحه و خط هدر (Top Margin):</span>
+                      </label>
+                      <span className="text-[10px] text-amber-400/90 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20 font-semibold">
+                        تنظیم فاصله تنفس بالای کتاب
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                      {[
+                        { id: 'compact', name: 'فشرده (۸ تا ۱۶ میلی‌متر)', desc: 'شروع سریع متن' },
+                        { id: 'normal', name: 'کتابی (۱۲ تا ۲۲ میلی‌متر)', desc: 'استاندارد نشر (پیشنهادی)' },
+                        { id: 'generous', name: 'باز و باوقار (۱۶ تا ۳۰ میلی‌متر)', desc: 'حاشیه هوای بالای صفحه' },
+                        { id: 'extra_generous', name: 'آزاد و لوکس (۲۲ تا ۴۰ میلی‌متر)', desc: 'فاصله چشم‌نواز از هدر' },
+                      ].map(tm => (
+                        <button
+                          key={tm.id}
+                          type="button"
+                          onClick={() => setTopMargin(tm.id as any)}
+                          className={`p-2 rounded-xl border text-right transition ${
+                            topMargin === tm.id
+                              ? 'bg-slate-800 border-amber-500 text-amber-300 font-bold'
+                              : 'bg-slate-900 border-slate-700 text-slate-300 hover:bg-slate-800'
+                          }`}
+                        >
+                          <div className="text-xs">{tm.name}</div>
+                          <div className="text-[10px] text-slate-400 font-normal mt-0.5">{tm.desc}</div>
+                        </button>
+                      ))}
+                    </div>
+                    <p className="text-[10px] text-slate-400 mt-1.5 leading-relaxed">
+                      💡 این گزینه فاصله متن را از خط هدر و لبه بالایی کاغذ در تمام صفحات PDF و چاپ تنظیم می‌کند تا متن هرگز به هدر یا لبه کاغذ نچسبد (حتی اگر هدر غیرفعال باشد).
+                    </p>
                   </div>
                 </div>
 
@@ -1268,6 +1415,183 @@ export const ExportDesignModal: React.FC<ExportDesignModalProps> = ({
                     placeholder="مثال: ترجمه اختصاصی www.mywebsite.com"
                     className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500"
                   />
+                </div>
+              </div>
+            )}
+
+            {/* TAB 4: Page Exclusion & Selection Manager (حذف و انتخاب صفحات خروجی) */}
+            {activeTab === 'pages' && (
+              <div className="space-y-4">
+                {/* Page Exclusion Header Box */}
+                <div className="bg-slate-850 p-4 rounded-2xl border border-slate-750 space-y-3 text-xs">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-750 pb-2.5">
+                    <div>
+                      <h3 className="font-bold text-white flex items-center gap-1.5 text-sm">
+                        <FileText className="w-4 h-4 text-rose-400" />
+                        <span>مدیریت و حذف صفحات در خروجی PDF و چاپ</span>
+                      </h3>
+                      <p className="text-[11px] text-slate-400 mt-0.5">
+                        صفحاتی که تیک آن‌ها را برمی‌دارید یا حذف می‌کنید، در خروجی PDF و Word قرار نمی‌گیرند.
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono text-xs px-2.5 py-1 rounded-xl bg-slate-900 border border-slate-700 text-slate-300">
+                        صفحات چاپی: <strong className="text-emerald-400">{(project.chunks || []).length - excludedChunkIds.length}</strong> از {(project.chunks || []).length}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Quick Input: Delete by Page Number */}
+                  <div className="bg-slate-900 p-3 rounded-xl border border-slate-750 space-y-2">
+                    <label className="block text-slate-300 font-semibold text-xs">
+                      حذف سریع بر اساس شماره صفحه:
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="text"
+                        value={pageNumberInput}
+                        onChange={e => setPageNumberInput(e.target.value)}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            handleApplyExcludeByNumbers();
+                          }
+                        }}
+                        placeholder="مثال: 3 یا 2, 4 یا 5-8"
+                        className="flex-1 bg-slate-800 border border-slate-700 rounded-xl px-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-rose-500"
+                      />
+                      <button
+                        type="button"
+                        onClick={handleApplyExcludeByNumbers}
+                        className="px-3.5 py-1.5 rounded-xl text-xs font-bold bg-rose-600 hover:bg-rose-500 text-white transition flex items-center gap-1 shrink-0 shadow-sm"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>حذف از PDF</span>
+                      </button>
+                    </div>
+                    <p className="text-[10px] text-slate-400">
+                      می‌توانید یک شماره تک (مانند ۳)، چند شماره با ویرگول (۲, ۴, ۶) یا یک بازه (۴-۷) را وارد کنید.
+                    </p>
+
+                    {pageExcludeFeedback && (
+                      <div className="mt-2 text-xs font-bold text-amber-300 bg-amber-500/10 border border-amber-500/30 px-3 py-1.5 rounded-lg flex items-center gap-1.5 animate-in fade-in">
+                        <span>ℹ️</span>
+                        <span>{pageExcludeFeedback}</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Bulk Action Buttons */}
+                  <div className="flex flex-wrap items-center gap-2 pt-1">
+                    <button
+                      type="button"
+                      onClick={handleIncludeAllPages}
+                      className="px-2.5 py-1.5 rounded-xl text-[11px] font-semibold bg-slate-800 hover:bg-slate-750 text-slate-200 border border-slate-700 transition flex items-center gap-1"
+                    >
+                      <CheckSquare className="w-3.5 h-3.5 text-emerald-400" />
+                      <span>انتخاب همه صفحات</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={handleExcludeEmptyPages}
+                      className="px-2.5 py-1.5 rounded-xl text-[11px] font-semibold bg-slate-800 hover:bg-slate-750 text-amber-300 border border-slate-700 transition flex items-center gap-1"
+                    >
+                      <Filter className="w-3.5 h-3.5 text-amber-400" />
+                      <span>حذف صفحات خالی و ترجمه‌نشده</span>
+                    </button>
+
+                    {excludedChunkIds.length > 0 && (
+                      <span className="text-[11px] text-rose-400 font-bold mr-auto">
+                        {excludedChunkIds.length} صفحه از خروجی نهایی حذف شده است
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Interactive Pages List */}
+                <div className="bg-slate-850 p-3 sm:p-4 rounded-2xl border border-slate-750 space-y-2 text-xs">
+                  <div className="text-slate-400 font-semibold mb-2 flex items-center justify-between">
+                    <span>فهرست تمام صفحات و بخش‌های کتاب:</span>
+                    <span className="text-[10px]">برای حذف یا اضافه کردن هر صفحه روی ردیف آن کلیک کنید</span>
+                  </div>
+
+                  <div className="space-y-1.5 max-h-[380px] overflow-y-auto pr-1">
+                    {(project.chunks || []).map((chunk, idx) => {
+                      const isExcluded = excludedChunkIds.includes(chunk.id);
+                      const hasTranslation = Boolean(chunk.translatedHtml && chunk.translatedHtml.trim().length > 0);
+
+                      return (
+                        <div
+                          key={chunk.id}
+                          onClick={() => handleToggleChunkExcluded(chunk.id)}
+                          className={`p-2.5 rounded-xl border transition cursor-pointer flex items-center justify-between gap-3 ${
+                            isExcluded
+                              ? 'bg-rose-950/20 border-rose-500/30 opacity-70 hover:opacity-100 hover:border-rose-500/60'
+                              : 'bg-slate-900 border-slate-750 hover:border-slate-600'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <input
+                              type="checkbox"
+                              checked={!isExcluded}
+                              onChange={() => handleToggleChunkExcluded(chunk.id)}
+                              onClick={e => e.stopPropagation()}
+                              className="w-4 h-4 rounded border-slate-700 bg-slate-800 text-indigo-600 focus:ring-0 shrink-0"
+                            />
+
+                            <span className="font-mono font-bold text-xs px-2 py-0.5 rounded bg-slate-800 text-slate-300 shrink-0">
+                              صفحه {chunk.chunkNumber || idx + 1}
+                            </span>
+
+                            <div className="min-w-0 truncate">
+                              <div className={`font-semibold truncate text-xs ${isExcluded ? 'line-through text-slate-500' : 'text-white'}`}>
+                                {cleanChapterTitle(chunk.chapterTitle)}
+                              </div>
+                              <div className="text-[10px] text-slate-400 truncate max-w-sm">
+                                {chunk.englishText.slice(0, 50)}...
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-2 shrink-0">
+                            <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${
+                              hasTranslation
+                                ? 'bg-emerald-500/10 text-emerald-300 border border-emerald-500/20'
+                                : 'bg-slate-800 text-slate-500 border border-slate-700'
+                            }`}>
+                              {hasTranslation ? `${chunk.wordCount || 0} کلمه` : 'خالی'}
+                            </span>
+
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleToggleChunkExcluded(chunk.id);
+                              }}
+                              className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition flex items-center gap-1 ${
+                                isExcluded
+                                  ? 'bg-rose-500/20 text-rose-300 border border-rose-500/40 hover:bg-rose-500/30'
+                                  : 'bg-slate-800 text-slate-300 hover:text-white border border-slate-700 hover:border-slate-600'
+                              }`}
+                            >
+                              {isExcluded ? (
+                                <>
+                                  <EyeOff className="w-3 h-3 text-rose-400" />
+                                  <span>حذف شده از PDF</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Check className="w-3 h-3 text-emerald-400" />
+                                  <span>چاپ در PDF</span>
+                                </>
+                              )}
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
               </div>
             )}
@@ -1325,21 +1649,27 @@ export const ExportDesignModal: React.FC<ExportDesignModalProps> = ({
 
               {/* Running Header */}
               {showHeader && headerText ? (
-                <div
-                  className="border-b pb-2 flex items-center justify-between text-[10px] opacity-85"
-                  style={{
-                    borderColor: customColors.borderColor || activeTheme.borderColor,
-                    color: customColors.headerColor || activeTheme.textColor,
-                  }}
-                >
-                  <span className="font-bold truncate max-w-[200px]">{headerText}</span>
-                  <span className="font-serif italic text-[9px] truncate max-w-[110px]" dir="ltr">
-                    {project.originalTitle || 'Chapter 1'}
-                  </span>
+                <div>
+                  <div
+                    className="border-b pb-2 flex items-center justify-between text-[10px] opacity-85"
+                    style={{
+                      borderColor: customColors.borderColor || activeTheme.borderColor,
+                      color: customColors.headerColor || activeTheme.textColor,
+                    }}
+                  >
+                    <span className="font-bold truncate max-w-[200px]">{headerText}</span>
+                    <span className="font-serif italic text-[9px] truncate max-w-[110px]" dir="ltr">
+                      {project.originalTitle || 'Chapter 1'}
+                    </span>
+                  </div>
+                  {/* Visual Top Margin Breathing Room */}
+                  <div style={{ height: topMargin === 'compact' ? '8px' : topMargin === 'generous' ? '20px' : topMargin === 'extra_generous' ? '30px' : '14px' }} />
                 </div>
               ) : (
-                <div className="text-[9px] text-slate-400/50 pb-1 italic border-b border-dashed border-slate-300/40">
-                  (بدون هدر در بالای صفحه)
+                <div style={{ height: topMargin === 'compact' ? '12px' : topMargin === 'generous' ? '28px' : topMargin === 'extra_generous' ? '38px' : '18px' }} className="flex items-center justify-center">
+                  <span className="text-[8.5px] text-slate-400/50 italic border-b border-dashed border-slate-300/40 pb-0.5">
+                    (حاشیه بالای صفحه: {topMargin === 'compact' ? 'فشرده' : topMargin === 'generous' ? 'باز' : topMargin === 'extra_generous' ? 'لوکس' : 'استاندارد کتابی'})
+                  </span>
                 </div>
               )}
 

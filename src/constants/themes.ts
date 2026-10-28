@@ -231,6 +231,8 @@ export const DEFAULT_DESIGN_CONFIG: BookDesignConfig = {
   backgroundPattern: 'none',
   watermarkText: '',
   pageMargin: 'normal',
+  topMargin: 'normal',
   trimSize: 'ruqai',
   continuousFlow: true,
+  excludedChunkIds: [],
 };

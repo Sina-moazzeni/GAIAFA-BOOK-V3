@@ -52,6 +52,27 @@ export const PrintDocument: React.FC<PrintDocumentProps> = ({ project }) => {
   const showRunningHeader = design.showHeader && Boolean(design.headerText?.trim());
   const showRunningFooter = design.showFooter && (Boolean(design.footerText?.trim()) || design.showPageNumbers);
 
+  // Top spacing calculations:
+  // When running header is enabled: breathing room between header rule and chapter text
+  // When running header is OFF: dedicated publishing top margin on every printed page (prevents text touching paper edge!)
+  const headerGap =
+    design.topMargin === 'compact'
+      ? '8mm'
+      : design.topMargin === 'generous'
+      ? '16mm'
+      : design.topMargin === 'extra_generous'
+      ? '22mm'
+      : '12mm';
+
+  const noHeaderTopSpacer =
+    design.topMargin === 'compact'
+      ? '16mm'
+      : design.topMargin === 'generous'
+      ? '30mm'
+      : design.topMargin === 'extra_generous'
+      ? '40mm'
+      : '22mm';
+
   const marginPadding =
     design.pageMargin === 'compact'
       ? 'px-8 sm:px-10'
@@ -111,17 +132,18 @@ export const PrintDocument: React.FC<PrintDocumentProps> = ({ project }) => {
         </div>
       )}
 
-      {/* Running Header & Footer are managed via CSS print table structure so they never overlap content */}
+      {/* Running Header & Footer are managed via CSS print table structure so they repeat gracefully and never overlap content */}
       <table className="w-full border-collapse print-doc-table">
-        {showRunningHeader && (
-          <thead className="print-table-header">
+        <thead className="print-table-header">
+          {showRunningHeader ? (
             <tr>
-              <th className="font-normal text-right p-0 border-b" style={{ borderColor }}>
+              <th className="font-normal text-right p-0 border-0">
                 <div
-                  className="h-12 px-8 flex items-center justify-between text-[9pt]"
+                  className="h-12 px-8 flex items-center justify-between text-[9pt] border-b"
                   style={{
                     backgroundColor: pageBgColor,
                     color: headerColor,
+                    borderColor,
                   }}
                 >
                   <div className="flex items-center gap-2">
@@ -136,20 +158,32 @@ export const PrintDocument: React.FC<PrintDocumentProps> = ({ project }) => {
                     {project.title}
                   </span>
                 </div>
+                {/* Generous breathing space between running header and book text */}
+                <div style={{ height: headerGap }} />
               </th>
             </tr>
-          </thead>
-        )}
-
-        {showRunningFooter && (
-          <tfoot className="print-table-footer">
+          ) : (
+            /* When no running header is active, enforce standard publishing top margin on EVERY printed page! */
             <tr>
-              <td className="p-0 border-t" style={{ borderColor }}>
+              <th className="font-normal text-right p-0 border-0">
+                <div style={{ height: noHeaderTopSpacer }} />
+              </th>
+            </tr>
+          )}
+        </thead>
+
+        <tfoot className="print-table-footer">
+          {showRunningFooter ? (
+            <tr>
+              <td className="p-0 border-0">
+                {/* Breathing space between book text and footer */}
+                <div style={{ height: '8mm' }} />
                 <div
-                  className="h-12 px-8 flex items-center justify-between text-[9pt]"
+                  className="h-12 px-8 flex items-center justify-between text-[9pt] border-t"
                   style={{
                     backgroundColor: pageBgColor,
                     color: footerColor,
+                    borderColor,
                   }}
                 >
                   <div className="flex items-center gap-2">
@@ -166,12 +200,19 @@ export const PrintDocument: React.FC<PrintDocumentProps> = ({ project }) => {
                 </div>
               </td>
             </tr>
-          </tfoot>
-        )}
+          ) : (
+            /* Bottom breathing margin on every printed page */
+            <tr>
+              <td className="p-0 border-0">
+                <div style={{ height: '16mm' }} />
+              </td>
+            </tr>
+          )}
+        </tfoot>
 
         <tbody className="print-table-body">
           <tr>
-            <td className={`p-0 ${marginPadding} py-6`}>
+            <td className={`p-0 ${marginPadding} py-2`}>
               {/* Cover Page */}
         {design.showCoverPage && (
           <div className="book-chapter-break min-h-[85vh] flex flex-col items-center justify-center text-center py-20 my-auto">
@@ -239,7 +280,7 @@ export const PrintDocument: React.FC<PrintDocumentProps> = ({ project }) => {
 
         {/* Chapters Content */}
         <div className="space-y-12">
-          {groupChunksIntoChapters(project.chunks).map((chapter, idx, allChapters) => (
+          {groupChunksIntoChapters(project.chunks, design.excludedChunkIds).map((chapter, idx, allChapters) => (
             <div
               key={chapter.chapterKey}
               className={`book-chapter-break ${design.continuousFlow === false ? 'force-page-break' : ''} pt-6 ${

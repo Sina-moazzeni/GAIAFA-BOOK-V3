@@ -251,7 +251,7 @@
     width: 100% !important;
     min-height: 100vh !important;
     background-color: var(--print-page-bg, #faf8f5) !important;
-    padding: 14mm 16mm 14mm 16mm !important;
+    padding: 0 !important;
     box-sizing: border-box !important;
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;

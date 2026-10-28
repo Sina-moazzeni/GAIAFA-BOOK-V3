@@ -44,6 +44,7 @@ import { SAMPLE_BOOKS, SampleBook } from './utils/sampleBooks.ts';
 import { chunkBookText } from './utils/chunker.ts';
 import { DEFAULT_GLOSSARIES } from './constants/tones.ts';
 import { DEFAULT_PROVIDERS } from './constants/providers.ts';
+import { DEFAULT_DESIGN_CONFIG } from './constants/themes.ts';
 import { resolveApiUrl } from './utils/aiClient.ts';
 
 const STORAGE_KEY_AUTH_TOKEN = 'auth_token';
@@ -517,6 +518,28 @@ export default function App() {
     }
   };
 
+  // Toggle chunk exclusion from book export, print preview & PDF
+  const handleToggleExcludeChunk = (chunkId: string) => {
+    const updatedChunks = project.chunks.map((c) =>
+      c.id === chunkId ? { ...c, isExcludedFromBook: !c.isExcludedFromBook } : c
+    );
+    const targetChunk = updatedChunks.find(c => c.id === chunkId);
+    const isNowExcluded = targetChunk?.isExcludedFromBook;
+    const currentExcluded = project.designConfig?.excludedChunkIds || [];
+    const newExcluded = isNowExcluded
+      ? Array.from(new Set([...currentExcluded, chunkId]))
+      : currentExcluded.filter(id => id !== chunkId);
+
+    handleUpdateProject({
+      ...project,
+      chunks: updatedChunks,
+      designConfig: {
+        ...(project.designConfig || DEFAULT_DESIGN_CONFIG),
+        excludedChunkIds: newExcluded,
+      },
+    });
+  };
+
   // Exports (dynamically imported on user action to preserve instant initial page speed)
   const handleExportDocx = async (targetBook: BookProject) => {
     const { downloadDocx } = await import('./utils/exporter.ts');
@@ -951,6 +974,7 @@ export default function App() {
               onTranslateChunk={translateSingleChunk}
               isBatchTranslating={isBatchTranslating}
               onDeleteChunk={handleDeleteChunk}
+              onToggleExcludeChunk={handleToggleExcludeChunk}
             />
           </div>
 
@@ -965,6 +989,7 @@ export default function App() {
                 handleUpdateProject({ ...project, chunks: updated });
               }}
               onDeleteChunk={handleDeleteChunk}
+              onToggleExcludeChunk={handleToggleExcludeChunk}
               onTranslateCurrentChunk={() => currentChunk && translateSingleChunk(currentChunk.id)}
               onStartBatchTranslate={handleBatchTranslate}
               onStopBatchTranslate={handleStopBatchTranslate}

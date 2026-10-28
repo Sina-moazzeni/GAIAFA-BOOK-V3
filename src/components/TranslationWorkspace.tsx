@@ -33,6 +33,7 @@ import {
   Moon,
   Type,
   Replace,
+  EyeOff,
   ChevronDown
 } from 'lucide-react';
 import { BookChunk, BookProject, APIServerEndpoint } from '../types.ts';
@@ -45,6 +46,7 @@ interface TranslationWorkspaceProps {
   onUpdateChunkEnglish?: (chunkId: string, newEnglish: string) => void;
   onUpdateChunkTitle?: (chunkId: string, newTitle: string) => void;
   onDeleteChunk?: (chunkId: string) => void;
+  onToggleExcludeChunk?: (chunkId: string) => void;
   onTranslateCurrentChunk: () => void;
   onStartBatchTranslate: () => void;
   onStopBatchTranslate: () => void;
@@ -73,6 +75,7 @@ export const TranslationWorkspace: React.FC<TranslationWorkspaceProps> = ({
   onUpdateChunkEnglish,
   onUpdateChunkTitle,
   onDeleteChunk,
+  onToggleExcludeChunk,
   onTranslateCurrentChunk,
   onStartBatchTranslate,
   onStopBatchTranslate,
@@ -372,6 +375,35 @@ export const TranslationWorkspace: React.FC<TranslationWorkspaceProps> = ({
                 دوطرفه
               </button>
             </div>
+          )}
+
+          {/* Exclude / Include from Book Toggle */}
+          {!fullBookMode && currentChunk && onToggleExcludeChunk && (
+            <button
+              onClick={() => onToggleExcludeChunk(currentChunk.id)}
+              className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold transition flex items-center gap-1.5 shadow-sm border shrink-0 ${
+                currentChunk.isExcludedFromBook
+                  ? 'bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border-rose-500/40'
+                  : 'bg-slate-800 hover:bg-slate-750 text-slate-300 hover:text-white border-slate-700'
+              }`}
+              title={
+                currentChunk.isExcludedFromBook
+                  ? 'این صفحه در حال حاضر از کتاب و PDF حذف شده است. برای افزودن مجدد کلیک کنید.'
+                  : 'عدم درج این چانک در خروجی کتاب و PDF (حذف از کتاب بدون پاک شدن متن)'
+              }
+            >
+              {currentChunk.isExcludedFromBook ? (
+                <>
+                  <EyeOff className="w-3.5 h-3.5 text-rose-400" />
+                  <span className="hidden sm:inline">حذف‌شده از کتاب</span>
+                </>
+              ) : (
+                <>
+                  <Eye className="w-3.5 h-3.5 text-emerald-400" />
+                  <span className="hidden sm:inline">شامل در کتاب</span>
+                </>
+              )}
+            </button>
           )}
 
           {/* Delete Page Button */}
@@ -745,9 +777,28 @@ export const TranslationWorkspace: React.FC<TranslationWorkspaceProps> = ({
                     </div>
                   </div>
                 ) : currentChunk?.translatedHtml ? (
-                  
-                  /* MODE 1: Preview Mode */
-                  viewMode === 'preview' ? (
+                  <>
+                    {/* Excluded From Book Notice Banner */}
+                    {currentChunk?.isExcludedFromBook && (
+                      <div className="max-w-2xl mx-auto w-full bg-rose-950/40 border border-rose-500/40 text-rose-300 p-2.5 rounded-xl text-xs flex items-center justify-between gap-2 mb-3 shadow-md animate-in fade-in">
+                        <div className="flex items-center gap-2">
+                          <EyeOff className="w-4 h-4 text-rose-400 shrink-0" />
+                          <span>این بخش از خروجی نهایی کتاب و فایل PDF حذف شده است و چاپ نخواهد شد.</span>
+                        </div>
+                        {onToggleExcludeChunk && (
+                          <button
+                            type="button"
+                            onClick={() => onToggleExcludeChunk(currentChunk.id)}
+                            className="px-2.5 py-1 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-bold text-[11px] transition shrink-0"
+                          >
+                            افزودن مجدد به کتاب
+                          </button>
+                        )}
+                      </div>
+                    )}
+
+                    {/* MODE 1: Preview Mode */}
+                    {viewMode === 'preview' ? (
                     <div className="space-y-3 max-w-2xl mx-auto w-full">
                       {/* Floating fast edit helper button */}
                       <div className="flex items-center justify-between text-xs px-1">
@@ -1061,8 +1112,9 @@ export const TranslationWorkspace: React.FC<TranslationWorkspaceProps> = ({
                         dir="ltr"
                       />
                     </div>
-                  )
-                ) : (
+                  )}
+                </>
+              ) : (
                   /* Empty state for this chunk */
                   <div className="h-full flex flex-col items-center justify-center text-center p-8 text-slate-500 my-auto">
                     <Sparkles className="w-10 h-10 text-slate-600 mb-3" />

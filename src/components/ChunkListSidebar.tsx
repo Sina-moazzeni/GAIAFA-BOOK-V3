@@ -11,7 +11,9 @@ import {
   Layers,
   Image as ImageIcon,
   Trash2,
-  Edit2
+  Edit2,
+  Eye,
+  EyeOff
 } from 'lucide-react';
 import { BookChunk } from '../types.ts';
 import { cleanChapterTitle } from '../utils/exporter.ts';
@@ -23,6 +25,7 @@ interface ChunkListSidebarProps {
   onTranslateChunk: (id: string) => void;
   isBatchTranslating: boolean;
   onDeleteChunk?: (id: string) => void;
+  onToggleExcludeChunk?: (id: string) => void;
 }
 
 export const ChunkListSidebar: React.FC<ChunkListSidebarProps> = ({
@@ -32,6 +35,7 @@ export const ChunkListSidebar: React.FC<ChunkListSidebarProps> = ({
   onTranslateChunk,
   isBatchTranslating,
   onDeleteChunk,
+  onToggleExcludeChunk,
 }) => {
   const [filter, setFilter] = useState<'all' | 'completed' | 'pending'>('all');
   const [search, setSearch] = useState('');
@@ -137,27 +141,36 @@ export const ChunkListSidebar: React.FC<ChunkListSidebarProps> = ({
                   </div>
 
                   {/* Status Indicator */}
-                  {isTranslating ? (
-                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-blue-500/10 text-blue-400 border border-blue-500/20 shrink-0">
-                      <RotateCw className="w-2.5 h-2.5 animate-spin" />
-                      <span>درحال ترجمه</span>
-                    </span>
-                  ) : hasError ? (
-                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-red-500/10 text-red-400 border border-red-500/20 shrink-0">
-                      <AlertCircle className="w-2.5 h-2.5" />
-                      <span>خطا</span>
-                    </span>
-                  ) : isCompleted ? (
-                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 shrink-0">
-                      <CheckCircle2 className="w-2.5 h-2.5" />
-                      <span>تکمیل شد</span>
-                    </span>
-                  ) : (
-                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-slate-800 text-slate-400 border border-slate-700 shrink-0">
-                      <Clock className="w-2.5 h-2.5" />
-                      <span>در صف</span>
-                    </span>
-                  )}
+                  <div className="flex items-center gap-1">
+                    {chunk.isExcludedFromBook && (
+                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold bg-rose-500/20 text-rose-300 border border-rose-500/30 shrink-0" title="این بخش از خروجی نهایی کتاب و PDF حذف شده است">
+                        <EyeOff className="w-2.5 h-2.5" />
+                        <span>حذف از کتاب</span>
+                      </span>
+                    )}
+
+                    {isTranslating ? (
+                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-blue-500/10 text-blue-400 border border-blue-500/20 shrink-0">
+                        <RotateCw className="w-2.5 h-2.5 animate-spin" />
+                        <span>درحال ترجمه</span>
+                      </span>
+                    ) : hasError ? (
+                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-red-500/10 text-red-400 border border-red-500/20 shrink-0">
+                        <AlertCircle className="w-2.5 h-2.5" />
+                        <span>خطا</span>
+                      </span>
+                    ) : isCompleted ? (
+                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 shrink-0">
+                        <CheckCircle2 className="w-2.5 h-2.5" />
+                        <span>تکمیل شد</span>
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-slate-800 text-slate-400 border border-slate-700 shrink-0">
+                        <Clock className="w-2.5 h-2.5" />
+                        <span>در صف</span>
+                      </span>
+                    )}
+                  </div>
                 </div>
 
                 {/* Subtitle & Words & Images */}
@@ -193,6 +206,18 @@ export const ChunkListSidebar: React.FC<ChunkListSidebarProps> = ({
                         title="حذف آنلاین این صفحه"
                       >
                         <Trash2 className="w-3 h-3" />
+                      </button>
+                    )}
+                    {onToggleExcludeChunk && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onToggleExcludeChunk(chunk.id);
+                        }}
+                        className={`p-1 rounded transition ${chunk.isExcludedFromBook ? 'text-rose-400 bg-rose-500/20 hover:bg-rose-500/30' : 'text-slate-500 hover:text-amber-300 hover:bg-slate-800'}`}
+                        title={chunk.isExcludedFromBook ? 'این صفحه از کتاب و PDF حذف شده است (کلیک برای بازگرداندن)' : 'حذف این صفحه از خروجی کتاب و PDF'}
+                      >
+                        {chunk.isExcludedFromBook ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
                       </button>
                     )}
                     <span className="text-[10px] text-slate-500 truncate max-w-[120px]">
