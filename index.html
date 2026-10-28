@@ -50,10 +50,9 @@
     }
     </script>
 
-    <!-- Vazirmatn Persian Font -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <!-- Local Vazirmatn Persian Font (Fast Zero-Latency Render) -->
+    <link rel="preload" href="/fonts/Vazirmatn-Regular.ttf" as="font" type="font/ttf" crossorigin="anonymous">
+    <link rel="preload" href="/fonts/Vazirmatn-Bold.ttf" as="font" type="font/ttf" crossorigin="anonymous">
   </head>
   <body class="bg-slate-900 text-slate-100 antialiased font-['Vazirmatn',sans-serif]">
     <div id="root"></div>

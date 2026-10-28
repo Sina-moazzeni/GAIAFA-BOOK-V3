@@ -3,26 +3,29 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, Suspense } from 'react';
 import { LandingPage } from './components/LandingPage.tsx';
 import { AuthModal } from './components/AuthModal.tsx';
-import { DedicatedAuthPage } from './components/DedicatedAuthPage.tsx';
-import { UserDashboard } from './components/UserDashboard.tsx';
-import { AdminPanel } from './components/AdminPanel.tsx';
-import { WalletModal } from './components/WalletModal.tsx';
 import { Navbar } from './components/Navbar.tsx';
 import { ProjectHeader } from './components/ProjectHeader.tsx';
 import { ChunkListSidebar } from './components/ChunkListSidebar.tsx';
-import { TranslationWorkspace } from './components/TranslationWorkspace.tsx';
-import { GlossaryModal } from './components/GlossaryModal.tsx';
-import { ServerStatusModal } from './components/ServerStatusModal.tsx';
-import { NewBookModal } from './components/NewBookModal.tsx';
-import { TokenEstimatorModal } from './components/TokenEstimatorModal.tsx';
-import { ProviderManagerModal } from './components/ProviderManagerModal.tsx';
-import { BooksLibraryModal } from './components/BooksLibraryModal.tsx';
-import { ExportDesignModal } from './components/ExportDesignModal.tsx';
-import { PrintDocument } from './components/PrintDocument.tsx';
-import { CustomPageView } from './components/CustomPageView.tsx';
+
+// Code-split heavy views and modals for sub-second FCP and minimal bundle size
+const DedicatedAuthPage = React.lazy(() => import('./components/DedicatedAuthPage.tsx').then(m => ({ default: m.DedicatedAuthPage })));
+const CustomPageView = React.lazy(() => import('./components/CustomPageView.tsx').then(m => ({ default: m.CustomPageView })));
+const AdminPanel = React.lazy(() => import('./components/AdminPanel.tsx').then(m => ({ default: m.AdminPanel })));
+const UserDashboard = React.lazy(() => import('./components/UserDashboard.tsx').then(m => ({ default: m.UserDashboard })));
+const TranslationWorkspace = React.lazy(() => import('./components/TranslationWorkspace.tsx').then(m => ({ default: m.TranslationWorkspace })));
+const WalletModal = React.lazy(() => import('./components/WalletModal.tsx').then(m => ({ default: m.WalletModal })));
+const NewBookModal = React.lazy(() => import('./components/NewBookModal.tsx').then(m => ({ default: m.NewBookModal })));
+const GlossaryModal = React.lazy(() => import('./components/GlossaryModal.tsx').then(m => ({ default: m.GlossaryModal })));
+const ServerStatusModal = React.lazy(() => import('./components/ServerStatusModal.tsx').then(m => ({ default: m.ServerStatusModal })));
+const ProviderManagerModal = React.lazy(() => import('./components/ProviderManagerModal.tsx').then(m => ({ default: m.ProviderManagerModal })));
+const BooksLibraryModal = React.lazy(() => import('./components/BooksLibraryModal.tsx').then(m => ({ default: m.BooksLibraryModal })));
+const ExportDesignModal = React.lazy(() => import('./components/ExportDesignModal.tsx').then(m => ({ default: m.ExportDesignModal })));
+const TokenEstimatorModal = React.lazy(() => import('./components/TokenEstimatorModal.tsx').then(m => ({ default: m.TokenEstimatorModal })));
+const PrintDocument = React.lazy(() => import('./components/PrintDocument.tsx').then(m => ({ default: m.PrintDocument })));
+
 import {
   BookProject,
   BookChunk,
@@ -40,7 +43,6 @@ import { SAMPLE_BOOKS, SampleBook } from './utils/sampleBooks.ts';
 import { chunkBookText } from './utils/chunker.ts';
 import { DEFAULT_GLOSSARIES } from './constants/tones.ts';
 import { DEFAULT_PROVIDERS } from './constants/providers.ts';
-import { downloadDocx, downloadStyledHtml, downloadPlainText } from './utils/exporter.ts';
 import { resolveApiUrl } from './utils/aiClient.ts';
 
 const STORAGE_KEY_AUTH_TOKEN = 'auth_token';
@@ -513,8 +515,9 @@ export default function App() {
     }
   };
 
-  // Exports
+  // Exports (dynamically imported on user action to preserve instant initial page speed)
   const handleExportDocx = async (targetBook: BookProject) => {
+    const { downloadDocx } = await import('./utils/exporter.ts');
     await downloadDocx(targetBook);
   };
 
@@ -523,7 +526,8 @@ export default function App() {
     setIsDesignModalOpen(true);
   };
 
-  const handleExportEpub = (targetBook: BookProject) => {
+  const handleExportEpub = async (targetBook: BookProject) => {
+    const { downloadStyledHtml } = await import('./utils/exporter.ts');
     downloadStyledHtml(targetBook);
   };
 
@@ -666,13 +670,20 @@ export default function App() {
     handleCreateBook(newProject, false);
   };
 
+  const viewFallback = (
+    <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center gap-3 text-slate-400">
+      <div className="w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
+      <span className="text-xs font-medium text-slate-400">در حال بارگذاری...</span>
+    </div>
+  );
+
   // ========================================================
   // CUSTOM PAGE VIEW (e.g. /page/about-us or /page/guide)
   // Accessible to both guests and logged-in users
   // ========================================================
   if (activeCustomPageSlug) {
     return (
-      <>
+      <Suspense fallback={viewFallback}>
         <CustomPageView
           slug={activeCustomPageSlug}
           headerFooter={headerFooter}
@@ -693,7 +704,7 @@ export default function App() {
           onClose={() => setIsAuthModalOpen(false)}
           onAuthSuccess={handleAuthSuccess}
         />
-      </>
+      </Suspense>
     );
   }
 
@@ -703,18 +714,20 @@ export default function App() {
   if (!currentUser) {
     if (activeAuthPage) {
       return (
-        <DedicatedAuthPage
-          onAuthSuccess={(user, token) => {
-            handleAuthSuccess(user, token);
-            setActiveAuthPage(false);
-            window.history.pushState({}, '', '/');
-          }}
-          onBackToHome={() => {
-            setActiveAuthPage(false);
-            window.history.pushState({}, '', '/');
-          }}
-          seoConfig={seoConfig}
-        />
+        <Suspense fallback={viewFallback}>
+          <DedicatedAuthPage
+            onAuthSuccess={(user, token) => {
+              handleAuthSuccess(user, token);
+              setActiveAuthPage(false);
+              window.history.pushState({}, '', '/');
+            }}
+            onBackToHome={() => {
+              setActiveAuthPage(false);
+              window.history.pushState({}, '', '/');
+            }}
+            seoConfig={seoConfig}
+          />
+        </Suspense>
       );
     }
 
@@ -748,11 +761,13 @@ export default function App() {
   // ========================================================
   if (currentView === 'admin' && (currentUser.role === 'admin' || currentUser.role === 'staff')) {
     return (
-      <AdminPanel
-        currentUser={currentUser}
-        onBackToUserPanel={() => setCurrentView('dashboard')}
-        onLogout={handleLogout}
-      />
+      <Suspense fallback={viewFallback}>
+        <AdminPanel
+          currentUser={currentUser}
+          onBackToUserPanel={() => setCurrentView('dashboard')}
+          onLogout={handleLogout}
+        />
+      </Suspense>
     );
   }
 
@@ -769,7 +784,7 @@ export default function App() {
   // ========================================================
   if (currentView === 'dashboard') {
     return (
-      <>
+      <Suspense fallback={viewFallback}>
         {paymentNotice && (
           <div className="bg-slate-900 border-b border-slate-800 px-4 py-3 sticky top-0 z-40">
             <div className={`max-w-5xl mx-auto p-3.5 rounded-2xl flex items-center justify-between text-xs font-semibold ${
@@ -846,7 +861,7 @@ export default function App() {
           onUpdateDesign={(config) => handleUpdateProject({ ...project, designConfig: config })}
           onPrintPdf={() => window.print()}
         />
-      </>
+      </Suspense>
     );
   }
 
@@ -862,9 +877,10 @@ export default function App() {
   );
 
   return (
-    <div className="min-h-screen bg-slate-900 text-slate-100 flex flex-col font-['Vazirmatn'] selection:bg-amber-500/30">
-      {/* Printable Document for high-res PDF generation */}
-      <PrintDocument project={project} />
+    <Suspense fallback={viewFallback}>
+      <div className="min-h-screen bg-slate-900 text-slate-100 flex flex-col font-['Vazirmatn'] selection:bg-amber-500/30">
+        {/* Printable Document for high-res PDF generation */}
+        <PrintDocument project={project} />
 
       {/* Main Studio Interactive UI */}
       <div className="no-print flex flex-col min-h-screen">
@@ -1050,5 +1066,6 @@ export default function App() {
         onOpenNewBookModal={() => setIsNewBookModalOpen(true)}
       />
     </div>
+    </Suspense>
   );
 }

@@ -1,4 +1,5 @@
 import express from 'express';
+import compression from 'compression';
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -77,6 +78,9 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const PORT = process.env.PORT || 3000;
 const isProduction = process.env.NODE_ENV === 'production';
+
+// Enable Gzip/Brotli compression for all HTTP responses (reduces asset payload by up to 85%)
+app.use(compression());
 
 // Enable CORS so client browsers connecting from any IP or origin can access /api/*
 app.use((req, res, next) => {
@@ -2133,8 +2137,20 @@ async function startServer() {
       __dirname,
     ].find(p => fs.existsSync(path.resolve(p, 'index.html'))) || path.resolve(__dirname, 'dist');
 
-    app.use(express.static(distPath));
+    // High performance caching for static production assets
+    app.use(express.static(distPath, {
+      maxAge: '1y',
+      immutable: true,
+      setHeaders: (res, filePath) => {
+        if (filePath.endsWith('.html')) {
+          res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+        } else if (filePath.match(/\.(woff2?|ttf|eot|otf|svg|png|jpg|jpeg|webp)$/i)) {
+          res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+        }
+      }
+    }));
     app.get('*', (req, res) => {
+      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
       res.sendFile(path.resolve(distPath, 'index.html'));
     });
   }

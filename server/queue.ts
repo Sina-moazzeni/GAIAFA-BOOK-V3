@@ -261,25 +261,35 @@ export class QueueManager {
    * Triggered when token exhaustion, 429 quota, or rate-limiting occurs
    */
   private switchUserToBackupKey(userId: string, currentKeyId: string): ApiKeyConfig | null {
-    const partition = this.getPoolPartition();
+    const allActive = db.getApiKeys().filter(k => k.isActive && k.id !== currentKeyId);
     const now = Date.now();
+    const currentKey = db.getApiKeys().find(k => k.id === currentKeyId);
 
-    // 1. Try healthy backup keys (the 30% reserve pool) first
-    const healthyBackupKeys = partition.reserveKeys.filter(k => k.id !== currentKeyId && k.cooldownUntil <= now);
-    if (healthyBackupKeys.length > 0) {
-      const backupKey = healthyBackupKeys[0];
-      userKeyAssignments.set(userId, backupKey.id);
-      activeFailoverReserveKeys.add(backupKey.id);
-      console.log(`[QueueWorker] 70/30 Guard: Activated 30% Standby Key for user ${userId}: ${backupKey.name} (Failover protection)`);
-      return backupKey;
+    // 1. Prioritize switching to another healthy key with the EXACT SAME MODEL
+    // (e.g. if keys are on gemini-3.5-flash-lite, automatically rotate to the next key without altering the model)
+    const sameModelKeys = allActive.filter(k => k.cooldownUntil <= now && (!currentKey || k.model === currentKey.model));
+    if (sameModelKeys.length > 0) {
+      const nextKey = sameModelKeys[0];
+      userKeyAssignments.set(userId, nextKey.id);
+      console.log(`[QueueWorker] Seamless Key Failover: Switched user ${userId} to next key "${nextKey.name}" keeping SAME model (${nextKey.model})`);
+      return nextKey;
     }
 
-    // 2. Fallback to any healthy active key
-    const allOtherKeys = db.getApiKeys().filter(k => k.isActive && k.id !== currentKeyId && k.cooldownUntil <= now);
-    if (allOtherKeys.length > 0) {
-      const nextKey = allOtherKeys[0];
+    // 2. Fallback: If all keys of the current model are exhausted, switch to the next available healthy key (using that key's assigned model)
+    const otherHealthyKeys = allActive.filter(k => k.cooldownUntil <= now);
+    if (otherHealthyKeys.length > 0) {
+      const nextKey = otherHealthyKeys[0];
       userKeyAssignments.set(userId, nextKey.id);
-      console.log(`[QueueWorker] Switched user ${userId} to alternate active key: ${nextKey.name}`);
+      activeFailoverReserveKeys.add(nextKey.id);
+      console.log(`[QueueWorker] Model Pool Exhaustion: Switched user ${userId} to next available key "${nextKey.name}" with its model (${nextKey.model})`);
+      return nextKey;
+    }
+
+    // 3. Fallback: Key with earliest cooldown expiration
+    if (allActive.length > 0) {
+      const sorted = [...allActive].sort((a, b) => a.cooldownUntil - b.cooldownUntil);
+      const nextKey = sorted[0];
+      userKeyAssignments.set(userId, nextKey.id);
       return nextKey;
     }
 

@@ -1,15 +1,7 @@
-import {
-  Document,
-  Paragraph,
-  TextRun,
-  HeadingLevel,
-  AlignmentType,
-  Packer,
-  ImageRun,
-  BorderStyle,
-  Header,
-  Footer,
-  PageNumber,
+import type {
+  Document as DocumentType,
+  Paragraph as ParagraphType,
+  TextRun as TextRunType,
 } from 'docx';
 import { BookProject, BookChunk, BookDesignConfig } from '../types.ts';
 import { BOOK_THEMES, DEFAULT_DESIGN_CONFIG } from '../constants/themes.ts';
@@ -333,9 +325,10 @@ function base64ToUint8Array(base64: string): Uint8Array {
 /**
  * Parse HTML content into styled TextRun objects preserving color highlights and weights.
  */
-export function parseHtmlToTextRuns(html: string, fontName: string = 'Vazirmatn'): TextRun[] {
-  const runs: TextRun[] = [];
+export function parseHtmlToTextRuns(html: string, fontName: string = 'Vazirmatn', TextRunClass?: any): any[] {
+  const runs: any[] = [];
   const fontDef = createFontDef(fontName);
+  const makeRun = (opts: any) => TextRunClass ? new TextRunClass(opts) : opts;
 
   const regex = /<span style="[^"]*#9b2c2c[^"]*"[^>]*>([\s\S]*?)<\/span>|<b[^>]*>([\s\S]*?)<\/b>|<strong[^>]*>([\s\S]*?)<\/strong>|<i[^>]*>([\s\S]*?)<\/i>|<em[^>]*>([\s\S]*?)<\/em>|([^<]+)/gi;
   let match;
@@ -343,7 +336,7 @@ export function parseHtmlToTextRuns(html: string, fontName: string = 'Vazirmatn'
     if (match[1]) {
       // Highlighted glossary term (Bold Crimson)
       runs.push(
-        new TextRun({
+        makeRun({
           text: match[1].replace(/<[^>]+>/g, ''),
           font: fontDef,
           size: 24, // 12pt
@@ -355,7 +348,7 @@ export function parseHtmlToTextRuns(html: string, fontName: string = 'Vazirmatn'
     } else if (match[2] || match[3]) {
       // Bold text
       runs.push(
-        new TextRun({
+        makeRun({
           text: (match[2] || match[3]).replace(/<[^>]+>/g, ''),
           font: fontDef,
           size: 24,
@@ -367,7 +360,7 @@ export function parseHtmlToTextRuns(html: string, fontName: string = 'Vazirmatn'
     } else if (match[4] || match[5]) {
       // Italic text
       runs.push(
-        new TextRun({
+        makeRun({
           text: (match[4] || match[5]).replace(/<[^>]+>/g, ''),
           font: fontDef,
           size: 24,
@@ -378,7 +371,7 @@ export function parseHtmlToTextRuns(html: string, fontName: string = 'Vazirmatn'
       );
     } else if (match[6] && match[6].length > 0) {
       runs.push(
-        new TextRun({
+        makeRun({
           text: match[6],
           font: fontDef,
           size: 24,
@@ -391,7 +384,7 @@ export function parseHtmlToTextRuns(html: string, fontName: string = 'Vazirmatn'
 
   if (runs.length === 0) {
     runs.push(
-      new TextRun({
+      makeRun({
         text: html.replace(/<[^>]+>/g, '').trim(),
         font: fontDef,
         size: 24,
@@ -407,7 +400,21 @@ export function parseHtmlToTextRuns(html: string, fontName: string = 'Vazirmatn'
 /**
  * Builds a complete Word (.docx) document object with Persian typography and RTL formatting.
  */
-export function buildClientDocxDocument(project: BookProject): Document {
+export async function buildClientDocxDocument(project: BookProject): Promise<DocumentType> {
+  const docx = await import('docx');
+  const {
+    Document,
+    Paragraph,
+    TextRun,
+    HeadingLevel,
+    AlignmentType,
+    ImageRun,
+    BorderStyle,
+    Header,
+    Footer,
+    PageNumber,
+  } = docx;
+
   const design: BookDesignConfig = {
     ...DEFAULT_DESIGN_CONFIG,
     ...(project.designConfig || {}),
@@ -444,7 +451,7 @@ export function buildClientDocxDocument(project: BookProject): Document {
   const footerText = showFooter ? (design.footerText?.trim() || '') : '';
   const showPageNumbers = design.showPageNumbers !== false;
 
-  const docChildren: Paragraph[] = [];
+  const docChildren: ParagraphType[] = [];
 
   // Title Page
   docChildren.push(
@@ -680,7 +687,7 @@ export function buildClientDocxDocument(project: BookProject): Document {
                 color: h2Color || '3182CE',
                 rightToLeft: true,
               }),
-              ...parseHtmlToTextRuns(innerHtml, fontFamily),
+              ...parseHtmlToTextRuns(innerHtml, fontFamily, TextRun),
               new TextRun({
                 text: ' »',
                 font: fontDef,
@@ -698,7 +705,7 @@ export function buildClientDocxDocument(project: BookProject): Document {
             alignment: AlignmentType.BOTH, // Justified
             spacing: { line: pLineSpacing, before: pSpacingBefore, after: pSpacingAfter },
             bidirectional: true,
-            children: parseHtmlToTextRuns(innerHtml, fontFamily),
+            children: parseHtmlToTextRuns(innerHtml, fontFamily, TextRun),
           })
         );
       }
@@ -840,8 +847,9 @@ export async function downloadDocx(project: BookProject): Promise<boolean> {
 
   try {
     // 1. Direct browser compilation via docx library
-    const doc = buildClientDocxDocument(project);
-    const blob = await Packer.toBlob(doc);
+    const docx = await import('docx');
+    const doc = await buildClientDocxDocument(project);
+    const blob = await docx.Packer.toBlob(doc);
 
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
