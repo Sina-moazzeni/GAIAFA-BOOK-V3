@@ -69,6 +69,7 @@ export const ExportDesignModal: React.FC<ExportDesignModalProps> = ({
   const [brandName, setBrandName] = useState(initialConfig.brandName || '');
   const [showPageNumbers, setShowPageNumbers] = useState(initialConfig.showPageNumbers ?? true);
   const [showCoverPage, setShowCoverPage] = useState(initialConfig.showCoverPage ?? true);
+  const [continuousFlow, setContinuousFlow] = useState(initialConfig.continuousFlow ?? true);
   const [fontSize, setFontSize] = useState<'small' | 'medium' | 'large'>(initialConfig.fontSize || 'medium');
   const [lineSpacing, setLineSpacing] = useState<'compact' | 'normal' | 'relaxed'>(initialConfig.lineSpacing || 'normal');
   const [paragraphSpacing, setParagraphSpacing] = useState<'compact' | 'normal' | 'relaxed' | 'generous'>(
@@ -113,6 +114,7 @@ export const ExportDesignModal: React.FC<ExportDesignModalProps> = ({
     pageMargin,
     trimSize,
     customColors,
+    continuousFlow,
   };
 
   const handleApplyConfig = () => {
@@ -1044,6 +1046,16 @@ export const ExportDesignModal: React.FC<ExportDesignModalProps> = ({
                         className="w-4 h-4 rounded border-slate-700 bg-slate-900 text-indigo-600 focus:ring-0"
                       />
                       <span>صفحه عنوان و جلد در ابتدای کتاب</span>
+                    </label>
+
+                    <label className="flex items-center gap-2 cursor-pointer text-slate-300 col-span-1 sm:col-span-2">
+                      <input
+                        type="checkbox"
+                        checked={continuousFlow}
+                        onChange={e => setContinuousFlow(e.target.checked)}
+                        className="w-4 h-4 rounded border-slate-700 bg-slate-900 text-emerald-500 focus:ring-0"
+                      />
+                      <span className="font-semibold text-emerald-400">چیدمان پیوسته و زیر هم فصول (جلوگیری از صفحات خالی و فاصله گسترده)</span>
                     </label>
                   </div>
                 </div>

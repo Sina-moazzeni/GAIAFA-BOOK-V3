@@ -232,4 +232,5 @@ export const DEFAULT_DESIGN_CONFIG: BookDesignConfig = {
   watermarkText: '',
   pageMargin: 'normal',
   trimSize: 'ruqai',
+  continuousFlow: true,
 };

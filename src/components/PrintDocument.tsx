@@ -242,7 +242,7 @@ export const PrintDocument: React.FC<PrintDocumentProps> = ({ project }) => {
           {groupChunksIntoChapters(project.chunks).map((chapter, idx, allChapters) => (
             <div
               key={chapter.chapterKey}
-              className={`book-chapter-break pt-6 ${
+              className={`book-chapter-break ${design.continuousFlow === false ? 'force-page-break' : ''} pt-6 ${
                 design.borderStyle === 'ornate_spiritual'
                   ? 'p-6 rounded-2xl border-2 border-double my-6'
                   : design.borderStyle === 'double_classic'

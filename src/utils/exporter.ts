@@ -93,6 +93,7 @@ export function htmlToPlainText(html: string): string {
   let clean = html;
 
   // Preserve image slots
+  clean = clean.replace(/<figure[^>]*class="[^"]*book-illustration-figure[^"]*"[^>]*>([\s\S]*?)<\/figure>/gi, '\n[[تصویر کتاب]]\n');
   clean = clean.replace(/<div[^>]*class="[^"]*book-illustration-wrap[^"]*"[^>]*>([\s\S]*?)<\/div>/gi, '\n[[تصویر کتاب]]\n');
   clean = clean.replace(/<img[^>]*>/gi, '\n[[تصویر کتاب]]\n');
 
@@ -259,6 +260,10 @@ export function groupChunksIntoChapters(chunks: BookChunk[]): GroupedChapter[] {
   const validChunks = (chunks || []).filter(c => c && c.translatedHtml && c.translatedHtml.trim().length > 0);
   if (validChunks.length === 0) return [];
 
+  // Check if chunks are primarily page-based (imported from PDF pages like "صفحه 1", "صفحه 2")
+  const pageChunkCount = validChunks.filter(c => /^(صفحه|page)\s*\d+/i.test(c.chapterTitle?.trim() || '')).length;
+  const isPageBased = pageChunkCount >= Math.min(2, validChunks.length);
+
   const chapters: GroupedChapter[] = [];
   let currentChapter: GroupedChapter | null = null;
 
@@ -268,12 +273,19 @@ export function groupChunksIntoChapters(chunks: BookChunk[]): GroupedChapter[] {
     const sanitizedChunkHtml = sanitizeTranslatedHtml(chunk.translatedHtml || '');
     if (!sanitizedChunkHtml) continue;
 
-    const chapterKey = chunk.chapterNumber ? `ch_${chunk.chapterNumber}` : cleanedTitle;
+    const isThisChunkPage = /^(صفحه|page)\s*\d+/i.test(cleanedTitle);
+
+    // If PDF pages, keep continuous flow under unified book body so pages flow seamlessly underneath each other
+    const chapterKey = isPageBased
+      ? (isThisChunkPage ? 'continuous_book_stream' : cleanedTitle)
+      : (chunk.chapterNumber ? `ch_${chunk.chapterNumber}` : cleanedTitle);
+
+    const chapterTitle = (isPageBased && isThisChunkPage) ? '' : cleanedTitle;
 
     if (!currentChapter || currentChapter.chapterKey !== chapterKey) {
       currentChapter = {
         chapterKey,
-        title: cleanedTitle,
+        title: chapterTitle,
         htmlContent: sanitizedChunkHtml,
       };
       chapters.push(currentChapter);
@@ -524,7 +536,26 @@ export async function buildClientDocxDocument(project: BookProject): Promise<Doc
 
   groupedChapters.forEach((ch, chIdx) => {
     if (chIdx > 0) {
-      docChildren.push(new Paragraph({ pageBreakBefore: true }));
+      if (design.continuousFlow === false) {
+        docChildren.push(new Paragraph({ pageBreakBefore: true }));
+      } else {
+        // Continuous Flow: Elegant ornamental divider instead of blank page
+        docChildren.push(
+          new Paragraph({
+            alignment: AlignmentType.CENTER,
+            spacing: { before: 400, after: 240 },
+            bidirectional: true,
+            children: [
+              new TextRun({
+                text: '✤ ───── ❦ ───── ✤',
+                font: fontDef,
+                size: 20,
+                color: 'b45309',
+              }),
+            ],
+          })
+        );
+      }
     }
 
     const html = ch.htmlContent || '';
@@ -942,7 +973,8 @@ export function downloadWordHtml(project: BookProject) {
 
   const chaptersHtml = groupedChapters
     .map((ch, idx) => `
-      <div style="${idx > 0 ? 'page-break-before: always; ' : ''}margin-top: 30px;">
+      ${idx > 0 && design.continuousFlow !== false ? '<div style="text-align: center; margin: 36px 0; font-size: 14pt; color: #b45309;">✤ ───── ❦ ───── ✤</div>' : ''}
+      <div style="${idx > 0 && design.continuousFlow === false ? 'page-break-before: always; ' : ''}margin-top: 30px;">
         ${design.showHeader && design.headerText ? `
         <div style="border-bottom: 1px solid #cbd5e1; padding-bottom: 6px; margin-bottom: 24px; font-size: 9pt; color: ${headerColor}; display: flex; justify-content: space-between;">
           <span>${design.headerText}</span>

@@ -263,8 +263,18 @@
   }
 
   .book-chapter-break {
+    page-break-inside: auto;
+    break-inside: auto;
+  }
+
+  .book-chapter-break.force-page-break {
     page-break-before: always;
     break-before: page;
+  }
+
+  .book-illustration-figure, .book-embedded-image {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
   }
 
   table.print-doc-table {

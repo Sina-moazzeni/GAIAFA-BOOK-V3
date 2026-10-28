@@ -391,6 +391,7 @@ export interface BookDesignConfig {
   pageMargin?: 'compact' | 'normal' | 'generous';
   trimSize?: BookTrimSize;
   customColors?: CustomColorPalette;
+  continuousFlow?: boolean; // چیدمان پیوسته روان زیر هم و بدون صفحه خالی اجباری بین فصول
 }
 
 export interface BookProject {

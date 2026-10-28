@@ -37,8 +37,8 @@ function sanitizeTranslatedHtml(html: string): string {
     .replace(/<p[^>]*>\s*[\(\[\{]?\s*بخش\s*[0-9۰-۹IVXLCDMivxlcdm]+\s*[\)\]\}]?\s*<\/p>/gi, '')
     .trim();
 
-  // If text doesn't contain any <p>, <h1>, <h2> tags at all, wrap distinct blocks into <p>
-  if (!/<(p|h[1-3]|blockquote|div)[\s>]/i.test(clean)) {
+  // If text doesn't contain any <p>, <h1>, <h2>, <figure> tags at all, wrap distinct blocks into <p>
+  if (!/<(p|h[1-3]|blockquote|div|figure|img)[\s>]/i.test(clean)) {
     const rawParagraphs = clean
       .split(/\n\s*\n/)
       .map(p => p.trim())
@@ -1346,55 +1346,131 @@ app.post('/api/import/file', async (req, res) => {
     } else if (detectedType === 'pdf') {
       let pdfParsedSuccessfully = false;
 
-      // Extract embedded JPEG & PNG stream images from PDF binary
-      const extractedImages: string[] = [];
-      let offset = 0;
-      while (offset < buffer.length - 8) {
-        // Check JPEG
-        if (buffer[offset] === 0xFF && buffer[offset + 1] === 0xD8 && buffer[offset + 2] === 0xFF) {
-          let end = offset + 2;
-          while (end < buffer.length - 1) {
-            if (buffer[end] === 0xFF && buffer[end + 1] === 0xD9) {
-              const jpegBuf = buffer.subarray(offset, end + 2);
-              if (jpegBuf.length > 2500) { // Keep images > 2.5KB
-                extractedImages.push(`data:image/jpeg;base64,${jpegBuf.toString('base64')}`);
-              }
-              offset = end + 2;
-              break;
+      // Professional, uncropped PDF image extraction & page mapping
+      const latinText = buffer.toString('latin1');
+      const objMap = new Map<number, string>();
+      const allExtractedImages: string[] = [];
+      const pageImageMap = new Map<number, string[]>();
+
+      // 1. Extract intact Image XObjects using declared stream /Length
+      const objRegex = /(\d+)\s+0\s+obj\s*<<([\s\S]*?\/Subtype\s*\/Image[\s\S]*?)>>\s*stream[\r\n]+/g;
+      let m: RegExpExecArray | null;
+      while ((m = objRegex.exec(latinText)) !== null) {
+        const objId = parseInt(m[1], 10);
+        const dict = m[2];
+        const streamStart = m.index + m[0].length;
+        const lenMatch = dict.match(/\/Length\s+(\d+)/);
+
+        if (lenMatch) {
+          const len = parseInt(lenMatch[1], 10);
+          if (len > 3500 && streamStart + len <= buffer.length) {
+            const slice = buffer.subarray(streamStart, streamStart + len);
+            if (dict.includes('/DCTDecode') && slice[0] === 0xFF && slice[1] === 0xD8) {
+              const dataUrl = 'data:image/jpeg;base64,' + slice.toString('base64');
+              objMap.set(objId, dataUrl);
+              allExtractedImages.push(dataUrl);
             }
-            end++;
           }
-          if (end >= buffer.length - 1) offset += 2;
-        }
-        // Check PNG
-        else if (
-          buffer[offset] === 0x89 && buffer[offset + 1] === 0x50 && buffer[offset + 2] === 0x4E && buffer[offset + 3] === 0x47 &&
-          buffer[offset + 4] === 0x0D && buffer[offset + 5] === 0x0A && buffer[offset + 6] === 0x1A && buffer[offset + 7] === 0x0A
-        ) {
-          let end = offset + 8;
-          while (end < buffer.length - 8) {
-            if (buffer[end] === 0x49 && buffer[end + 1] === 0x45 && buffer[end + 2] === 0x4E && buffer[end + 3] === 0x44) {
-              const pngBuf = buffer.subarray(offset, end + 8);
-              if (pngBuf.length > 2000) {
-                extractedImages.push(`data:image/png;base64,${pngBuf.toString('base64')}`);
-              }
-              offset = end + 8;
-              break;
-            }
-            end++;
-          }
-          if (end >= buffer.length - 8) offset += 4;
-        } else {
-          offset++;
         }
       }
 
-      totalImagesCount = extractedImages.length;
+      // 2. Safe SOS-aware JPEG scanner for standalone embedded JPEGs (never cuts midway through image)
+      let offset = 0;
+      while (offset < buffer.length - 16) {
+        if (buffer[offset] === 0xFF && buffer[offset + 1] === 0xD8 && buffer[offset + 2] === 0xFF) {
+          let cur = offset + 2;
+          let valid = false;
+          while (cur < buffer.length - 4) {
+            if (buffer[cur] === 0xFF) {
+              const marker = buffer[cur + 1];
+              if (marker === 0xD9) { // Genuine EOI
+                cur += 2;
+                valid = true;
+                break;
+              } else if (marker === 0xDA) { // SOS (Start of Scan) - step through scan data
+                cur += 2;
+                const sosLen = (buffer[cur] << 8) | buffer[cur + 1];
+                cur += sosLen;
+                while (cur < buffer.length - 1) {
+                  if (buffer[cur] === 0xFF) {
+                    if (buffer[cur + 1] === 0xD9) {
+                      cur += 2;
+                      valid = true;
+                      break;
+                    } else if (buffer[cur + 1] === 0x00 || (buffer[cur + 1] >= 0xD0 && buffer[cur + 1] <= 0xD7)) {
+                      cur += 2;
+                    } else {
+                      cur++;
+                    }
+                  } else {
+                    cur++;
+                  }
+                }
+                break;
+              } else if (marker !== 0x00 && marker !== 0xFF) {
+                const segLen = (buffer[cur + 2] << 8) | buffer[cur + 3];
+                cur += 2 + segLen;
+              } else {
+                cur++;
+              }
+            } else {
+              cur++;
+            }
+          }
+          if (valid && (cur - offset) > 4000) {
+            const slice = buffer.subarray(offset, cur);
+            const dataUrl = 'data:image/jpeg;base64,' + slice.toString('base64');
+            if (!allExtractedImages.includes(dataUrl)) {
+              allExtractedImages.push(dataUrl);
+            }
+            offset = cur;
+            continue;
+          }
+        }
+        offset++;
+      }
+
+      // 3. Map page XObjects to exact page numbers
+      const pageRegex = /\/Type\s*\/Page\b[\s\S]*?>>/g;
+      let pIdx = 1;
+      let pMatch: RegExpExecArray | null;
+      while ((pMatch = pageRegex.exec(latinText)) !== null) {
+        const pageDict = pMatch[0];
+        const xMatches = pageDict.match(/\/([A-Za-z0-9_]+)\s+(\d+)\s+0\s+R/g);
+        if (xMatches) {
+          const pageImgs: string[] = [];
+          for (const xm of xMatches) {
+            const numM = xm.match(/\s+(\d+)\s+0\s+R/);
+            if (numM) {
+              const id = parseInt(numM[1], 10);
+              if (objMap.has(id)) {
+                pageImgs.push(objMap.get(id)!);
+              }
+            }
+          }
+          if (pageImgs.length > 0) {
+            pageImageMap.set(pIdx, pageImgs);
+          }
+        }
+        pIdx++;
+      }
+
+      totalImagesCount = allExtractedImages.length;
       let globalChunkCounter = 1;
-      let imgIndex = 0;
+      let fallbackImgIdx = 0;
       let numPages = 0;
 
-      // Method 1: pdfjs-dist via dynamic import (respects polyfills executed at boot)
+      // Helper to render figure HTML for embedded images
+      const formatImageFigure = (imgSrc: string, pageNum: number, imgNum: number) => {
+        return `\n<figure class="book-illustration-figure my-8 text-center" style="page-break-inside: avoid; break-inside: avoid;">
+  <div class="inline-block p-2.5 rounded-2xl bg-white shadow-md border border-slate-200 max-w-full">
+    <img src="${imgSrc}" class="book-embedded-image rounded-xl max-h-[500px] max-w-full mx-auto object-contain block" alt="تصویر صفحه ${pageNum} کتاب" />
+  </div>
+  <figcaption class="text-xs text-slate-500 mt-2 font-medium">تصویر ${imgNum} - صفحه ${pageNum}</figcaption>
+</figure>`;
+      };
+
+      // Method 1: pdfjs-dist via dynamic import
       try {
         const pdfjsLib = await import('pdfjs-dist/legacy/build/pdf.mjs');
         const uint8Data = new Uint8Array(buffer.buffer, buffer.byteOffset, buffer.byteLength);
@@ -1427,15 +1503,19 @@ app.post('/api/import/file', async (req, res) => {
 
             const pageText = pageLines.join('\n\n');
             const words = pageText.split(/\s+/).filter(Boolean).length;
-            if (words === 0 && extractedImages.length === 0) continue;
+
+            // Resolve images for this exact page
+            const thisPageImages = pageImageMap.get(pageNum) || [];
+            if (thisPageImages.length === 0 && pageImageMap.size === 0 && fallbackImgIdx < allExtractedImages.length) {
+              thisPageImages.push(allExtractedImages[fallbackImgIdx++]);
+            }
+
+            if (words === 0 && thisPageImages.length === 0) continue;
 
             let pageHtml = pageLines.map(l => `<p>${l}</p>`).join('\n');
-            let pageImageCount = 0;
-            if (imgIndex < extractedImages.length) {
-              pageHtml += `\n<div class="book-illustration-wrap my-4 text-center"><img src="${extractedImages[imgIndex]}" class="book-embedded-image rounded-xl shadow-md my-3 max-w-full mx-auto block border border-slate-300" alt="تصویر صفحه ${pageNum} کتاب" /></div>`;
-              imgIndex++;
-              pageImageCount++;
-            }
+            thisPageImages.forEach((img, iIdx) => {
+              pageHtml += formatImageFigure(img, pageNum, iIdx + 1);
+            });
 
             chunks.push({
               id: `chk_${Date.now()}_${globalChunkCounter}`,
@@ -1446,8 +1526,8 @@ app.post('/api/import/file', async (req, res) => {
               wordCount: Math.max(1, words),
               estimatedTokens: Math.ceil(words * 1.35),
               status: 'idle',
-              hasImages: pageImageCount > 0,
-              imageCount: pageImageCount,
+              hasImages: thisPageImages.length > 0,
+              imageCount: thisPageImages.length,
             });
             globalChunkCounter++;
           } catch (pageErr) {
@@ -1477,15 +1557,18 @@ app.post('/api/import/file', async (req, res) => {
               const pageNum = pIdx + 1;
               const lines = pageContent.split('\n').map((l: string) => l.trim()).filter(Boolean);
               const words = lines.join(' ').split(/\s+/).filter(Boolean).length;
-              if (words === 0) return;
+
+              const thisPageImages = pageImageMap.get(pageNum) || [];
+              if (thisPageImages.length === 0 && pageImageMap.size === 0 && fallbackImgIdx < allExtractedImages.length) {
+                thisPageImages.push(allExtractedImages[fallbackImgIdx++]);
+              }
+
+              if (words === 0 && thisPageImages.length === 0) return;
 
               let pageHtml = lines.map((l: string) => `<p>${l}</p>`).join('\n');
-              let pageImageCount = 0;
-              if (imgIndex < extractedImages.length) {
-                pageHtml += `\n<div class="book-illustration-wrap my-4 text-center"><img src="${extractedImages[imgIndex]}" class="book-embedded-image rounded-xl shadow-md my-3 max-w-full mx-auto block border border-slate-300" alt="تصویر صفحه ${pageNum} کتاب" /></div>`;
-                imgIndex++;
-                pageImageCount++;
-              }
+              thisPageImages.forEach((img, iIdx) => {
+                pageHtml += formatImageFigure(img, pageNum, iIdx + 1);
+              });
 
               chunks.push({
                 id: `chk_${Date.now()}_${globalChunkCounter}`,
@@ -1496,8 +1579,8 @@ app.post('/api/import/file', async (req, res) => {
                 wordCount: Math.max(1, words),
                 estimatedTokens: Math.ceil(words * 1.35),
                 status: 'idle',
-                hasImages: pageImageCount > 0,
-                imageCount: pageImageCount,
+                hasImages: thisPageImages.length > 0,
+                imageCount: thisPageImages.length,
               });
               globalChunkCounter++;
             });
@@ -1882,7 +1965,25 @@ app.post('/api/export/docx', async (req, res) => {
     if (Array.isArray(chapters)) {
       chapters.forEach((ch: { title?: string; htmlContent?: string }, chIdx: number) => {
         if (chIdx > 0) {
-          docChildren.push(new Paragraph({ pageBreakBefore: true }));
+          if (designConfig?.continuousFlow === false) {
+            docChildren.push(new Paragraph({ pageBreakBefore: true }));
+          } else {
+            docChildren.push(
+              new Paragraph({
+                alignment: AlignmentType.CENTER,
+                spacing: { before: 400, after: 240 },
+                bidirectional: true,
+                children: [
+                  new TextRun({
+                    text: '✤ ───── ❦ ───── ✤',
+                    font: fontDef,
+                    size: 20,
+                    color: 'b45309',
+                  }),
+                ],
+              })
+            );
+          }
         }
 
         // Parse paragraphs, blockquotes, headings, divs, and embedded images from HTML
