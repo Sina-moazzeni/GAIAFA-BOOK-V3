@@ -1,6 +1,6 @@
 import express from 'express';
 import crypto from 'crypto';
-import { db, User, BookRecord, TranslationJob, TransactionRecord, ApiKeyConfig } from './db.ts';
+import { db, User, BookRecord, TranslationJob, TransactionRecord, ApiKeyConfig, DEFAULT_ROBOTS_TXT, DEFAULT_LLMS_TXT } from './db.ts';
 import { queueManager } from './queue.ts';
 import { GoogleGenAI } from '@google/genai';
 import { sendRealOtpSms } from './smsService.ts';
@@ -77,7 +77,266 @@ export function sanitizeUser(user: User) {
   };
 }
 
+function escapeHtml(str: string): string {
+  return str.replace(/[&<>'"]/g, 
+    tag => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[tag] || tag)
+  );
+}
+
+async function verifyCaptcha(
+  captchaToken: string | undefined,
+  mathAnswer: number | string | undefined,
+  req: express.Request,
+  action: 'login' | 'register' = 'login'
+): Promise<{ success: boolean; error?: string }> {
+  const settings = db.getSettings();
+  const captchaConfig = settings.security?.captcha;
+  if (!captchaConfig || !captchaConfig.enabled) {
+    return { success: true };
+  }
+
+  if (action === 'login' && !captchaConfig.requiredForLogin) {
+    return { success: true };
+  }
+  if (action === 'register' && !captchaConfig.requiredForRegister) {
+    return { success: true };
+  }
+
+  // 1. Google reCAPTCHA
+  if (captchaConfig.provider === 'recaptcha') {
+    if (!captchaToken || typeof captchaToken !== 'string') {
+      return { success: false, error: 'لطفاً اعتبارسنجی «من ربات نیستم» (Google reCAPTCHA) را علامت بزنید.' };
+    }
+    if (!captchaConfig.secretKey) {
+      console.warn('[Captcha] reCAPTCHA secretKey is not configured in admin panel, allowing pass-through.');
+      return { success: true };
+    }
+    try {
+      const verifyRes = await fetch('https://www.google.com/recaptcha/api/siteverify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          secret: captchaConfig.secretKey.trim(),
+          response: captchaToken.trim(),
+          remoteip: (req.headers['x-forwarded-for'] as string || req.ip || '').split(',')[0].trim(),
+        }).toString(),
+      });
+      const verifyData = await verifyRes.json();
+      if (!verifyData.success) {
+        return { success: false, error: 'اعتبارسنجی کپچای گوگل تایید نشد. لطفاً مجدداً تیک من ربات نیستم را بزنید.' };
+      }
+      return { success: true };
+    } catch (e: any) {
+      console.error('[reCAPTCHA Verify Error]:', e);
+      return { success: false, error: 'خطا در ارتباط با سرور اعتبارسنجی گوگل' };
+    }
+  }
+
+  // 2. Cloudflare Turnstile
+  if (captchaConfig.provider === 'turnstile') {
+    if (!captchaToken || typeof captchaToken !== 'string') {
+      return { success: false, error: 'لطفاً تایید امنیتی ضد ربات Cloudflare Turnstile را تکمیل فرمایید.' };
+    }
+    if (!captchaConfig.secretKey) {
+      return { success: true };
+    }
+    try {
+      const verifyRes = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          secret: captchaConfig.secretKey.trim(),
+          response: captchaToken.trim(),
+          remoteip: (req.headers['x-forwarded-for'] as string || req.ip || '').split(',')[0].trim(),
+        }).toString(),
+      });
+      const verifyData = await verifyRes.json();
+      if (!verifyData.success) {
+        return { success: false, error: 'اعتبارسنجی امنیتی Cloudflare تایید نشد.' };
+      }
+      return { success: true };
+    } catch (e: any) {
+      return { success: false, error: 'خطا در ارتباط با سرویس ضد ربات' };
+    }
+  }
+
+  // 3. Math Captcha Fallback
+  if (captchaConfig.provider === 'math') {
+    if (mathAnswer === undefined || mathAnswer === null || String(mathAnswer).trim() === '') {
+      return { success: false, error: 'لطفاً پاسخ سوال ریاضی امنیتی را وارد فرمایید.' };
+    }
+  }
+
+  return { success: true };
+}
+
 export function setupSaasRoutes(app: express.Express) {
+  // ==========================================
+  // CRAWLER, AGENTIC BROWSING & SITEMAP ROUTES
+  // ==========================================
+
+  // 1. Robots.txt
+  app.get('/robots.txt', (req, res) => {
+    const settings = db.getSettings();
+    const content = settings.seo?.robotsTxt || DEFAULT_ROBOTS_TXT;
+    res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+    return res.send(content);
+  });
+
+  // 2. Sitemap.xml (Google Search Console & Bing)
+  app.get('/sitemap.xml', (req, res) => {
+    const settings = db.getSettings();
+    if (settings.seo?.customSitemapXml && settings.seo.customSitemapXml.trim()) {
+      res.setHeader('Content-Type', 'application/xml; charset=utf-8');
+      return res.send(settings.seo.customSitemapXml.trim());
+    }
+
+    const host = req.get('host') || 'gaiafa.ir';
+    const protocol = req.protocol === 'http' && host.includes('localhost') ? 'http' : 'https';
+    const baseUrl = `${protocol}://${host}`;
+
+    const customPages = db.getCustomPages(true);
+    const blogPosts = db.getBlogPosts(true);
+
+    const urls: Array<{ loc: string; lastmod?: string; changefreq: string; priority: string }> = [
+      { loc: `${baseUrl}/`, changefreq: 'daily', priority: '1.0' },
+      { loc: `${baseUrl}/blog`, changefreq: 'daily', priority: '0.9' },
+    ];
+
+    customPages.forEach((p) => {
+      urls.push({
+        loc: `${baseUrl}/page/${p.slug}`,
+        lastmod: new Date(p.updatedAt || p.createdAt).toISOString().split('T')[0],
+        changefreq: 'weekly',
+        priority: '0.8',
+      });
+    });
+
+    blogPosts.forEach((post) => {
+      urls.push({
+        loc: `${baseUrl}/blog/${post.slug}`,
+        lastmod: new Date(post.updatedAt || post.publishedAt).toISOString().split('T')[0],
+        changefreq: 'monthly',
+        priority: '0.7',
+      });
+    });
+
+    const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+${urls.map((u) => `  <url>
+    <loc>${u.loc}</loc>${u.lastmod ? `\n    <lastmod>${u.lastmod}</lastmod>` : ''}
+    <changefreq>${u.changefreq}</changefreq>
+    <priority>${u.priority}</priority>
+  </url>`).join('\n')}
+</urlset>`;
+
+    res.setHeader('Content-Type', 'application/xml; charset=utf-8');
+    return res.send(xml);
+  });
+
+  // 3. Agentic Browsing (llms.txt & llms-full.txt standard for AI crawlers)
+  app.get(['/llms.txt', '/.well-known/llms.txt'], (req, res) => {
+    const settings = db.getSettings();
+    const content = settings.seo?.llmsTxt || DEFAULT_LLMS_TXT;
+    res.setHeader('Content-Type', 'text/markdown; charset=utf-8');
+    return res.send(content);
+  });
+
+  app.get('/llms-full.txt', (req, res) => {
+    const settings = db.getSettings();
+    const customPages = db.getCustomPages(true);
+    const blogPosts = db.getBlogPosts(true);
+    let full = (settings.seo?.llmsTxt || DEFAULT_LLMS_TXT) + '\n\n# مستندات و متون کامل صفحات سامانه جهت خزش عامل‌گرا (Agentic Browsing)\n\n';
+    customPages.forEach((p) => {
+      full += `## صفحه: ${p.title} (/page/${p.slug})\nتوضیحات: ${p.metaDescription || ''}\nمحتوا: ${p.htmlContent?.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim() || ''}\n\n`;
+    });
+    blogPosts.forEach((b) => {
+      full += `## مقاله وبلاگ: ${b.title} (/blog/${b.slug})\nخلاصه: ${b.excerpt}\nمحتوای مقاله: ${b.content?.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim() || ''}\n\n`;
+    });
+    res.setHeader('Content-Type', 'text/markdown; charset=utf-8');
+    return res.send(full);
+  });
+
+  // 4. AI Plugin Manifest for Autonomous Browsing Agents
+  app.get('/.well-known/ai-plugin.json', (req, res) => {
+    const host = req.get('host') || 'gaiafa.ir';
+    const protocol = req.protocol === 'http' && host.includes('localhost') ? 'http' : 'https';
+    return res.json({
+      schema_version: 'v1',
+      name_for_model: 'persian_book_translator',
+      name_for_human: 'مترجم و ویراستار هوشمند کتاب',
+      description_for_model: 'Commercial cloud platform specializing in translating long-form English books into publication-grade Persian, preserving structure, footnotes, tables, and images without summarization.',
+      description_for_human: 'سامانه ابری ترجمه کتاب‌های انگلیسی به فارسی با هوش مصنوعی و حفظ کامل ساختار سند.',
+      auth: { type: 'none' },
+      api: { type: 'openapi', url: `${protocol}://${host}/llms.txt` },
+      logo_url: `${protocol}://${host}/assets/logo.png`,
+      contact_email: 'support@booktranslator.ir',
+      legal_info_url: `${protocol}://${host}/page/guide`,
+    });
+  });
+
+  // 5. Public Captcha Configuration
+  app.get('/api/public/captcha-config', (req, res) => {
+    const settings = db.getSettings();
+    const captcha = settings.security?.captcha || {
+      enabled: false,
+      provider: 'math',
+      siteKey: '',
+      requiredForLogin: false,
+      requiredForRegister: true,
+    };
+    return res.json({
+      enabled: Boolean(captcha.enabled),
+      provider: captcha.provider || 'math',
+      siteKey: captcha.siteKey || '',
+      requiredForLogin: Boolean(captcha.requiredForLogin),
+      requiredForRegister: Boolean(captcha.requiredForRegister),
+    });
+  });
+
+  // 6. Public SEO Files & URLs (For Admin Inspection & Google Search Console Linking)
+  app.get('/api/system/seo-files', (req, res) => {
+    const settings = db.getSettings();
+    const host = req.get('host') || 'gaiafa.ir';
+    const protocol = req.protocol === 'http' && host.includes('localhost') ? 'http' : 'https';
+    const baseUrl = `${protocol}://${host}`;
+
+    return res.json({
+      robotsTxt: settings.seo?.robotsTxt || DEFAULT_ROBOTS_TXT,
+      customSitemapXml: settings.seo?.customSitemapXml || '',
+      llmsTxt: settings.seo?.llmsTxt || DEFAULT_LLMS_TXT,
+      sitemapUrl: `${baseUrl}/sitemap.xml`,
+      robotsUrl: `${baseUrl}/robots.txt`,
+      llmsUrl: `${baseUrl}/llms.txt`,
+      llmsFullUrl: `${baseUrl}/llms-full.txt`,
+      aiPluginUrl: `${baseUrl}/.well-known/ai-plugin.json`,
+    });
+  });
+
+  // 7. Admin Update SEO files
+  app.put('/api/admin/seo-files', requireAdmin, (req, res) => {
+    try {
+      const { robotsTxt, customSitemapXml, llmsTxt } = req.body;
+      const settings = db.getSettings();
+      const updatedSeo = {
+        ...(settings.seo || {}),
+        siteTitle: settings.seo?.siteTitle || '',
+        metaDescription: settings.seo?.metaDescription || '',
+        metaKeywords: settings.seo?.metaKeywords || '',
+        announcementEnabled: settings.seo?.announcementEnabled ?? true,
+        announcementText: settings.seo?.announcementText || '',
+        robotsTxt: typeof robotsTxt === 'string' ? robotsTxt : settings.seo?.robotsTxt,
+        customSitemapXml: typeof customSitemapXml === 'string' ? customSitemapXml : settings.seo?.customSitemapXml,
+        llmsTxt: typeof llmsTxt === 'string' ? llmsTxt : settings.seo?.llmsTxt,
+      };
+
+      const updated = db.updateSettings({ seo: updatedSeo });
+      return res.json({ success: true, message: 'فایل‌های سئو (Robots.txt, Sitemap.xml و Agentic Browsing) با موفقیت ذخیره شدند.', seo: updated.seo });
+    } catch (err: any) {
+      return res.status(500).json({ error: `خطا در ذخیره فایل‌های سئو: ${err.message}` });
+    }
+  });
+
   // ==========================================
   // 1. PUBLIC CMS & CONFIG
   // ==========================================
@@ -86,6 +345,7 @@ export function setupSaasRoutes(app: express.Express) {
     return res.json({
       cms: settings.cms,
       seo: settings.seo,
+      announcementBar: settings.announcementBar,
       pricing: settings.pricing,
       gateways: {
         zarinpal: Boolean(settings.gateways?.zarinpal?.enabled),
@@ -94,6 +354,17 @@ export function setupSaasRoutes(app: express.Express) {
         nextpay: Boolean(settings.gateways?.nextpay?.enabled),
         idpay: Boolean(settings.gateways?.idpay?.enabled),
         stripe: Boolean(settings.gateways?.stripe?.enabled),
+      },
+      captcha: {
+        enabled: Boolean(settings.security?.captcha?.enabled),
+        provider: settings.security?.captcha?.provider || 'math',
+        siteKey: settings.security?.captcha?.siteKey || '',
+        requiredForLogin: Boolean(settings.security?.captcha?.requiredForLogin),
+        requiredForRegister: Boolean(settings.security?.captcha?.requiredForRegister),
+      },
+      googleOAuth: {
+        enabled: Boolean(settings.security?.googleOAuth?.enabled ?? true),
+        clientId: settings.security?.googleOAuth?.clientId || settings.seo?.googleClientId || process.env.GOOGLE_CLIENT_ID || '',
       },
       headerFooter: db.getHeaderFooter(),
       customPages: db.getCustomPages(true).map(p => ({
@@ -114,8 +385,14 @@ export function setupSaasRoutes(app: express.Express) {
   // ==========================================
 
   // Register with SMS OTP verification and optional email
-  app.post('/api/auth/register', (req, res) => {
-    const { name, phone, email, password, otpCode } = req.body;
+  app.post('/api/auth/register', async (req, res) => {
+    const { name, phone, email, password, otpCode, captchaToken, mathAnswer } = req.body;
+
+    const captchaCheck = await verifyCaptcha(captchaToken, mathAnswer, req, 'register');
+    if (!captchaCheck.success) {
+      return res.status(400).json({ error: captchaCheck.error });
+    }
+
     if (!name || !phone || !password) {
       return res.status(400).json({ error: 'لطفاً نام، شماره موبایل و رمز عبور را وارد کنید.' });
     }
@@ -160,9 +437,14 @@ export function setupSaasRoutes(app: express.Express) {
   });
 
   // Unified Login (Phone or Email with Password OR OTP)
-  app.post('/api/auth/login', (req, res) => {
-    const { phone, password, otpCode, mode = 'password' } = req.body;
+  app.post('/api/auth/login', async (req, res) => {
+    const { phone, password, otpCode, mode = 'password', captchaToken, mathAnswer } = req.body;
     const identifier = (phone || req.body.identifier || req.body.email || '').trim();
+
+    const captchaCheck = await verifyCaptcha(captchaToken, mathAnswer, req, 'login');
+    if (!captchaCheck.success) {
+      return res.status(400).json({ error: captchaCheck.error });
+    }
 
     if (!identifier) {
       return res.status(400).json({ error: 'لطفاً شماره تلفن همراه یا ایمیل خود را وارد نمایید.' });
@@ -210,7 +492,164 @@ export function setupSaasRoutes(app: express.Express) {
     });
   });
 
-  // Google Direct One-Click Authentication & Registration (No temp code needed)
+  // Google OAuth 2.0 Auth URL generator (Popup flow)
+  app.get('/api/auth/google/url', (req, res) => {
+    const settings = db.getSettings();
+    const clientId = (settings.security?.googleOAuth?.clientId || settings.seo?.googleClientId || process.env.GOOGLE_CLIENT_ID || '').trim();
+    
+    const host = req.get('host') || 'gaiafa.ir';
+    const protocol = req.protocol === 'http' && host.includes('localhost') ? 'http' : 'https';
+    const redirectUri = `${protocol}://${host}/auth/callback`;
+
+    if (!clientId) {
+      return res.status(400).json({
+        configured: false,
+        error: 'شناسه کلاینت گوگل (Google Client ID) در تنظیمات امنیتی پنل مدیریت ست نشده است.',
+        redirectUri,
+      });
+    }
+
+    const params = new URLSearchParams({
+      client_id: clientId,
+      redirect_uri: redirectUri,
+      response_type: 'code',
+      scope: 'openid email profile',
+      access_type: 'offline',
+      prompt: 'select_account',
+    });
+
+    const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
+    return res.json({ configured: true, url: authUrl, redirectUri });
+  });
+
+  // Google OAuth 2.0 Callback (Receives auth code, exchanges token, and sends postMessage to opener)
+  app.get(['/auth/callback', '/auth/callback/'], async (req, res) => {
+    const { code, error, error_description } = req.query;
+    if (error) {
+      return res.send(`
+        <!DOCTYPE html>
+        <html dir="rtl" lang="fa">
+        <head><meta charset="utf-8"><title>خطا در ورود با گوگل</title></head>
+        <body style="font-family: Tahoma, sans-serif; text-align: center; padding: 40px; background: #090d16; color: #fff;">
+          <h3 style="color: #ef4444;">تایید هویت حساب گوگل انجام نشد</h3>
+          <p style="color: #94a3b8; font-size: 13px;">${escapeHtml(String(error_description || error))}</p>
+          <button onclick="window.close()" style="background: #e11d48; color: #fff; padding: 10px 20px; border-radius: 8px; border:none; cursor:pointer;">بستن پنجره</button>
+        </body>
+        </html>
+      `);
+    }
+
+    if (!code || typeof code !== 'string') {
+      return res.status(400).send('کد اعتبارسنجی از سوی گوگل دریافت نشد.');
+    }
+
+    const settings = db.getSettings();
+    const clientId = (settings.security?.googleOAuth?.clientId || settings.seo?.googleClientId || process.env.GOOGLE_CLIENT_ID || '').trim();
+    const clientSecret = (settings.security?.googleOAuth?.clientSecret || process.env.GOOGLE_CLIENT_SECRET || '').trim();
+    const host = req.get('host') || 'gaiafa.ir';
+    const protocol = req.protocol === 'http' && host.includes('localhost') ? 'http' : 'https';
+    const redirectUri = `${protocol}://${host}/auth/callback`;
+
+    try {
+      const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          code,
+          client_id: clientId,
+          client_secret: clientSecret,
+          redirect_uri: redirectUri,
+          grant_type: 'authorization_code',
+        }).toString(),
+      });
+
+      const tokenData = await tokenRes.json();
+      if (!tokenRes.ok || !tokenData.access_token) {
+        console.error('[Google OAuth Token Error]:', tokenData);
+        return res.send(`
+          <!DOCTYPE html>
+          <html dir="rtl" lang="fa">
+          <head><meta charset="utf-8"><title>خطای تبادل توکن گوگل</title></head>
+          <body style="font-family: Tahoma, sans-serif; text-align: center; padding: 40px; background: #090d16; color: #fff;">
+            <h3 style="color: #f59e0b;">خطا در تبادل توکن با سرور گوگل</h3>
+            <p style="color: #94a3b8; font-size: 13px; margin-bottom: 20px;">
+              ${escapeHtml(tokenData.error_description || tokenData.error || 'لطفاً کلید Secret و Redirect URI را در کنسول گوگل بررسی فرمایید.')}
+            </p>
+            <p style="font-family: monospace; font-size: 11px; color: #64748b;">Redirect URI: ${escapeHtml(redirectUri)}</p>
+            <button onclick="window.close()" style="background: #3b82f6; color: #fff; padding: 8px 18px; border-radius: 8px; border:none; cursor:pointer; margin-top: 15px;">بستن پنجره</button>
+          </body>
+          </html>
+        `);
+      }
+
+      // Fetch user profile from Google UserInfo endpoint
+      const userRes = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+        headers: { Authorization: `Bearer ${tokenData.access_token}` },
+      });
+      const profile = await userRes.json();
+      const googleEmail = (profile.email || '').trim().toLowerCase();
+      const googleName = profile.name || profile.given_name || googleEmail.split('@')[0];
+      const googlePicture = profile.picture || '';
+
+      if (!googleEmail || !googleEmail.includes('@')) {
+        throw new Error('ایمیل معتبر از حساب کاربری گوگل دریافت نشد.');
+      }
+
+      let user = db.getUserByEmailOrPhone(googleEmail);
+      if (!user) {
+        user = db.createUser({
+          name: googleName,
+          email: googleEmail,
+          phone: '',
+          role: 'user',
+        });
+        db.updateUser(user.id, {
+          authProvider: 'google',
+          avatarUrl: googlePicture,
+        });
+      } else {
+        db.updateUser(user.id, {
+          lastLoginAt: Date.now(),
+          avatarUrl: googlePicture || user.avatarUrl,
+        });
+      }
+
+      const sessionToken = db.createSession(user.id);
+      const sanitizedUser = sanitizeUser(user);
+
+      return res.send(`
+        <!DOCTYPE html>
+        <html dir="rtl" lang="fa">
+        <head><meta charset="utf-8"><title>ورود موفقیت‌آمیز</title></head>
+        <body style="font-family: Tahoma, sans-serif; text-align: center; padding: 40px; background: #090d16; color: #fff;">
+          <div style="background: rgba(16, 185, 129, 0.1); border: 1px solid #10b981; border-radius: 16px; padding: 24px; max-width: 400px; margin: 0 auto;">
+            <h3 style="color: #10b981; margin-top:0;">ورود با گوگل با موفقیت انجام شد</h3>
+            <p style="color: #cbd5e1; font-size: 13px;">خوش آمدید، <b>${escapeHtml(user.name)}</b>! در حال انتقال...</p>
+          </div>
+          <script>
+            const payload = {
+              type: 'OAUTH_AUTH_SUCCESS',
+              token: ${JSON.stringify(sessionToken)},
+              user: ${JSON.stringify(sanitizedUser)}
+            };
+            if (window.opener) {
+              window.opener.postMessage(payload, '*');
+              setTimeout(() => window.close(), 600);
+            } else {
+              localStorage.setItem('auth_token', ${JSON.stringify(sessionToken)});
+              window.location.href = '/';
+            }
+          </script>
+        </body>
+        </html>
+      `);
+    } catch (oauthErr: any) {
+      console.error('[Google OAuth Callback Exception]:', oauthErr);
+      return res.status(500).send(`خطا در ورود با گوگل: ${oauthErr.message}`);
+    }
+  });
+
+  // Google Direct One-Click Authentication & Registration (Direct JWT / GIS fallback)
   app.post('/api/auth/google', async (req, res) => {
     try {
       const { credential, email, name, picture, sub } = req.body;
@@ -276,6 +715,56 @@ export function setupSaasRoutes(app: express.Express) {
     } catch (err: any) {
       console.error('[Google Auth] Error:', err);
       return res.status(500).json({ error: err.message || 'خطا در احراز هویت با حساب گوگل' });
+    }
+  });
+
+  // Public: Get Current Broadcast Announcement
+  app.get('/api/system/public-announcement', (_req, res) => {
+    const settings = db.getSettings();
+    const ann = settings.announcementBar || {
+      enabled: true,
+      text: '🎉 تخفیف ویژه چاپ و ترجمه: هزینه ترجمه هر کلمه فقط ۴۵ تومان همراه با استخراج هوشمند واژه‌نامه تخصصی و صفحه‌بندی کتاب.',
+      type: 'warning',
+      linkUrl: '',
+      linkText: 'ثبت سفارش کتاب',
+    };
+    return res.json({ announcement: ann });
+  });
+
+  // Admin: Update Announcement Bar
+  app.put('/api/admin/announcement', requireAdmin, (req, res) => {
+    try {
+      const { enabled, text, linkUrl, linkText, type } = req.body;
+      const settings = db.getSettings();
+      const current = settings.announcementBar || {
+        enabled: true,
+        text: '🎉 تخفیف ویژه چاپ و ترجمه: هزینه ترجمه هر کلمه فقط ۴۵ تومان همراه با استخراج هوشمند واژه‌نامه تخصصی و صفحه‌بندی کتاب.',
+        type: 'warning',
+        linkUrl: '',
+        linkText: 'ثبت سفارش کتاب',
+      };
+      const updated = {
+        ...current,
+        enabled: enabled !== undefined ? Boolean(enabled) : current.enabled,
+        text: typeof text === 'string' ? text : current.text,
+        linkUrl: typeof linkUrl === 'string' ? linkUrl : current.linkUrl,
+        linkText: typeof linkText === 'string' ? linkText : current.linkText,
+        type: type || current.type || 'warning',
+      };
+      db.updateSettings({
+        announcementBar: updated,
+        seo: {
+          ...(settings.seo || {}),
+          siteTitle: settings.seo?.siteTitle || '',
+          metaDescription: settings.seo?.metaDescription || '',
+          metaKeywords: settings.seo?.metaKeywords || '',
+          announcementEnabled: updated.enabled,
+          announcementText: updated.text,
+        },
+      });
+      return res.json({ success: true, message: 'تنظیمات اعلان با موفقیت به‌روز شد.', announcement: updated });
+    } catch (err: any) {
+      return res.status(500).json({ error: `خطا در ذخیره اعلان: ${err.message}` });
     }
   });
 

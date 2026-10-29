@@ -183,6 +183,11 @@ export interface SystemSettings {
       requiredForLogin: boolean;
       requiredForRegister: boolean;
     };
+    googleOAuth?: {
+      enabled: boolean;
+      clientId: string;
+      clientSecret: string;
+    };
   };
   coupons?: Array<{
     id: string;
@@ -216,6 +221,11 @@ export interface SystemSettings {
     faviconUrl?: string;
     announcementEnabled: boolean;
     announcementText: string;
+    robotsTxt?: string;
+    customSitemapXml?: string;
+    llmsTxt?: string;
+    googleClientId?: string;
+    googleClientSecret?: string;
   };
   cms: {
     heroTitle: string;
@@ -495,6 +505,50 @@ export const DEFAULT_LANDING_SECTIONS: LandingSection[] = [
   },
 ];
 
+export const DEFAULT_ROBOTS_TXT = `User-agent: *
+Allow: /
+Disallow: /api/
+Disallow: /admin
+Disallow: /?page=login
+
+# Sitemaps
+Sitemap: https://gaiafa.ir/sitemap.xml
+
+# LLM & AI Agents (Agentic Browsing Directives)
+User-agent: GPTBot
+Allow: /
+
+User-agent: Google-Extended
+Allow: /
+
+User-agent: CCBot
+Allow: /
+
+User-agent: PerplexityBot
+Allow: /
+
+User-agent: ClaudeBot
+Allow: /
+`;
+
+export const DEFAULT_LLMS_TXT = `# سامانه هوشمند و تجاری ترجمه کتاب و متون تخصصی
+> پلتفرم ابری ترجمه، ویرایش ساختاریافته و صفحه‌بندی کتاب‌های انگلیسی به فارسی با هوش مصنوعی و مدل‌های زبانی Gemini، DeepSeek و GPT.
+
+## قابلیت‌های سامانه
+- ترجمه کامل و بدون خلاصه‌سازی (Zero-Summarization Guarantee)
+- حفظ کامل ساختار، پاراگراف‌بندی، جداول و تصاویر درون‌متنی کتاب
+- استخراج هوشمند واژه‌نامه تخصصی (Glossary Alignment) برای حفظ اصطلاحات در کل اثر
+- لحن‌های گوناگون: معنوی و خودشناسی، رمان و ادبیات، روانشناسی، دانشگاهی، علوم پایه و اقتصاد
+- دریافت خروجی استاندارد مایکروسافت ورد (DOCX)، فایل PDF صفحه‌آرایی‌شده با فونت رسمی وزیرمتن و فرمت EPUB
+
+## صفحات و راهنماها
+- [صفحه اصلی](https://gaiafa.ir/)
+- [راهنما و شرایط کاربری](https://gaiafa.ir/page/guide)
+- [تعرفه‌ها و ماشین‌حساب](https://gaiafa.ir/page/pricing)
+- [درباره سامانه ترجمه کتاب](https://gaiafa.ir/page/about-us)
+- [وبلاگ تخصصی و مقالات](https://gaiafa.ir/blog)
+`;
+
 const DEFAULT_SETTINGS: SystemSettings = {
   pricing: {
     costPerWord: 45, // ۴۵ تومان به ازای هر کلمه
@@ -558,6 +612,11 @@ const DEFAULT_SETTINGS: SystemSettings = {
       secretKey: '',
       requiredForLogin: false,
       requiredForRegister: true,
+    },
+    googleOAuth: {
+      enabled: true,
+      clientId: '',
+      clientSecret: '',
     },
   },
   coupons: [
@@ -688,7 +747,12 @@ const DEFAULT_SETTINGS: SystemSettings = {
     logoUrl: '',
     faviconUrl: '',
     announcementEnabled: true,
-    announcementText: '🎉 به پلتفرم تجاری ترجمه کتاب خوش آمدید! با ثبت‌نام اولیه ۲۵,۰۰۰ تومان هدیه ترجمه دریافت کنید.',
+    announcementText: '🎉 تخفیف ویژه چاپ و ترجمه: هزینه ترجمه هر کلمه فقط ۴۵ تومان همراه با استخراج هوشمند واژه‌نامه تخصصی و صفحه‌بندی کتاب.',
+    robotsTxt: DEFAULT_ROBOTS_TXT,
+    customSitemapXml: '',
+    llmsTxt: DEFAULT_LLMS_TXT,
+    googleClientId: '',
+    googleClientSecret: '',
   },
   keyPoolSettings: {
     allowAutoSwitchOnTranslationFailure: false, // Default false: no automatic model switch during translation
@@ -934,9 +998,27 @@ class Database {
                 ...(parsed.settings?.gateways?.stripe || {}),
               },
             },
+            announcementBar: {
+              ...DEFAULT_SETTINGS.announcementBar,
+              ...(parsed.settings?.announcementBar || {}),
+            },
+            security: {
+              ...DEFAULT_SETTINGS.security,
+              ...(parsed.settings?.security || {}),
+              captcha: {
+                ...DEFAULT_SETTINGS.security.captcha,
+                ...(parsed.settings?.security?.captcha || {}),
+              },
+              googleOAuth: {
+                ...DEFAULT_SETTINGS.security.googleOAuth,
+                ...(parsed.settings?.security?.googleOAuth || {}),
+              },
+            },
             seo: {
               ...DEFAULT_SETTINGS.seo,
               ...(parsed.settings?.seo || {}),
+              robotsTxt: parsed.settings?.seo?.robotsTxt || DEFAULT_ROBOTS_TXT,
+              llmsTxt: parsed.settings?.seo?.llmsTxt || DEFAULT_LLMS_TXT,
             },
             sms: {
               ...DEFAULT_SETTINGS.sms,
@@ -1828,6 +1910,32 @@ class Database {
           }),
           ...(updates.security?.captcha || {}),
         },
+        googleOAuth: {
+          ...(currentSettings.security?.googleOAuth || {
+            enabled: true,
+            clientId: '',
+            clientSecret: '',
+          }),
+          ...(updates.security?.googleOAuth || {}),
+        },
+      },
+      announcementBar: {
+        ...(currentSettings.announcementBar || {
+          enabled: true,
+          text: '🎉 تخفیف ویژه چاپ و ترجمه: هزینه ترجمه هر کلمه فقط ۴۵ تومان همراه با استخراج هوشمند واژه‌نامه تخصصی و صفحه‌بندی کتاب.',
+          type: 'info',
+        }),
+        ...(updates.announcementBar || {}),
+      },
+      seo: {
+        ...DEFAULT_SETTINGS.seo,
+        ...(currentSettings.seo || {}),
+        ...(updates.seo || {}),
+        siteTitle: updates.seo?.siteTitle || currentSettings.seo?.siteTitle || DEFAULT_SETTINGS.seo!.siteTitle,
+        metaDescription: updates.seo?.metaDescription || currentSettings.seo?.metaDescription || DEFAULT_SETTINGS.seo!.metaDescription,
+        metaKeywords: updates.seo?.metaKeywords || currentSettings.seo?.metaKeywords || DEFAULT_SETTINGS.seo!.metaKeywords,
+        announcementEnabled: updates.seo?.announcementEnabled ?? currentSettings.seo?.announcementEnabled ?? DEFAULT_SETTINGS.seo!.announcementEnabled,
+        announcementText: updates.seo?.announcementText || currentSettings.seo?.announcementText || DEFAULT_SETTINGS.seo!.announcementText,
       },
       cms: { ...currentSettings.cms, ...(updates.cms || {}) },
       coupons: updates.coupons || currentSettings.coupons || [],

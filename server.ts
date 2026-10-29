@@ -81,17 +81,9 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 // Production detection:
-// If NODE_ENV is explicitly 'development', run in Vite dev mode.
-// Otherwise, if dist/index.html exists (e.g. after npm run build) or NODE_ENV is 'production',
-// run high-performance production mode to serve minified, compressed static assets without Vite HMR.
-const isExplicitDev = process.env.NODE_ENV === 'development';
-const hasDistBuild = [
-  path.resolve(process.cwd(), 'dist'),
-  path.resolve(__dirname, 'dist'),
-  __dirname,
-].some(p => fs.existsSync(path.resolve(p, 'index.html')));
-
-const isProduction = !isExplicitDev && (process.env.NODE_ENV === 'production' || hasDistBuild);
+// In dev (npm run dev via tsx), mount Vite dev middleware for source rendering.
+// In production (NODE_ENV === 'production'), serve compiled static assets from dist/.
+const isProduction = process.env.NODE_ENV === 'production';
 
 // Enable Gzip/Brotli compression for all HTTP responses (reduces asset payload by up to 85%)
 app.use(compression());
@@ -185,6 +177,31 @@ function getAvailableKey(): KeyStatus | null {
       return candidate;
     }
   }
+
+  // Also check if any active Gemini key is stored in the database
+  try {
+    const dbGemini = db.getApiKeys().filter(k => k.isActive && k.provider === 'gemini' && k.apiKey?.trim().length > 8);
+    for (const dbKey of dbGemini) {
+      const cleanKey = dbKey.apiKey.trim();
+      const existing = keyPool.find(k => k.key === cleanKey);
+      if (!existing) {
+        const newEntry: KeyStatus = {
+          key: cleanKey,
+          masked: `${cleanKey.slice(0, 4)}...${cleanKey.slice(-4)}`,
+          status: 'active',
+          cooldownUntil: 0,
+          rpmCount: 0,
+          totalRequests: 0,
+          lastUsed: 0,
+          errorCount: 0,
+        };
+        keyPool.push(newEntry);
+        return newEntry;
+      } else if (existing.status === 'active') {
+        return existing;
+      }
+    }
+  } catch (e) {}
 
   // If all are in cooldown, pick the one with earliest cooldown expiry
   const sorted = [...keyPool].sort((a, b) => a.cooldownUntil - b.cooldownUntil);
@@ -2312,11 +2329,20 @@ async function startServer() {
       appType: 'spa',
     });
     app.use(vite.middlewares);
+    app.use('*', async (req, res, next) => {
+      const url = req.originalUrl;
+      try {
+        let template = fs.readFileSync(path.resolve(__dirname, 'index.html'), 'utf-8');
+        template = await vite.transformIndexHtml(url, template);
+        res.status(200).set({ 'Content-Type': 'text/html' }).end(template);
+      } catch (e) {
+        next(e);
+      }
+    });
   } else {
     const distPath = [
       path.resolve(process.cwd(), 'dist'),
       path.resolve(__dirname, 'dist'),
-      __dirname,
     ].find(p => fs.existsSync(path.resolve(p, 'index.html'))) || path.resolve(__dirname, 'dist');
 
     // High performance caching for static production assets

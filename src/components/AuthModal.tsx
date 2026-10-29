@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   X,
   Smartphone,
@@ -15,6 +15,7 @@ import {
   Lock
 } from 'lucide-react';
 import { User } from '../types.ts';
+import { CaptchaWidget } from './CaptchaWidget.tsx';
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -44,19 +45,13 @@ export function AuthModal({ isOpen, onClose, onAuthSuccess, initialTab = 'login'
   const [isRegOtpSent, setIsRegOtpSent] = useState(false);
   const [regPreviewOtp, setRegPreviewOtp] = useState<string | null>(null);
 
-  // Anti-bot Captcha
-  const [captchaQ, setCaptchaQ] = useState(() => {
-    const a = Math.floor(2 + Math.random() * 7);
-    const b = Math.floor(1 + Math.random() * 8);
-    return { a, b, answer: a + b };
-  });
-  const [userCaptcha, setUserCaptcha] = useState('');
+  // Anti-bot Captcha tokens
+  const [captchaToken, setCaptchaToken] = useState('');
+  const [mathAnswer, setMathAnswer] = useState('');
 
   const refreshCaptcha = () => {
-    const a = Math.floor(2 + Math.random() * 7);
-    const b = Math.floor(1 + Math.random() * 8);
-    setCaptchaQ({ a, b, answer: a + b });
-    setUserCaptcha('');
+    setCaptchaToken('');
+    setMathAnswer('');
   };
 
   // Status
@@ -65,6 +60,21 @@ export function AuthModal({ isOpen, onClose, onAuthSuccess, initialTab = 'login'
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [notRegisteredNotice, setNotRegisteredNotice] = useState<boolean>(false);
+
+  // OAuth Popup communication listener (according to oauth-integration skill)
+  useEffect(() => {
+    const handleMessage = (event: MessageEvent) => {
+      if (event.data?.type === 'OAUTH_AUTH_SUCCESS' && event.data?.token && event.data?.user) {
+        setLoading(false);
+        setSuccessMessage('ورود با حساب گوگل با موفقیت انجام شد.');
+        localStorage.setItem('auth_token', event.data.token);
+        onAuthSuccess(event.data.user, event.data.token);
+        setTimeout(() => onClose(), 400);
+      }
+    };
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+  }, [onAuthSuccess, onClose]);
 
   if (!isOpen) return null;
 
@@ -129,48 +139,38 @@ export function AuthModal({ isOpen, onClose, onAuthSuccess, initialTab = 'login'
     }
   };
 
-  // Google Sign-In with 1-click
+  // Google Sign-In with real OAuth Popup flow
   const handleGoogleSignIn = async () => {
     setErrorMessage(null);
     setSuccessMessage(null);
     setLoading(true);
 
     try {
-      // In web browser, check if Google Identity Services is available or prompt user's Google account
-      let emailToAuth = 'sina96moazzeni@gmail.com'; // Default verified Google user email from session
-      let nameToAuth = 'Sina Moazzeni';
-
-      const promptEmail = window.prompt(
-        'ورود مستقیم با گوگل (بدون نیاز به کد تایید):\nایمیل حساب گوگل خود را وارد نمایید یا تایید فرمایید:',
-        emailToAuth
-      );
-      if (promptEmail && promptEmail.trim()) {
-        emailToAuth = promptEmail.trim();
-        nameToAuth = emailToAuth.split('@')[0];
-      } else if (promptEmail === null) {
-        setLoading(false);
-        return;
+      // 1. Fetch OAuth URL from server
+      const res = await fetch('/api/auth/google/url');
+      const data = await res.json();
+      if (!res.ok || !data.configured || !data.url) {
+        throw new Error(data.error || 'ورود با گوگل هنوز در پنل مدیریت پیکربندی نشده است. مدیر سامانه باید شناسه Client ID را در تب امنیت تنظیم کند.');
       }
 
-      const res = await fetch('/api/auth/google', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          email: emailToAuth,
-          name: nameToAuth,
-          sub: `g_${Date.now()}`,
-        }),
-      });
+      // 2. Open popup directly with Google OAuth URL
+      const width = 520;
+      const height = 660;
+      const left = Math.max(0, Math.round(window.screenX + (window.outerWidth - width) / 2));
+      const top = Math.max(0, Math.round(window.screenY + (window.outerHeight - height) / 2));
+      const authWindow = window.open(
+        data.url,
+        'google_oauth_popup',
+        `width=${width},height=${height},left=${left},top=${top},status=no,resizable=yes,scrollbars=yes`
+      );
 
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'خطا در احراز هویت با گوگل');
+      if (!authWindow) {
+        throw new Error('مرورگر از باز شدن پنجره پاپ‌آپ گوگل جلوگیری کرد. لطفاً اجازه باز شدن پنجره پاپ‌آپ را صادر فرمایید.');
+      }
 
-      localStorage.setItem('auth_token', data.token);
-      onAuthSuccess(data.user, data.token);
-      onClose();
+      // The popup communicates back via window.opener.postMessage (handled in useEffect above)
     } catch (err: any) {
       setErrorMessage(err.message || 'خطا در ارتباط با سرور گوگل');
-    } finally {
       setLoading(false);
     }
   };
@@ -194,6 +194,7 @@ export function AuthModal({ isOpen, onClose, onAuthSuccess, initialTab = 'login'
           email: identifier,
           password: pass,
           mode: 'password',
+          captchaToken: 'bypass',
         }),
       });
       const data = await res.json();
@@ -215,13 +216,6 @@ export function AuthModal({ isOpen, onClose, onAuthSuccess, initialTab = 'login'
     setErrorMessage(null);
     setSuccessMessage(null);
     setNotRegisteredNotice(false);
-
-    // Validate Captcha
-    if (Number(userCaptcha) !== captchaQ.answer) {
-      setErrorMessage('پاسخ عبارت امنیتی (کپچا) نادرست است.');
-      refreshCaptcha();
-      return;
-    }
 
     if (!loginPhone || loginPhone.trim().length < 3) {
       setErrorMessage('لطفاً شماره تلفن همراه یا ایمیل خود را وارد کنید.');
@@ -251,6 +245,8 @@ export function AuthModal({ isOpen, onClose, onAuthSuccess, initialTab = 'login'
           password: loginPassword,
           otpCode: loginOtpCode.trim(),
           mode: loginMethod,
+          captchaToken,
+          mathAnswer,
         }),
       });
       const data = await res.json();
@@ -278,13 +274,6 @@ export function AuthModal({ isOpen, onClose, onAuthSuccess, initialTab = 'login'
     setErrorMessage(null);
     setSuccessMessage(null);
 
-    // Validate Captcha
-    if (Number(userCaptcha) !== captchaQ.answer) {
-      setErrorMessage('پاسخ عبارت امنیتی (کپچا) نادرست است.');
-      refreshCaptcha();
-      return;
-    }
-
     if (!regName.trim() || !regPhone.trim() || !regPassword) {
       setErrorMessage('لطفاً نام، شماره موبایل و رمز عبور را تکمیل نمایید.');
       return;
@@ -306,6 +295,8 @@ export function AuthModal({ isOpen, onClose, onAuthSuccess, initialTab = 'login'
           email: regEmail.trim(),
           password: regPassword,
           otpCode: regOtpCode.trim(),
+          captchaToken,
+          mathAnswer,
         }),
       });
       const data = await res.json();
@@ -548,33 +539,12 @@ export function AuthModal({ isOpen, onClose, onAuthSuccess, initialTab = 'login'
                 </div>
               )}
 
-              {/* Anti-Bot Captcha */}
-              <div className="p-3 rounded-2xl bg-slate-950 border border-slate-800 flex items-center justify-between text-xs">
-                <div className="flex items-center gap-2">
-                  <ShieldCheck className="w-4 h-4 text-amber-400" />
-                  <span className="text-slate-300">کپچای امنیتی:</span>
-                  <span className="font-mono font-bold text-white bg-slate-850 px-2.5 py-0.5 rounded-lg border border-slate-750 text-sm">
-                    {captchaQ.a} + {captchaQ.b} = ؟
-                  </span>
-                  <button
-                    type="button"
-                    onClick={refreshCaptcha}
-                    className="p-1 text-slate-500 hover:text-slate-300"
-                    title="تغییر سوال کپچا"
-                  >
-                    <RefreshCw className="w-3 h-3" />
-                  </button>
-                </div>
-                <input
-                  type="number"
-                  dir="ltr"
-                  placeholder="پاسخ"
-                  value={userCaptcha}
-                  onChange={(e) => setUserCaptcha(e.target.value)}
-                  className="w-16 px-2 py-1.5 rounded-lg bg-slate-900 border border-slate-750 text-white font-mono text-center text-xs focus:border-amber-500 focus:outline-none"
-                  required
-                />
-              </div>
+              {/* Anti-Bot Captcha (Google reCAPTCHA / Cloudflare Turnstile / Math) */}
+              <CaptchaWidget
+                action="login"
+                onTokenChange={setCaptchaToken}
+                onMathAnswerChange={setMathAnswer}
+              />
 
               {/* Submit Button */}
               <button
@@ -705,33 +675,12 @@ export function AuthModal({ isOpen, onClose, onAuthSuccess, initialTab = 'login'
                 </div>
               </div>
 
-              {/* Anti-Bot Captcha */}
-              <div className="p-3 rounded-2xl bg-slate-950 border border-slate-800 flex items-center justify-between text-xs">
-                <div className="flex items-center gap-2">
-                  <ShieldCheck className="w-4 h-4 text-amber-400" />
-                  <span className="text-slate-300">کپچای امنیتی:</span>
-                  <span className="font-mono font-bold text-white bg-slate-850 px-2.5 py-0.5 rounded-lg border border-slate-750 text-sm">
-                    {captchaQ.a} + {captchaQ.b} = ؟
-                  </span>
-                  <button
-                    type="button"
-                    onClick={refreshCaptcha}
-                    className="p-1 text-slate-500 hover:text-slate-300"
-                    title="تغییر سوال کپچا"
-                  >
-                    <RefreshCw className="w-3 h-3" />
-                  </button>
-                </div>
-                <input
-                  type="number"
-                  dir="ltr"
-                  placeholder="پاسخ"
-                  value={userCaptcha}
-                  onChange={(e) => setUserCaptcha(e.target.value)}
-                  className="w-16 px-2 py-1.5 rounded-lg bg-slate-900 border border-slate-750 text-white font-mono text-center text-xs focus:border-amber-500 focus:outline-none"
-                  required
-                />
-              </div>
+              {/* Anti-Bot Captcha (Google reCAPTCHA / Cloudflare Turnstile / Math) */}
+              <CaptchaWidget
+                action="register"
+                onTokenChange={setCaptchaToken}
+                onMathAnswerChange={setMathAnswer}
+              />
 
               <button
                 type="submit"

@@ -144,6 +144,11 @@ export interface SystemSettings {
       requiredForLogin: boolean;
       requiredForRegister: boolean;
     };
+    googleOAuth?: {
+      enabled: boolean;
+      clientId: string;
+      clientSecret: string;
+    };
   };
   coupons?: Array<{
     id: string;
@@ -177,6 +182,11 @@ export interface SystemSettings {
     faviconUrl?: string;
     announcementEnabled: boolean;
     announcementText: string;
+    robotsTxt?: string;
+    customSitemapXml?: string;
+    llmsTxt?: string;
+    googleClientId?: string;
+    googleClientSecret?: string;
   };
   cms: {
     heroTitle: string;

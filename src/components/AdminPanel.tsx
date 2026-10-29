@@ -432,6 +432,18 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
   const [batchTargetModel, setBatchTargetModel] = useState('gemini-3.1-flash-lite');
   const [isSwitchingBatchModel, setIsSwitchingBatchModel] = useState(false);
 
+  // SEO Files & Agentic Browsing (Sitemap, Robots.txt, LLMs.txt)
+  const [seoFilesTab, setSeoFilesTab] = useState<'robots' | 'sitemap' | 'llms'>('robots');
+  const [robotsTxtContent, setRobotsTxtContent] = useState('');
+  const [sitemapXmlContent, setSitemapXmlContent] = useState('');
+  const [llmsTxtContent, setLlmsTxtContent] = useState('');
+  const [isSavingSeoFiles, setIsSavingSeoFiles] = useState(false);
+  const [seoFilesSaveSuccess, setSeoFilesSaveSuccess] = useState(false);
+  const [copiedSeoLink, setCopiedSeoLink] = useState<string | null>(null);
+  const [isSavingAnnouncement, setIsSavingAnnouncement] = useState(false);
+  const [announcementSaveSuccess, setAnnouncementSaveSuccess] = useState(false);
+  const [copiedOAuthUri, setCopiedOAuthUri] = useState(false);
+
   const token = localStorage.getItem('auth_token') || '';
 
   useEffect(() => {
@@ -449,7 +461,84 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
     fetchBlogPosts();
     fetchBlogCategories();
     fetchScriptsConfig();
+    fetchSeoFiles();
   }, []);
+
+  const fetchSeoFiles = async () => {
+    try {
+      const res = await fetch('/api/system/seo-files');
+      if (res.ok) {
+        const data = await res.json();
+        setRobotsTxtContent(data.robotsTxt || '');
+        setSitemapXmlContent(data.customSitemapXml || '');
+        setLlmsTxtContent(data.llmsTxt || '');
+      }
+    } catch (e) {
+      console.warn('Could not fetch seo files');
+    }
+  };
+
+  const handleSaveSeoFiles = async () => {
+    setIsSavingSeoFiles(true);
+    try {
+      const currentToken = localStorage.getItem('auth_token') || token;
+      const res = await fetch('/api/admin/seo-files', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${currentToken}`,
+        },
+        body: JSON.stringify({
+          robotsTxt: robotsTxtContent,
+          customSitemapXml: sitemapXmlContent,
+          llmsTxt: llmsTxtContent,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setSeoFilesSaveSuccess(true);
+        setTimeout(() => setSeoFilesSaveSuccess(false), 3500);
+      } else {
+        alert(data.error || 'خطا در ذخیره فایل‌های سئو');
+      }
+    } catch (e: any) {
+      alert(`خطا: ${e.message}`);
+    } finally {
+      setIsSavingSeoFiles(false);
+    }
+  };
+
+  const handleSaveAnnouncement = async () => {
+    if (!settings) return;
+    setIsSavingAnnouncement(true);
+    try {
+      const currentToken = localStorage.getItem('auth_token') || token;
+      const currentAnn = settings.announcementBar || {
+        enabled: true,
+        text: '🎉 تخفیف ویژه چاپ و ترجمه: هزینه ترجمه هر کلمه فقط ۴۵ تومان همراه با استخراج هوشمند واژه‌نامه تخصصی و صفحه‌بندی کتاب.',
+        type: 'warning',
+        linkUrl: '',
+        linkText: 'ثبت سفارش کتاب',
+      };
+      const res = await fetch('/api/admin/announcement', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${currentToken}`,
+        },
+        body: JSON.stringify(currentAnn),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setAnnouncementSaveSuccess(true);
+        setTimeout(() => setAnnouncementSaveSuccess(false), 3500);
+      }
+    } catch (e: any) {
+      alert(`خطا در ذخیره اعلان: ${e.message}`);
+    } finally {
+      setIsSavingAnnouncement(false);
+    }
+  };
 
   const fetchCoupons = async () => {
     try {
@@ -8214,86 +8303,495 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
               </div>
             </div>
 
-            {/* Section 3: Announcement Bar Control */}
+            {/* Section 3: User Dashboard & Top Announcement Bar Control */}
             <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 space-y-5 shadow-xl">
-              <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-800">
                 <div className="flex items-center gap-2">
                   <Sparkles className="w-5 h-5 text-amber-400" />
-                  <h3 className="font-bold text-base text-white">نوار اعلان بالای سایت (Top Announcement Bar)</h3>
+                  <div>
+                    <h3 className="font-bold text-base text-white">نوار اعلان تخفیف صفحه کاربران و بالای سایت</h3>
+                    <p className="text-[11px] text-slate-400">اعلان سراسری که در بالای پیشخوان تمام کاربران و صفحات سایت نمایش داده می‌شود.</p>
+                  </div>
                 </div>
 
-                <label className="flex items-center gap-2 cursor-pointer text-xs">
-                  <input
-                    type="checkbox"
-                    checked={settings.seo?.announcementEnabled ?? true}
-                    onChange={(e) =>
-                      setSettings({
-                        ...settings,
-                        seo: {
-                          siteTitle: settings.seo?.siteTitle ?? 'مترجم آنلاین کتاب با هوش مصنوعی',
-                          metaDescription: settings.seo?.metaDescription ?? '',
-                          metaKeywords: settings.seo?.metaKeywords ?? '',
-                          logoUrl: settings.seo?.logoUrl ?? '',
-                          faviconUrl: settings.seo?.faviconUrl ?? '',
-                          announcementEnabled: e.target.checked,
-                          announcementText: settings.seo?.announcementText ?? '',
-                        },
-                      })
-                    }
-                    className="rounded accent-amber-500 w-4 h-4"
-                  />
-                  <span className="text-amber-400 font-bold">فعال‌سازی نوار اعلان در بالای تمام صفحات</span>
-                </label>
-              </div>
+                <div className="flex items-center gap-3">
+                  <label className="flex items-center gap-2 cursor-pointer text-xs bg-slate-950 px-3 py-1.5 rounded-xl border border-slate-800">
+                    <input
+                      type="checkbox"
+                      checked={settings.announcementBar?.enabled ?? settings.seo?.announcementEnabled ?? true}
+                      onChange={(e) => {
+                        const isChecked = e.target.checked;
+                        const currentAnn = settings.announcementBar || {
+                          text: '🎉 تخفیف ویژه چاپ و ترجمه: هزینه ترجمه هر کلمه فقط ۴۵ تومان همراه با استخراج هوشمند واژه‌نامه تخصصی و صفحه‌بندی کتاب.',
+                          type: 'warning',
+                          linkUrl: '',
+                          linkText: 'ثبت سفارش کتاب',
+                          enabled: true,
+                        };
+                        setSettings({
+                          ...settings,
+                          announcementBar: {
+                            ...currentAnn,
+                            enabled: isChecked,
+                          },
+                          seo: {
+                            ...(settings.seo || {
+                              siteTitle: 'مترجم آنلاین کتاب با هوش مصنوعی',
+                              metaDescription: '',
+                              metaKeywords: '',
+                              logoUrl: '',
+                              faviconUrl: '',
+                              announcementEnabled: true,
+                              announcementText: '',
+                            }),
+                            announcementEnabled: isChecked,
+                          },
+                        });
+                      }}
+                      className="rounded accent-amber-500 w-4 h-4"
+                    />
+                    <span className={settings.announcementBar?.enabled ? 'text-amber-400 font-bold' : 'text-slate-400'}>
+                      {settings.announcementBar?.enabled ? 'اعلان فعال است' : 'اعلان غیرفعال'}
+                    </span>
+                  </label>
 
-              <div className="space-y-3">
-                <label className="block text-xs font-semibold text-slate-300">متن اعلان بالای سایت:</label>
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    value={settings.seo?.announcementText ?? settings.cms.announcement ?? ''}
-                    onChange={(e) =>
-                      setSettings({
-                        ...settings,
-                        seo: {
-                          siteTitle: settings.seo?.siteTitle ?? 'مترجم آنلاین کتاب با هوش مصنوعی',
-                          metaDescription: settings.seo?.metaDescription ?? '',
-                          metaKeywords: settings.seo?.metaKeywords ?? '',
-                          logoUrl: settings.seo?.logoUrl ?? '',
-                          faviconUrl: settings.seo?.faviconUrl ?? '',
-                          announcementEnabled: settings.seo?.announcementEnabled ?? true,
-                          announcementText: e.target.value,
-                        },
-                      })
-                    }
-                    placeholder="مثال: 🎉 تخفیف ۵۰ درصدی نوروزی بر روی تمام سفارش‌های ترجمه کتاب با کد NOROOZ"
-                    className="flex-1 px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs focus:border-amber-500 focus:outline-none"
-                  />
                   <button
                     type="button"
-                    onClick={() =>
-                      setSettings({
-                        ...settings,
-                        seo: {
-                          siteTitle: settings.seo?.siteTitle ?? 'مترجم آنلاین کتاب با هوش مصنوعی',
-                          metaDescription: settings.seo?.metaDescription ?? '',
-                          metaKeywords: settings.seo?.metaKeywords ?? '',
-                          logoUrl: settings.seo?.logoUrl ?? '',
-                          faviconUrl: settings.seo?.faviconUrl ?? '',
-                          announcementEnabled: false,
-                          announcementText: '',
-                        },
-                      })
-                    }
-                    className="px-3.5 py-2 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 text-xs font-bold transition"
-                    title="پاک کردن و غیرفعال‌سازی نوار اعلان"
+                    onClick={handleSaveAnnouncement}
+                    disabled={isSavingAnnouncement}
+                    className="px-4 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs shadow-md transition flex items-center gap-1"
                   >
-                    پاک کردن اعلان
+                    {isSavingAnnouncement ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : announcementSaveSuccess ? <Check className="w-3.5 h-3.5" /> : <Save className="w-3.5 h-3.5" />}
+                    <span>{announcementSaveSuccess ? 'ذخیره شد!' : 'ذخیره اعلان'}</span>
                   </button>
                 </div>
-                <p className="text-[10px] text-slate-400">
-                  اگر اعلان را غیرفعال کنید یا متن آن را پاک کنید، نوار بالایی از روی سایت برداشته می‌شود.
-                </p>
+              </div>
+
+              <div className="space-y-4">
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-xs font-semibold text-slate-300">متن اعلان ویژه (نمایش در بالای پیشخوان کاربران):</label>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const defaultText = '🎉 تخفیف ویژه چاپ و ترجمه: هزینه ترجمه هر کلمه فقط ۴۵ تومان همراه با استخراج هوشمند واژه‌نامه تخصصی و صفحه‌بندی کتاب.';
+                        const currentAnn = settings.announcementBar || {
+                          type: 'warning',
+                          linkUrl: '',
+                          linkText: 'ثبت سفارش کتاب',
+                          enabled: true,
+                          text: '',
+                        };
+                        setSettings({
+                          ...settings,
+                          announcementBar: {
+                            ...currentAnn,
+                            text: defaultText,
+                            enabled: true,
+                          },
+                          seo: {
+                            ...(settings.seo || {
+                              siteTitle: 'مترجم آنلاین کتاب با هوش مصنوعی',
+                              metaDescription: '',
+                              metaKeywords: '',
+                              logoUrl: '',
+                              faviconUrl: '',
+                              announcementEnabled: true,
+                              announcementText: '',
+                            }),
+                            announcementText: defaultText,
+                            announcementEnabled: true,
+                          },
+                        });
+                      }}
+                      className="text-[11px] text-amber-400 hover:text-amber-300 font-semibold underline flex items-center gap-1"
+                    >
+                      <RotateCcw className="w-3 h-3" />
+                      <span>بازنشانی به متن پیش‌فرض تخفیف ۴۵ تومانی</span>
+                    </button>
+                  </div>
+
+                  <textarea
+                    rows={2}
+                    value={settings.announcementBar?.text ?? settings.seo?.announcementText ?? '🎉 تخفیف ویژه چاپ و ترجمه: هزینه ترجمه هر کلمه فقط ۴۵ تومان همراه با استخراج هوشمند واژه‌نامه تخصصی و صفحه‌بندی کتاب.'}
+                    onChange={(e) => {
+                      const newText = e.target.value;
+                      const currentAnn = settings.announcementBar || {
+                        type: 'warning',
+                        linkUrl: '',
+                        linkText: 'ثبت سفارش کتاب',
+                        enabled: true,
+                        text: '',
+                      };
+                      setSettings({
+                        ...settings,
+                        announcementBar: {
+                          ...currentAnn,
+                          text: newText,
+                        },
+                        seo: {
+                          ...(settings.seo || {
+                            siteTitle: 'مترجم آنلاین کتاب با هوش مصنوعی',
+                            metaDescription: '',
+                            metaKeywords: '',
+                            logoUrl: '',
+                            faviconUrl: '',
+                            announcementEnabled: true,
+                            announcementText: '',
+                          }),
+                          announcementText: newText,
+                        },
+                      });
+                    }}
+                    placeholder="متن اعلان را بنویسید..."
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs focus:border-amber-500 focus:outline-none leading-relaxed"
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-300 mb-1">آدرس پیوند اعلان (اختیاری):</label>
+                    <input
+                      type="text"
+                      dir="ltr"
+                      value={settings.announcementBar?.linkUrl || ''}
+                      onChange={(e) => {
+                        const currentAnn = settings.announcementBar || {
+                          type: 'warning',
+                          text: '🎉 تخفیف ویژه چاپ و ترجمه: هزینه ترجمه هر کلمه فقط ۴۵ تومان همراه با استخراج هوشمند واژه‌نامه تخصصی و صفحه‌بندی کتاب.',
+                          linkText: 'ثبت سفارش کتاب',
+                          enabled: true,
+                          linkUrl: '',
+                        };
+                        setSettings({
+                          ...settings,
+                          announcementBar: {
+                            ...currentAnn,
+                            linkUrl: e.target.value,
+                          },
+                        });
+                      }}
+                      placeholder="/?page=new-book یا https://..."
+                      className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs font-mono focus:border-amber-500 focus:outline-none"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-300 mb-1">متن دکمه پیوند (اختیاری):</label>
+                    <input
+                      type="text"
+                      value={settings.announcementBar?.linkText || ''}
+                      onChange={(e) => {
+                        const currentAnn = settings.announcementBar || {
+                          type: 'warning',
+                          text: '🎉 تخفیف ویژه چاپ و ترجمه: هزینه ترجمه هر کلمه فقط ۴۵ تومان همراه با استخراج هوشمند واژه‌نامه تخصصی و صفحه‌بندی کتاب.',
+                          linkUrl: '',
+                          enabled: true,
+                          linkText: '',
+                        };
+                        setSettings({
+                          ...settings,
+                          announcementBar: {
+                            ...currentAnn,
+                            linkText: e.target.value,
+                          },
+                        });
+                      }}
+                      placeholder="مثال: مشاهده تعرفه‌ها و ثبت کتاب"
+                      className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs focus:border-amber-500 focus:outline-none"
+                    />
+                  </div>
+                </div>
+
+                {/* Live Preview Box */}
+                <div className="p-3.5 rounded-2xl bg-slate-950 border border-amber-500/20 text-xs">
+                  <span className="text-[10px] text-slate-400 block mb-2 font-semibold">پیش‌نمایش زنده در صفحه کاربران:</span>
+                  {settings.announcementBar?.enabled ? (
+                    <div className="p-3 rounded-xl bg-gradient-to-r from-amber-500/15 via-slate-900 to-indigo-950/30 border border-amber-500/30 flex items-center justify-between gap-3 text-xs">
+                      <div className="flex items-center gap-2">
+                        <span className="w-2.5 h-2.5 rounded-full bg-amber-400 shrink-0"></span>
+                        <span className="text-amber-200 font-medium">
+                          {settings.announcementBar?.text || 'متن اعلان خالی است.'}
+                        </span>
+                      </div>
+                      {settings.announcementBar?.linkText && (
+                        <span className="px-2.5 py-1 rounded-lg bg-amber-500/20 text-amber-300 font-bold border border-amber-500/30 text-[10px] shrink-0">
+                          {settings.announcementBar.linkText}
+                        </span>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="text-slate-500 text-center py-2">
+                      نوار اعلان هم‌اکنون غیرفعال است و به کاربران نمایش داده نمی‌شود.
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Section 4: Sitemap, Robots.txt & Agentic AI Browsing Manager */}
+            <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 space-y-6 shadow-xl">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-800">
+                <div className="flex items-center gap-2">
+                  <Globe className="w-5 h-5 text-emerald-400" />
+                  <div>
+                    <h3 className="font-bold text-base text-white">مدیریت فایل‌های سئو، خزنده‌ها و مرور عامل‌گرا (Agentic AI Browsing)</h3>
+                    <p className="text-[11px] text-slate-400">لینک‌های مستقیم برای Google Search Console و خزنده‌های هوش مصنوعی (ChatGPT, Claude, Gemini, Perplexity)</p>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleSaveSeoFiles}
+                  disabled={isSavingSeoFiles}
+                  className="px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs shadow-md transition flex items-center gap-1.5 self-start sm:self-auto"
+                >
+                  {isSavingSeoFiles ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : seoFilesSaveSuccess ? <Check className="w-3.5 h-3.5" /> : <Save className="w-3.5 h-3.5" />}
+                  <span>{seoFilesSaveSuccess ? 'فایل‌ها با موفقیت ذخیره شدند!' : 'ذخیره اختصاصی فایل‌های سئو'}</span>
+                </button>
+              </div>
+
+              {/* Direct URLs & One-Click Copy for Google Search Console & AI Bots */}
+              <div className="space-y-2.5">
+                <h4 className="text-xs font-bold text-slate-300 flex items-center gap-1.5">
+                  <ExternalLink className="w-4 h-4 text-amber-400" />
+                  <span>آدرس‌های رسمی سرور (جهت ثبت در سرچ کنسول گوگل و موتورهای جستجو):</span>
+                </h4>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {[
+                    {
+                      label: 'نقشه سایت (Sitemap XML)',
+                      path: '/sitemap.xml',
+                      desc: 'جهت ثبت در Google Search Console > Sitemaps',
+                      color: 'border-emerald-500/30 bg-emerald-500/5',
+                      badge: 'گوگل سرچ کنسول',
+                      badgeColor: 'text-emerald-400 bg-emerald-500/10',
+                    },
+                    {
+                      label: 'فایل دستورات خزنده‌ها (Robots.txt)',
+                      path: '/robots.txt',
+                      desc: 'هدایت ربات‌های گوگل، بینگ و موتورهای جستجو',
+                      color: 'border-blue-500/30 bg-blue-500/5',
+                      badge: 'خزنده‌های سئو',
+                      badgeColor: 'text-blue-400 bg-blue-500/10',
+                    },
+                    {
+                      label: 'عامل‌های هوش مصنوعی (llms.txt)',
+                      path: '/llms.txt',
+                      desc: 'استاندارد مرور عامل‌گرا (ChatGPT, Claude, Perplexity, Gemini)',
+                      color: 'border-purple-500/30 bg-purple-500/5',
+                      badge: 'Agentic AI',
+                      badgeColor: 'text-purple-400 bg-purple-500/10',
+                    },
+                    {
+                      label: 'مستندات کامل مدل‌ها (llms-full.txt)',
+                      path: '/llms-full.txt',
+                      desc: 'شرح جامع قابلیت‌های ترجمه برای مدل‌های استدلال',
+                      color: 'border-amber-500/30 bg-amber-500/5',
+                      badge: 'Full LLM Context',
+                      badgeColor: 'text-amber-400 bg-amber-500/10',
+                    },
+                    {
+                      label: 'پلاگین هوش مصنوعی (.well-known)',
+                      path: '/.well-known/ai-plugin.json',
+                      desc: 'مانیفست استاندارد OpenAPI برای عامل‌های هوش مصنوعی',
+                      color: 'border-teal-500/30 bg-teal-500/5',
+                      badge: 'OpenAI Plugin',
+                      badgeColor: 'text-teal-400 bg-teal-500/10',
+                    },
+                  ].map((item, idx) => {
+                    const fullUrl = `${window.location.origin}${item.path}`;
+                    const isCopied = copiedSeoLink === item.path;
+                    return (
+                      <div key={idx} className={`p-3.5 rounded-2xl border ${item.color} flex flex-col justify-between gap-2.5`}>
+                        <div>
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="font-bold text-white text-xs">{item.label}</span>
+                            <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${item.badgeColor}`}>
+                              {item.badge}
+                            </span>
+                          </div>
+                          <p className="text-[10px] text-slate-400 leading-relaxed">{item.desc}</p>
+                          <div className="mt-2 p-1.5 rounded-lg bg-slate-950 border border-slate-800 text-[11px] font-mono text-slate-300 break-all select-all dir-ltr text-left">
+                            {fullUrl}
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-1.5 pt-1">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              navigator.clipboard.writeText(fullUrl);
+                              setCopiedSeoLink(item.path);
+                              setTimeout(() => setCopiedSeoLink(null), 2500);
+                            }}
+                            className="flex-1 py-1 px-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] font-semibold flex items-center justify-center gap-1 transition"
+                          >
+                            {isCopied ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                            <span>{isCopied ? 'کپی شد!' : 'کپی لینک مستقیم'}</span>
+                          </button>
+                          <a
+                            href={item.path}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition"
+                            title="مشاهده مستقیم در تب جدید"
+                          >
+                            <ExternalLink className="w-3.5 h-3.5" />
+                          </a>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* In-Panel Text/Code Editor Tabs */}
+              <div className="pt-4 border-t border-slate-800">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <Code className="w-4 h-4 text-amber-400" />
+                    <span className="text-xs font-bold text-white">ویرایشگر مستقیم محتوای فایل‌ها:</span>
+                  </div>
+
+                  <div className="flex items-center gap-1 p-1 bg-slate-950 rounded-xl border border-slate-800 text-xs">
+                    <button
+                      type="button"
+                      onClick={() => setSeoFilesTab('robots')}
+                      className={`px-3 py-1 rounded-lg font-semibold transition ${
+                        seoFilesTab === 'robots' ? 'bg-slate-800 text-amber-400 shadow' : 'text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      فایل robots.txt
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSeoFilesTab('sitemap')}
+                      className={`px-3 py-1 rounded-lg font-semibold transition ${
+                        seoFilesTab === 'sitemap' ? 'bg-slate-800 text-amber-400 shadow' : 'text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      نقشه سایت sitemap.xml
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSeoFilesTab('llms')}
+                      className={`px-3 py-1 rounded-lg font-semibold transition ${
+                        seoFilesTab === 'llms' ? 'bg-slate-800 text-amber-400 shadow' : 'text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      عامل‌های هوش مصنوعی (llms.txt)
+                    </button>
+                  </div>
+                </div>
+
+                {/* SubTab 1: Robots.txt */}
+                {seoFilesTab === 'robots' && (
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between text-[11px] text-slate-400">
+                      <span>محتوای متنی فایل robots.txt در مسیر ریشه سایت:</span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const defRobots = `User-agent: *\nAllow: /\nDisallow: /api/\nDisallow: /admin\nDisallow: /auth/\n\nSitemap: ${window.location.origin}/sitemap.xml\nLLMs-Txt: ${window.location.origin}/llms.txt\n`;
+                          setRobotsTxtContent(defRobots);
+                        }}
+                        className="text-amber-400 hover:underline flex items-center gap-1"
+                      >
+                        <RotateCcw className="w-3 h-3" />
+                        <span>بازنشانی به پیش‌فرض استاندارد</span>
+                      </button>
+                    </div>
+                    <textarea
+                      rows={10}
+                      dir="ltr"
+                      value={robotsTxtContent}
+                      onChange={(e) => setRobotsTxtContent(e.target.value)}
+                      placeholder="User-agent: *\nAllow: /..."
+                      className="w-full px-4 py-3 rounded-2xl bg-slate-950 border border-slate-800 text-slate-200 font-mono text-xs focus:border-amber-500 focus:outline-none leading-relaxed"
+                    />
+                  </div>
+                )}
+
+                {/* SubTab 2: Sitemap.xml */}
+                {seoFilesTab === 'sitemap' && (
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between text-[11px] text-slate-400">
+                      <span>کد XML سفارشی (در صورت خالی بودن، نقشه سایت خودکار شامل تمام صفحات و مقالات وبلاگ تولید می‌شود):</span>
+                      <button
+                        type="button"
+                        onClick={() => setSitemapXmlContent('')}
+                        className="text-amber-400 hover:underline flex items-center gap-1"
+                      >
+                        <RotateCcw className="w-3 h-3" />
+                        <span>پاکسازی و بازگشت به حالت پویا (پیشنهاد گوگل)</span>
+                      </button>
+                    </div>
+                    <textarea
+                      rows={10}
+                      dir="ltr"
+                      value={sitemapXmlContent}
+                      onChange={(e) => setSitemapXmlContent(e.target.value)}
+                      placeholder="<?xml version='1.0' encoding='UTF-8'?>\n<urlset xmlns='http://www.sitemaps.org/schemas/sitemap/0.9'>\n  <url>\n    <loc>https://gaiafa.ir/</loc>\n  </url>\n</urlset>"
+                      className="w-full px-4 py-3 rounded-2xl bg-slate-950 border border-slate-800 text-slate-200 font-mono text-xs focus:border-amber-500 focus:outline-none leading-relaxed"
+                    />
+                    <p className="text-[10px] text-slate-500">
+                      نکته: اگر این فیلد خالی بماند، سرور به صورت خودکار آخرین صفحات فعال، مقالات منتشر شده وبلاگ و روت‌های عمومی را با تگ‌های lastmod و changefreq در فایل sitemap.xml تولید می‌کند.
+                    </p>
+                  </div>
+                )}
+
+                {/* SubTab 3: llms.txt */}
+                {seoFilesTab === 'llms' && (
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between text-[11px] text-slate-400">
+                      <span>محتوای استاندارد Agentic Browsing (llms.txt) برای درک مدل‌های زبانی:</span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const defLlms = `# سامانه ابری ترجمه کتاب با هوش مصنوعی (Gaiafa / Book Translator)\n\n> سامانه تخصصی و تجاری ترجمه کتاب‌های انگلیسی به فارسی با هوش مصنوعی جمینای و مدل‌های پیشرفته.\n\n## ویژگی‌ها\n- حفظ دقیق ساختار سند، پاورقی‌ها و جداول\n- استخراج هوشمند واژه‌نامه تخصصی (Glossary)\n- خروجی Word، PDF و کتابخوان دیجیتال\n- تعرفه اقتصادی هر کلمه ۴۵ تومان\n\n## پیوندها\n- [صفحه اصلی](${window.location.origin}/)\n- [وبلاگ و مقالات](${window.location.origin}/blog)\n- [راهنمای جامع](${window.location.origin}/page/guide)\n`;
+                          setLlmsTxtContent(defLlms);
+                        }}
+                        className="text-amber-400 hover:underline flex items-center gap-1"
+                      >
+                        <RotateCcw className="w-3 h-3" />
+                        <span>بازنشانی به متن پیش‌فرض عامل‌ها</span>
+                      </button>
+                    </div>
+                    <textarea
+                      rows={10}
+                      dir="ltr"
+                      value={llmsTxtContent}
+                      onChange={(e) => setLlmsTxtContent(e.target.value)}
+                      placeholder="# Project Name\n\n> Summary..."
+                      className="w-full px-4 py-3 rounded-2xl bg-slate-950 border border-slate-800 text-slate-200 font-mono text-xs focus:border-amber-500 focus:outline-none leading-relaxed"
+                    />
+                  </div>
+                )}
+
+                <div className="flex items-center justify-between pt-3">
+                  <span className="text-xs text-slate-400">
+                    {seoFilesSaveSuccess ? (
+                      <span className="text-emerald-400 font-bold flex items-center gap-1">
+                        <Check className="w-4 h-4" />
+                        تغییرات فایل‌های سئو با موفقیت در دیتابیس ثبت شد و روی سرور فعال گردید.
+                      </span>
+                    ) : (
+                      'تغییرات شما به صورت آنی در مسیرهای مربوطه سرور اعمال می‌شود.'
+                    )}
+                  </span>
+
+                  <button
+                    type="button"
+                    onClick={handleSaveSeoFiles}
+                    disabled={isSavingSeoFiles}
+                    className="px-5 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs shadow-md transition flex items-center gap-1.5"
+                  >
+                    {isSavingSeoFiles ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+                    <span>ذخیره فایل‌های سئو و خزنده‌ها</span>
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -8769,6 +9267,141 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
                   />
                   <span>الزام حل کپچا در ورود با رمز عبور</span>
                 </label>
+              </div>
+            </div>
+
+            {/* Google OAuth 2.0 Configuration Card */}
+            <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400">
+                    <svg className="w-4 h-4" viewBox="0 0 24 24">
+                      <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
+                      <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+                      <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" />
+                      <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" />
+                    </svg>
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-base text-white">تنظیمات ورود سریع با حساب گوگل (Google OAuth 2.0 Sign-In)</h3>
+                    <p className="text-xs text-slate-400 mt-0.5">احراز هویت واقعی و رسمی جیمیل از طریق پنجره پاپ‌آپ گوگل با توکن اختصاصی</p>
+                  </div>
+                </div>
+
+                <label className="flex items-center gap-2 cursor-pointer bg-slate-950 px-3 py-1.5 rounded-xl border border-slate-800">
+                  <input
+                    type="checkbox"
+                    checked={settings.security.googleOAuth?.enabled || false}
+                    onChange={(e) =>
+                      setSettings({
+                        ...settings,
+                        security: {
+                          ...settings.security,
+                          googleOAuth: {
+                            clientId: settings.security.googleOAuth?.clientId || '',
+                            clientSecret: settings.security.googleOAuth?.clientSecret || '',
+                            enabled: e.target.checked,
+                          },
+                        },
+                      })
+                    }
+                    className="rounded accent-amber-500 w-4 h-4"
+                  />
+                  <span className="text-xs text-amber-300 font-bold">فعال‌سازی ورود با گوگل</span>
+                </label>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+                    شناسه کلاینت گوگل (Google Client ID):
+                  </label>
+                  <input
+                    type="text"
+                    dir="ltr"
+                    placeholder="xxxxxxxxxxxx-xxxxxxxxxxxxxxxx.apps.googleusercontent.com"
+                    value={settings.security.googleOAuth?.clientId || ''}
+                    onChange={(e) =>
+                      setSettings({
+                        ...settings,
+                        security: {
+                          ...settings.security,
+                          googleOAuth: {
+                            clientId: e.target.value.trim(),
+                            clientSecret: settings.security.googleOAuth?.clientSecret || '',
+                            enabled: settings.security.googleOAuth?.enabled || false,
+                          },
+                        },
+                      })
+                    }
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-white font-mono text-xs focus:border-amber-500 focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+                    کلید محرمانه کلاینت (Google Client Secret):
+                  </label>
+                  <input
+                    type="password"
+                    dir="ltr"
+                    placeholder="GOCSPX-xxxxxxxxxxxxxxxxxxxxxxxx"
+                    value={settings.security.googleOAuth?.clientSecret || ''}
+                    onChange={(e) =>
+                      setSettings({
+                        ...settings,
+                        security: {
+                          ...settings.security,
+                          googleOAuth: {
+                            clientId: settings.security.googleOAuth?.clientId || '',
+                            clientSecret: e.target.value.trim(),
+                            enabled: settings.security.googleOAuth?.enabled || false,
+                          },
+                        },
+                      })
+                    }
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-white font-mono text-xs focus:border-amber-500 focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              {/* Authorized Redirect URI copy box */}
+              <div className="bg-slate-950 p-3.5 rounded-2xl border border-slate-800/80 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
+                    <ExternalLink className="w-3.5 h-3.5 text-amber-400" />
+                    آدرس بازگشت تایید هویت (Authorized redirect URI):
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const redirectUrl = `${window.location.origin}/auth/callback`;
+                      navigator.clipboard.writeText(redirectUrl);
+                      setCopiedOAuthUri(true);
+                      setTimeout(() => setCopiedOAuthUri(false), 3000);
+                    }}
+                    className="text-xs font-mono text-amber-400 hover:text-amber-300 flex items-center gap-1 bg-amber-500/10 hover:bg-amber-500/20 px-2.5 py-1 rounded-lg border border-amber-500/20 transition"
+                  >
+                    {copiedOAuthUri ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                    <span>{copiedOAuthUri ? 'کپی شد!' : 'کپی آدرس بازگشت'}</span>
+                  </button>
+                </div>
+                <div className="p-2 rounded-xl bg-slate-900 border border-slate-800 font-mono text-[11px] text-amber-300 break-all select-all text-left" dir="ltr">
+                  {typeof window !== 'undefined' ? `${window.location.origin}/auth/callback` : 'https://gaiafa.ir/auth/callback'}
+                </div>
+                <div className="text-[11px] text-slate-400 leading-relaxed space-y-1">
+                  <p>
+                    📌 <strong className="text-slate-300">راهنمای راه‌اندازی سریع در کنسول گوگل:</strong>
+                  </p>
+                  <ol className="list-decimal list-inside space-y-0.5 text-slate-400 pr-1">
+                    <li>وارد کنسول <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener noreferrer" className="text-amber-400 underline font-mono">Google Cloud Console</a> شوید.</li>
+                    <li>در بخش <strong className="text-slate-300">Credentials</strong> روی دکمه <strong className="text-slate-300">+ Create Credentials</strong> و سپس <strong className="text-slate-300">OAuth client ID</strong> کلیک کنید.</li>
+                    <li>نوع برنامه را <strong className="text-slate-300">Web application</strong> انتخاب کنید.</li>
+                    <li>در بخش <strong className="text-slate-300">Authorized JavaScript origins</strong> آدرس دامنه سایت‌تان (<code className="text-amber-300 font-mono text-[10px]">{typeof window !== 'undefined' ? window.location.origin : 'https://gaiafa.ir'}</code>) را وارد کنید.</li>
+                    <li>در بخش <strong className="text-slate-300">Authorized redirect URIs</strong> آدرس بازگشت فوق را کپی و اضافه کنید.</li>
+                    <li>مقادیر Client ID و Client Secret حاصله را در کادرهای بالا قرار داده و روی دکمه <strong className="text-amber-400">ذخیره تنظیمات امنیتی</strong> در بالای صفحه کلیک نمایید.</li>
+                  </ol>
+                </div>
               </div>
             </div>
 
