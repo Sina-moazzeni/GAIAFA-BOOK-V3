@@ -106,7 +106,12 @@ export default function App() {
 
   // User Books & Jobs
   const [books, setBooks] = useState<BookProject[]>([]);
-  const [activeBookId, setActiveBookId] = useState<string>('');
+  const [activeBookId, setActiveBookId] = useState<string>(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem(STORAGE_KEY_ACTIVE_BOOK) || '';
+    }
+    return '';
+  });
   const [activeJobs, setActiveJobs] = useState<TranslationJob[]>([]);
 
   // Modals
@@ -126,6 +131,18 @@ export default function App() {
   const [isStoppingBatch, setIsStoppingBatch] = useState(false);
   const [batchProgress, setBatchProgress] = useState({ current: 0, total: 0, secondsToNextCall: 0 });
   const isBatchCancelledRef = useRef(false);
+
+  // Synchronized refs to prevent stale closure bugs in polling intervals and background syncs
+  const activeBookIdRef = useRef<string>(activeBookId);
+  const activeChunkIdRef = useRef<string>(activeChunkId);
+
+  useEffect(() => {
+    activeBookIdRef.current = activeBookId;
+  }, [activeBookId]);
+
+  useEffect(() => {
+    activeChunkIdRef.current = activeChunkId;
+  }, [activeChunkId]);
 
   // Mobile Workspace active tab: 'editor' (translation views) vs 'chunks' (list of chapters/chunks)
   const [mobileWorkspaceTab, setMobileWorkspaceTab] = useState<'editor' | 'chunks'>('editor');
@@ -271,7 +288,34 @@ export default function App() {
     return () => clearInterval(interval);
   }, [authToken, currentUser]);
 
-  // Fetch user's books from server DB
+  // Dedicated function to switch and lock active book with immediate localStorage & ref synchronization
+  const handleSelectBook = (selected: string | BookProject, targetView?: 'workspace' | 'dashboard') => {
+    const targetId = typeof selected === 'string' ? selected : selected.id;
+    if (!targetId) return;
+
+    setActiveBookId(targetId);
+    activeBookIdRef.current = targetId;
+    try {
+      localStorage.setItem(STORAGE_KEY_ACTIVE_BOOK, targetId);
+    } catch (e) {}
+
+    // Ensure activeChunkId belongs to this book
+    const targetBook = books.find((b) => b.id === targetId) || (typeof selected !== 'string' ? selected : undefined);
+    if (targetBook && Array.isArray(targetBook.chunks) && targetBook.chunks.length > 0) {
+      const hasCurrentChunk = targetBook.chunks.some((c) => c.id === activeChunkIdRef.current);
+      if (!hasCurrentChunk) {
+        const firstChunkId = targetBook.chunks[0].id;
+        setActiveChunkId(firstChunkId);
+        activeChunkIdRef.current = firstChunkId;
+      }
+    }
+
+    if (targetView) {
+      setCurrentView(targetView);
+    }
+  };
+
+  // Fetch user's books from server DB with active book preservation
   const fetchUserBooks = async (token: string, isSilent = false) => {
     try {
       const res = await fetch('/api/books', {
@@ -286,12 +330,28 @@ export default function App() {
         }));
         setBooks(serverBooks);
 
-        if (!activeBookId && serverBooks.length > 0) {
-          const savedActive = localStorage.getItem(STORAGE_KEY_ACTIVE_BOOK);
-          const found = serverBooks.find((b: any) => b.id === savedActive) || serverBooks[0];
-          setActiveBookId(found.id);
-          if (found.chunks?.length > 0) {
-            setActiveChunkId(found.chunks[0].id);
+        if (serverBooks.length > 0) {
+          const currentActive = activeBookIdRef.current || (typeof window !== 'undefined' ? localStorage.getItem(STORAGE_KEY_ACTIVE_BOOK) : '') || '';
+          const activeFound = serverBooks.find((b: any) => b.id === currentActive);
+
+          if (activeFound) {
+            // Book still exists on server - preserve the user's active book selection!
+            if (activeBookIdRef.current !== activeFound.id) {
+              setActiveBookId(activeFound.id);
+              activeBookIdRef.current = activeFound.id;
+            }
+          } else {
+            // Active book not set or was deleted from server - select first book
+            const fallback = serverBooks[0];
+            setActiveBookId(fallback.id);
+            activeBookIdRef.current = fallback.id;
+            try {
+              localStorage.setItem(STORAGE_KEY_ACTIVE_BOOK, fallback.id);
+            } catch (e) {}
+            if (fallback.chunks?.length > 0) {
+              setActiveChunkId(fallback.chunks[0].id);
+              activeChunkIdRef.current = fallback.chunks[0].id;
+            }
           }
         }
       }
@@ -328,10 +388,15 @@ export default function App() {
   const handleLogout = () => {
     const tokenToClear = authToken || localStorage.getItem(STORAGE_KEY_AUTH_TOKEN);
     localStorage.removeItem(STORAGE_KEY_AUTH_TOKEN);
+    try {
+      localStorage.removeItem(STORAGE_KEY_ACTIVE_BOOK);
+    } catch (e) {}
     setAuthToken(null);
     setCurrentUser(null);
     setCurrentView('dashboard');
     setActiveAuthPage(false);
+    setActiveBookId('');
+    activeBookIdRef.current = '';
     window.history.pushState({}, '', '/');
 
     if (tokenToClear) {
@@ -379,14 +444,10 @@ export default function App() {
 
       // Add to books list
       setBooks((prev) => [data.book, ...prev]);
-      setActiveBookId(data.book.id);
-      if (data.book.chunks?.length > 0) {
-        setActiveChunkId(data.book.chunks[0].id);
-      }
+      handleSelectBook(data.book, 'workspace');
 
       // Close modal and navigate immediately into workspace so user can review and edit pages first
       setIsNewBookModalOpen(false);
-      setCurrentView('workspace');
 
       // Refresh active jobs
       fetchActiveJobs(authToken);
@@ -411,10 +472,16 @@ export default function App() {
       });
       if (res.ok) {
         setBooks((prev) => prev.filter((b) => b.id !== bookId));
-        if (activeBookId === bookId) {
+        if (activeBookIdRef.current === bookId) {
           const remaining = books.filter((b) => b.id !== bookId);
           if (remaining.length > 0) {
-            setActiveBookId(remaining[0].id);
+            handleSelectBook(remaining[0]);
+          } else {
+            setActiveBookId('');
+            activeBookIdRef.current = '';
+            try {
+              localStorage.removeItem(STORAGE_KEY_ACTIVE_BOOK);
+            } catch (e) {}
           }
         }
       }
@@ -494,6 +561,7 @@ export default function App() {
       setBooks((prev) => prev.map((b) => (b.id === activeBookId ? data.book : b)));
       if (activeChunkId === chunkId && data.book.chunks?.length > 0) {
         setActiveChunkId(data.book.chunks[0].id);
+        activeChunkIdRef.current = data.book.chunks[0].id;
       }
     } catch (err: any) {
       alert(`خطا در حذف صفحه: ${err.message}`);
@@ -542,16 +610,18 @@ export default function App() {
 
   // Exports (dynamically imported on user action to preserve instant initial page speed)
   const handleExportDocx = async (targetBook: BookProject) => {
+    handleSelectBook(targetBook);
     const { downloadDocx } = await import('./utils/exporter.ts');
     await downloadDocx(targetBook);
   };
 
   const handleExportPdf = (targetBook: BookProject) => {
-    setActiveBookId(targetBook.id);
+    handleSelectBook(targetBook);
     setIsDesignModalOpen(true);
   };
 
   const handleExportEpub = async (targetBook: BookProject) => {
+    handleSelectBook(targetBook);
     const { downloadStyledHtml } = await import('./utils/exporter.ts');
     downloadStyledHtml(targetBook);
   };
@@ -836,11 +906,7 @@ export default function App() {
           costPerWord={userEffectiveRate}
           onOpenNewBook={() => setIsNewBookModalOpen(true)}
           onSelectBook={(selected) => {
-            setActiveBookId(selected.id);
-            if (selected.chunks?.length > 0) {
-              setActiveChunkId(selected.chunks[0].id);
-            }
-            setCurrentView('workspace');
+            handleSelectBook(selected, 'workspace');
           }}
           onOpenWallet={() => setIsWalletModalOpen(true)}
           onOpenAdmin={(currentUser.role === 'admin' || currentUser.role === 'staff') ? () => setCurrentView('admin') : undefined}
@@ -1098,14 +1164,11 @@ export default function App() {
         books={books}
         activeBookId={activeBookId}
         onSelectBook={(id) => {
-          setActiveBookId(id);
-          const found = books.find((b) => b.id === id);
-          if (found && found.chunks?.length > 0) {
-            setActiveChunkId(found.chunks[0].id);
-          }
+          handleSelectBook(id, 'workspace');
         }}
         onDeleteBook={handleDeleteBook}
         onOpenNewBookModal={() => setIsNewBookModalOpen(true)}
+        onExportPdf={(book) => handleExportPdf(book)}
       />
     </div>
     </Suspense>

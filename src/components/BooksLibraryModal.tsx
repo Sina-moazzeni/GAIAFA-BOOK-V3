@@ -11,7 +11,8 @@ import {
   Search,
   ArrowRight,
   Sparkles,
-  FileText
+  FileText,
+  Printer
 } from 'lucide-react';
 import { BookProject } from '../types.ts';
 import { downloadDocx } from '../utils/exporter.ts';
@@ -24,6 +25,7 @@ interface BooksLibraryModalProps {
   onSelectBook: (id: string) => void;
   onDeleteBook: (id: string) => void;
   onOpenNewBookModal: () => void;
+  onExportPdf?: (book: BookProject) => void;
 }
 
 export const BooksLibraryModal: React.FC<BooksLibraryModalProps> = ({
@@ -34,6 +36,7 @@ export const BooksLibraryModal: React.FC<BooksLibraryModalProps> = ({
   onSelectBook,
   onDeleteBook,
   onOpenNewBookModal,
+  onExportPdf,
 }) => {
   const [search, setSearch] = useState('');
 
@@ -185,6 +188,20 @@ export const BooksLibraryModal: React.FC<BooksLibraryModalProps> = ({
                           >
                             <FileText className="w-3.5 h-3.5" />
                           </button>
+
+                          {onExportPdf && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onExportPdf(book);
+                                onClose();
+                              }}
+                              className="p-1 rounded text-slate-400 hover:text-rose-400 transition"
+                              title="دیزاین و چاپ PDF این کتاب"
+                            >
+                              <Printer className="w-3.5 h-3.5" />
+                            </button>
+                          )}
 
                           {books.length > 1 && (
                             <button

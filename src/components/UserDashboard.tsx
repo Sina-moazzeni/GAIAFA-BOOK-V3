@@ -618,10 +618,18 @@ export function UserDashboard({
                     </div>
 
                     {/* Book Titles */}
-                    <h3 className="font-bold text-base text-white line-clamp-1 mb-1 group-hover:text-amber-400 transition-colors">
+                    <h3
+                      onClick={() => onSelectBook(book)}
+                      className="font-bold text-base text-white line-clamp-1 mb-1 group-hover:text-amber-400 transition-colors cursor-pointer"
+                      title="مشاهده و ویرایش کتاب"
+                    >
                       {book.title}
                     </h3>
-                    <p className="text-xs text-slate-400 line-clamp-1 mb-3 font-serif" dir="ltr">
+                    <p
+                      onClick={() => onSelectBook(book)}
+                      className="text-xs text-slate-400 line-clamp-1 mb-3 font-serif cursor-pointer hover:text-slate-300 transition-colors"
+                      dir="ltr"
+                    >
                       {book.originalTitle || book.title}
                     </p>
 
