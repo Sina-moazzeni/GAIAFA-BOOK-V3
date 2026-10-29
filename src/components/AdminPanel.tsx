@@ -50,7 +50,10 @@ import {
   Edit3,
   Calculator,
   HelpCircle,
-  Sliders
+  Sliders,
+  ArrowUp,
+  ArrowDown,
+  RotateCcw
 } from 'lucide-react';
 import {
   User,
@@ -64,7 +67,10 @@ import {
   BlogPost,
   BlogCategory,
   ScriptsInjectionConfig,
+  LandingSection,
+  LandingSectionType,
 } from '../types.ts';
+import { DEFAULT_LANDING_SECTIONS } from '../constants/landingDefaults.ts';
 import { DailyRevenueView } from './DailyRevenueView.tsx';
 
 interface AdminPanelProps {
@@ -383,6 +389,12 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
   const [isSavingSettings, setIsSavingSettings] = useState(false);
   const [settingsToast, setSettingsToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [seoSaveSuccess, setSeoSaveSuccess] = useState(false);
+
+  // CMS Landing Sections Management State
+  const [editingSectionModal, setEditingSectionModal] = useState<LandingSection | null>(null);
+  const [addSectionModalOpen, setAddSectionModalOpen] = useState(false);
+  const [newSectionType, setNewSectionType] = useState<LandingSectionType>('custom_html');
+  const [newSectionTitle, setNewSectionTitle] = useState('');
 
   // All Transactions
   const [transactions, setTransactions] = useState<TransactionRecord[]>([]);
@@ -1292,6 +1304,152 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
     } finally {
       setIsSavingSettings(false);
     }
+  };
+
+  // --- CMS Landing Sections Handlers ---
+  const getCmsSections = (): LandingSection[] => {
+    if (settings?.cms?.sections && settings.cms.sections.length > 0) {
+      return [...settings.cms.sections].sort((a, b) => (a.order || 0) - (b.order || 0));
+    }
+    return DEFAULT_LANDING_SECTIONS;
+  };
+
+  const handleMoveCmsSection = (sectionId: string, direction: 'up' | 'down') => {
+    if (!settings) return;
+    const list = getCmsSections();
+    const idx = list.findIndex((s) => s.id === sectionId);
+    if (idx === -1) return;
+    const targetIdx = direction === 'up' ? idx - 1 : idx + 1;
+    if (targetIdx < 0 || targetIdx >= list.length) return;
+
+    const temp = list[idx];
+    list[idx] = list[targetIdx];
+    list[targetIdx] = temp;
+
+    const reordered = list.map((s, i) => ({ ...s, order: i + 1 }));
+    setSettings({
+      ...settings,
+      cms: {
+        ...settings.cms,
+        sections: reordered,
+      },
+    });
+  };
+
+  const handleToggleCmsSectionEnabled = (sectionId: string) => {
+    if (!settings) return;
+    const list = getCmsSections();
+    const updated = list.map((s) => {
+      if (s.id === sectionId) {
+        return { ...s, enabled: s.enabled === false ? true : false };
+      }
+      return s;
+    });
+    setSettings({
+      ...settings,
+      cms: {
+        ...settings.cms,
+        sections: updated,
+      },
+    });
+  };
+
+  const handleDeleteCmsSection = (sectionId: string, title: string) => {
+    if (!settings) return;
+    if (!confirm(`آیا از حذف سکشن «${title}» از صفحه اصلی اطمینان دارید؟`)) return;
+    const list = getCmsSections();
+    const updated = list.filter((s) => s.id !== sectionId).map((s, i) => ({ ...s, order: i + 1 }));
+    setSettings({
+      ...settings,
+      cms: {
+        ...settings.cms,
+        sections: updated,
+      },
+    });
+  };
+
+  const handleResetCmsSections = () => {
+    if (!settings) return;
+    if (!confirm('آیا از بازگردانی کامل سکشن‌های صفحه اصلی به چیدمان و محتوای پیش‌فرض اولیه اطمینان دارید؟')) return;
+    const defaults = JSON.parse(JSON.stringify(DEFAULT_LANDING_SECTIONS));
+    setSettings({
+      ...settings,
+      cms: {
+        ...settings.cms,
+        sections: defaults,
+      },
+    });
+  };
+
+  const handleSaveEditedSection = (updatedSection: LandingSection) => {
+    if (!settings) return;
+    const list = getCmsSections();
+    const updated = list.map((s) => (s.id === updatedSection.id ? updatedSection : s));
+    const cmsRootUpdates: any = {};
+    if (updatedSection.type === 'hero' && updatedSection.data) {
+      if (updatedSection.data.title) cmsRootUpdates.heroTitle = updatedSection.data.title;
+      if (updatedSection.data.subtitle) cmsRootUpdates.heroSubtitle = updatedSection.data.subtitle;
+    }
+    setSettings({
+      ...settings,
+      cms: {
+        ...settings.cms,
+        ...cmsRootUpdates,
+        sections: updated,
+      },
+    });
+    setEditingSectionModal(null);
+  };
+
+  const handleAddCmsSection = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!settings) return;
+    const list = getCmsSections();
+    const newId = `sec_${newSectionType}_${Date.now()}`;
+    const title = newSectionTitle.trim() || (
+      newSectionType === 'custom_html' ? 'سکشن محتوای اختصاصی HTML' :
+      newSectionType === 'cta' ? 'بنر اقدام جدید' :
+      'سکشن جدید'
+    );
+
+    let initialData: any = {};
+    if (newSectionType === 'custom_html') {
+      initialData = {
+        htmlContent: `<div style="background: linear-gradient(135deg, #090d16, #1e293b); border: 1px solid #334155; border-radius: 20px; padding: 40px; text-align: center; color: white;">
+  <h2 style="font-size: 24px; font-weight: bold; color: #f59e0b; margin-bottom: 12px;">عنوان بنر یا پیام ویژه شما</h2>
+  <p style="font-size: 14px; color: #94a3b8; max-width: 600px; margin: 0 auto 20px;">توضیحات مورد نظر درباره کمپین، ناشران یا معرفی خدمات اختصاصی را اینجا وارد کنید.</p>
+  <a href="#calculator" style="display: inline-block; background: #f59e0b; color: #020617; font-weight: bold; padding: 10px 24px; border-radius: 12px; text-decoration: none;">مشاهده بیشتر</a>
+</div>`,
+        containerClass: 'py-16 border-b border-slate-800/80 bg-slate-900/40',
+      };
+    } else if (newSectionType === 'cta') {
+      initialData = {
+        title: 'یک عنوان جذاب برای اقدام',
+        subtitle: 'توضیحات ترغیب‌کننده برای شروع ترجمه کتاب',
+        buttonText: 'ثبت سفارش سریع',
+      };
+    }
+
+    const newSec: LandingSection = {
+      id: newId,
+      type: newSectionType,
+      title,
+      enabled: true,
+      order: list.length + 1,
+      data: initialData,
+    };
+
+    setSettings({
+      ...settings,
+      cms: {
+        ...settings.cms,
+        sections: [...list, newSec],
+      },
+    });
+
+    setAddSectionModalOpen(false);
+    setNewSectionTitle('');
+    setEditingSectionModal(newSec);
   };
 
   // Test SMS
@@ -6511,101 +6669,1189 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
         )}
 
         {/* ========================================================= */}
-        {/* TAB 5: CMS & PAGE BUILDER */}
+        {/* TAB 5: CMS & LANDING SECTIONS BUILDER */}
         {/* ========================================================= */}
         {activeTab === 'cms' && settings && (
-          <div className="space-y-8">
-            <div className="flex items-center justify-between">
+          <div className="space-y-8 animate-in fade-in">
+            {/* Top Toolbar */}
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
               <div>
-                <h2 className="text-xl font-bold text-white">صفحه‌ساز و مدیریت محتوای لندینگ (CMS)</h2>
-                <p className="text-xs text-slate-400">ویرایش متن‌های صفحه اصلی، بنر اطلاع‌رسانی و پرسش‌های متداول</p>
+                <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                  <Layers className="w-6 h-6 text-amber-400" />
+                  <span>صفحه‌ساز و مدیریت سکشن‌های صفحه اصلی (Landing Page CMS)</span>
+                </h2>
+                <p className="text-xs text-slate-400 mt-1">
+                  قابلیت جابه‌جایی چیدمان، فعال/غیرفعال کردن، حذف، ویرایش تمامی متن‌ها و دکمه‌ها و افزودن سکشن‌های سفارشی به صفحه اصلی
+                </p>
               </div>
 
-              <button
-                onClick={handleSaveSettings}
-                className="px-5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs shadow-md transition-all flex items-center gap-1.5"
-              >
-                {saveSettingsSuccess ? <Check className="w-4 h-4" /> : <Settings className="w-4 h-4" />}
-                <span>{saveSettingsSuccess ? 'ذخیره شد!' : 'ذخیره تغییرات محتوا'}</span>
-              </button>
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setAddSectionModalOpen(true)}
+                  className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-400 hover:from-amber-400 text-slate-950 font-bold text-xs flex items-center gap-1.5 shadow-md shadow-amber-500/20 transition"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>افزودن سکشن جدید</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleResetCmsSections}
+                  className="px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-800 text-slate-300 hover:text-white hover:border-slate-700 text-xs flex items-center gap-1.5 transition"
+                  title="بازگردانی چیدمان و متن‌های پیش‌فرض اولیه"
+                >
+                  <RotateCcw className="w-3.5 h-3.5 text-slate-400" />
+                  <span>چیدمان پیش‌فرض</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleSaveSettings}
+                  disabled={isSavingSettings}
+                  className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-md transition flex items-center gap-1.5"
+                >
+                  {isSavingSettings ? <RefreshCw className="w-4 h-4 animate-spin" /> : saveSettingsSuccess ? <Check className="w-4 h-4" /> : <Save className="w-4 h-4" />}
+                  <span>{saveSettingsSuccess ? 'ذخیره شد!' : 'ذخیره تغییرات چیدمان'}</span>
+                </button>
+              </div>
             </div>
 
-            <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 space-y-4">
-              <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1">عنوان هدر لندینگ (Hero Title):</label>
-                <input
-                  type="text"
-                  value={settings.cms.heroTitle}
-                  onChange={(e) =>
-                    setSettings({
-                      ...settings,
-                      cms: { ...settings.cms, heroTitle: e.target.value },
-                    })
-                  }
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-white text-sm focus:border-amber-500 focus:outline-none"
-                />
+            {/* Global CMS Contacts & Announcement Banner Card */}
+            <div className="bg-slate-900 border border-slate-800 rounded-3xl p-5 shadow-xl space-y-4">
+              <div className="flex items-center justify-between pb-3 border-b border-slate-800 text-xs">
+                <span className="font-bold text-slate-200 flex items-center gap-2">
+                  <Settings className="w-4 h-4 text-amber-400" />
+                  <span>اطلاعات تماس و نوار اعلان سراسری صفحه اصلی:</span>
+                </span>
+                <span className="text-[11px] text-slate-400 bg-slate-950 px-3 py-1 rounded-full border border-slate-800">
+                  {getCmsSections().length} سکشن تعریف‌شده ({getCmsSections().filter(s => s.enabled !== false).length} فعال)
+                </span>
               </div>
 
-              <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1">زیرعنوان توضیحی (Hero Subtitle):</label>
-                <textarea
-                  rows={2}
-                  value={settings.cms.heroSubtitle}
-                  onChange={(e) =>
-                    setSettings({
-                      ...settings,
-                      cms: { ...settings.cms, heroSubtitle: e.target.value },
-                    })
-                  }
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs focus:border-amber-500 focus:outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1">متن نوار پیام سراسری (Announcement Banner):</label>
-                <input
-                  type="text"
-                  value={settings.cms.announcement}
-                  onChange={(e) =>
-                    setSettings({
-                      ...settings,
-                      cms: { ...settings.cms, announcement: e.target.value },
-                    })
-                  }
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs focus:border-amber-500 focus:outline-none"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
                 <div>
-                  <label className="block text-xs font-semibold text-slate-300 mb-1">شماره پشتیبانی:</label>
+                  <label className="block text-[11px] font-semibold text-slate-300 mb-1">شماره پشتیبانی:</label>
                   <input
                     type="text"
-                    value={settings.cms.supportPhone}
+                    value={settings.cms.supportPhone || ''}
                     onChange={(e) =>
                       setSettings({
                         ...settings,
                         cms: { ...settings.cms, supportPhone: e.target.value },
                       })
                     }
-                    className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs focus:border-amber-500 focus:outline-none"
+                    placeholder="۰۲۱-۸۸۸۸۹۹۹۹"
+                    className="w-full px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs focus:border-amber-500 focus:outline-none"
                   />
                 </div>
+
                 <div>
-                  <label className="block text-xs font-semibold text-slate-300 mb-1">ایمیل پشتیبانی:</label>
+                  <label className="block text-[11px] font-semibold text-slate-300 mb-1">ایمیل پشتیبانی:</label>
                   <input
                     type="email"
-                    value={settings.cms.supportEmail}
+                    value={settings.cms.supportEmail || ''}
                     onChange={(e) =>
                       setSettings({
                         ...settings,
                         cms: { ...settings.cms, supportEmail: e.target.value },
                       })
                     }
-                    className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs focus:border-amber-500 focus:outline-none"
+                    placeholder="support@translator.ir"
+                    className="w-full px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs focus:border-amber-500 focus:outline-none text-left"
+                    dir="ltr"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-300 mb-1">متن نوار پیام اعلان بالای صفحه:</label>
+                  <input
+                    type="text"
+                    value={settings.cms.announcement || ''}
+                    onChange={(e) =>
+                      setSettings({
+                        ...settings,
+                        cms: { ...settings.cms, announcement: e.target.value },
+                      })
+                    }
+                    placeholder="متن پیام بالای سایت..."
+                    className="w-full px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs focus:border-amber-500 focus:outline-none"
                   />
                 </div>
               </div>
+            </div>
+
+            {/* Section Cards Manager List */}
+            <div className="space-y-4">
+              <div className="flex items-center justify-between text-xs text-slate-400 px-1">
+                <span>چیدمان و ترتیب سکشن‌های صفحه اصلی (به ترتیبی که در زیر قرار دارند در سایت نمایش داده می‌شوند):</span>
+                <span className="text-[11px] text-amber-400">برای تغییر ترتیب از فلش‌های بالا و پایین استفاده نمایید</span>
+              </div>
+
+              <div className="space-y-3">
+                {getCmsSections().map((sec, idx) => {
+                  const total = getCmsSections().length;
+                  const isFirst = idx === 0;
+                  const isLast = idx === total - 1;
+                  const isEnabled = sec.enabled !== false;
+
+                  const typeLabel =
+                    sec.type === 'hero' ? 'معرفی اصلی و هدر (Hero)' :
+                    sec.type === 'calculator' ? 'ماشین‌حساب هوشمند قیمت و زمان' :
+                    sec.type === 'features' ? 'امکانات و مزایای پلتفرم' :
+                    sec.type === 'tones' ? 'لحن‌ها و سبک‌های نگارش' :
+                    sec.type === 'faq' ? 'سوالات متداول (FAQ)' :
+                    sec.type === 'cta' ? 'بنر اقدام نهایی (CTA)' :
+                    'سکشن سفارشی HTML';
+
+                  const typeBadgeClass =
+                    sec.type === 'hero' ? 'bg-amber-500/15 text-amber-300 border-amber-500/30' :
+                    sec.type === 'calculator' ? 'bg-blue-500/15 text-blue-300 border-blue-500/30' :
+                    sec.type === 'features' ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30' :
+                    sec.type === 'tones' ? 'bg-purple-500/15 text-purple-300 border-purple-500/30' :
+                    sec.type === 'faq' ? 'bg-indigo-500/15 text-indigo-300 border-indigo-500/30' :
+                    sec.type === 'cta' ? 'bg-rose-500/15 text-rose-300 border-rose-500/30' :
+                    'bg-cyan-500/15 text-cyan-300 border-cyan-500/30';
+
+                  return (
+                    <div
+                      key={sec.id}
+                      className={`p-4 sm:p-5 rounded-2xl border transition-all ${
+                        isEnabled
+                          ? 'bg-slate-900 border-slate-800 hover:border-slate-700 shadow-lg'
+                          : 'bg-slate-950/70 border-slate-900/80 opacity-60'
+                      }`}
+                    >
+                      <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+                        {/* Section Left/Start: Order Badge, Title, Type */}
+                        <div className="flex items-center gap-3.5 flex-1 min-w-0">
+                          <div className="w-8 h-8 rounded-xl bg-slate-950 border border-slate-800 text-slate-300 font-mono font-bold text-xs flex items-center justify-center shrink-0">
+                            #{idx + 1}
+                          </div>
+
+                          <div className="min-w-0 flex-1">
+                            <div className="flex flex-wrap items-center gap-2 mb-1">
+                              <span className="font-bold text-white text-sm sm:text-base truncate">
+                                {sec.title || typeLabel}
+                              </span>
+                              <span className={`text-[10px] px-2.5 py-0.5 rounded-full font-bold border ${typeBadgeClass}`}>
+                                {typeLabel}
+                              </span>
+                              {!isEnabled && (
+                                <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 font-medium">
+                                  مخفی در سایت
+                                </span>
+                              )}
+                            </div>
+
+                            <p className="text-xs text-slate-400 truncate">
+                              {sec.type === 'hero'
+                                ? sec.data?.title || settings.cms.heroTitle || 'معرفی و تیتر اصلی سایت'
+                                : sec.type === 'calculator'
+                                ? 'ماشین‌حساب تعرفه کلمه‌ای و مدت زمان تخمینی'
+                                : sec.type === 'features'
+                                ? `${sec.data?.items?.length || 4} ویژگی و مزیت ثبت‌شده`
+                                : sec.type === 'tones'
+                                ? `${sec.data?.items?.length || 3} سبک و لحن تخصصی`
+                                : sec.type === 'faq'
+                                ? `${sec.data?.items?.length || 3} پرسش و پاسخ متداول`
+                                : sec.type === 'cta'
+                                ? sec.data?.title || 'بنر شروع ترجمه و ثبت‌نام سریع'
+                                : 'محتوای کدهای HTML اختصاصی'}
+                            </p>
+                          </div>
+                        </div>
+
+                        {/* Section Right/End: Action Controls */}
+                        <div className="flex flex-wrap items-center gap-1.5 self-end md:self-auto shrink-0">
+                          {/* Reorder Buttons */}
+                          <div className="flex items-center bg-slate-950 border border-slate-800 rounded-xl p-0.5">
+                            <button
+                              type="button"
+                              disabled={isFirst}
+                              onClick={() => handleMoveCmsSection(sec.id, 'up')}
+                              className="p-1.5 rounded-lg text-slate-300 hover:text-amber-400 hover:bg-slate-850 disabled:opacity-25 disabled:hover:text-slate-300 disabled:hover:bg-transparent transition"
+                              title="انتقال به یک ردیف بالاتر (Move Up)"
+                            >
+                              <ArrowUp className="w-4 h-4" />
+                            </button>
+                            <div className="w-[1px] h-4 bg-slate-800" />
+                            <button
+                              type="button"
+                              disabled={isLast}
+                              onClick={() => handleMoveCmsSection(sec.id, 'down')}
+                              className="p-1.5 rounded-lg text-slate-300 hover:text-amber-400 hover:bg-slate-850 disabled:opacity-25 disabled:hover:text-slate-300 disabled:hover:bg-transparent transition"
+                              title="انتقال به یک ردیف پایین‌تر (Move Down)"
+                            >
+                              <ArrowDown className="w-4 h-4" />
+                            </button>
+                          </div>
+
+                          {/* Visibility Toggle Button */}
+                          <button
+                            type="button"
+                            onClick={() => handleToggleCmsSectionEnabled(sec.id)}
+                            className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition flex items-center gap-1 ${
+                              isEnabled
+                                ? 'bg-emerald-500/10 text-emerald-300 border-emerald-500/30 hover:bg-emerald-500/20'
+                                : 'bg-slate-800 text-slate-400 border-slate-700 hover:text-white'
+                            }`}
+                            title={isEnabled ? 'مخفی کردن از صفحه اصلی' : 'فعال‌سازی و نمایش در صفحه اصلی'}
+                          >
+                            <Eye className="w-3.5 h-3.5" />
+                            <span>{isEnabled ? 'فعال' : 'مخفی'}</span>
+                          </button>
+
+                          {/* Edit Content Button */}
+                          <button
+                            type="button"
+                            onClick={() => setEditingSectionModal(JSON.parse(JSON.stringify(sec)))}
+                            className="px-3.5 py-1.5 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/30 text-xs font-bold transition flex items-center gap-1.5 shadow-sm"
+                            title="ویرایش متون، عناوین و تنظیمات این سکشن"
+                          >
+                            <Edit3 className="w-3.5 h-3.5" />
+                            <span>ویرایش محتوا</span>
+                          </button>
+
+                          {/* Delete Section Button */}
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteCmsSection(sec.id, sec.title || typeLabel)}
+                            className="p-2 rounded-xl bg-slate-950 border border-slate-800 text-slate-400 hover:text-rose-400 hover:border-rose-500/40 hover:bg-rose-500/10 transition"
+                            title="حذف سکشن"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Quick Sticky Save Bar */}
+            <div className="bg-slate-900 border border-slate-800 rounded-3xl p-5 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-xl">
+              <div className="flex items-center gap-3 text-xs text-slate-300">
+                <div className="w-9 h-9 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 flex items-center justify-center shrink-0">
+                  <CheckCircle2 className="w-5 h-5 text-amber-400" />
+                </div>
+                <div>
+                  <div className="font-bold text-white text-sm">ثبت تغییرات چیدمان و محتوای صفحه اصلی</div>
+                  <div className="text-[11px] text-slate-400 mt-0.5">
+                    پس از هرگونه تغییر ترتیب، افزودن، ویرایش متون یا حذف سکشن، دکمه ذخیره را بزنید تا بلافاصله برای بازدیدکنندگان صفحه اصلی اعمال گردد.
+                  </div>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={handleSaveSettings}
+                disabled={isSavingSettings}
+                className="w-full sm:w-auto px-7 py-3 rounded-xl bg-gradient-to-r from-amber-500 to-amber-400 hover:from-amber-400 text-slate-950 font-bold text-xs shadow-md shadow-amber-500/20 flex items-center justify-center gap-2 transition disabled:opacity-50 shrink-0"
+              >
+                {isSavingSettings ? <RefreshCw className="w-4 h-4 animate-spin" /> : saveSettingsSuccess ? <Check className="w-4 h-4" /> : <Save className="w-4 h-4" />}
+                <span>{isSavingSettings ? 'در حال ذخیره‌سازی...' : saveSettingsSuccess ? 'ذخیره شد!' : 'ذخیره تغییرات صفحه اصلی'}</span>
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ========================================================= */}
+        {/* MODAL: EDIT SECTION CONTENT & DATA */}
+        {/* ========================================================= */}
+        {editingSectionModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-sm animate-in fade-in overflow-y-auto">
+            <div className="w-full max-w-3xl bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-2xl my-8 max-h-[90vh] flex flex-col">
+              {/* Modal Header */}
+              <div className="flex items-center justify-between pb-4 border-b border-slate-800 shrink-0">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-xl bg-amber-500/15 border border-amber-500/30 text-amber-400 flex items-center justify-center">
+                    <Edit3 className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-base text-white">
+                      ویرایش محتوای سکشن: {editingSectionModal.title || editingSectionModal.type}
+                    </h3>
+                    <p className="text-[11px] text-slate-400">تغییر عناوین، متن‌ها، دکمه‌ها و عناصر این بخش از صفحه اصلی</p>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setEditingSectionModal(null)}
+                  className="p-1.5 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Modal Body Form */}
+              <div className="flex-1 overflow-y-auto py-5 space-y-5 pr-1">
+                {/* Section Common Title & Visibility */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-slate-950 p-4 rounded-2xl border border-slate-800/80">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-300 mb-1">نام/عنوان داخلی سکشن:</label>
+                    <input
+                      type="text"
+                      value={editingSectionModal.title}
+                      onChange={(e) => setEditingSectionModal({ ...editingSectionModal, title: e.target.value })}
+                      className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-white text-xs focus:border-amber-500 focus:outline-none"
+                    />
+                  </div>
+
+                  <div className="flex items-center sm:justify-end gap-2 pt-4 sm:pt-0">
+                    <label className="flex items-center gap-2 cursor-pointer text-xs">
+                      <input
+                        type="checkbox"
+                        checked={editingSectionModal.enabled !== false}
+                        onChange={(e) => setEditingSectionModal({ ...editingSectionModal, enabled: e.target.checked })}
+                        className="rounded accent-amber-500 w-4 h-4"
+                      />
+                      <span className="font-bold text-slate-200">نمایش این سکشن در صفحه اصلی</span>
+                    </label>
+                  </div>
+                </div>
+
+                {/* --- 1. HERO SPECIFIC FIELDS --- */}
+                {editingSectionModal.type === 'hero' && (
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-300 mb-1">متن نشان بالای عنوان (Badge):</label>
+                      <input
+                        type="text"
+                        value={editingSectionModal.data?.badgeText || ''}
+                        onChange={(e) =>
+                          setEditingSectionModal({
+                            ...editingSectionModal,
+                            data: { ...editingSectionModal.data, badgeText: e.target.value },
+                          })
+                        }
+                        placeholder="نسل جدید موتور ترجمه ابری با پردازش موازی و صف هوشمند"
+                        className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs focus:border-amber-500 focus:outline-none"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-300 mb-1">عنوان اصلی هدر (H1 Title):</label>
+                      <input
+                        type="text"
+                        value={editingSectionModal.data?.title || ''}
+                        onChange={(e) =>
+                          setEditingSectionModal({
+                            ...editingSectionModal,
+                            data: { ...editingSectionModal.data, title: e.target.value },
+                          })
+                        }
+                        placeholder="ترجمه حرفه‌ای و روان کتاب‌های انگلیسی به فارسی با هوش مصنوعی"
+                        className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-white text-sm font-bold focus:border-amber-500 focus:outline-none"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-300 mb-1">زیرعنوان توضیحی (Subtitle):</label>
+                      <textarea
+                        rows={3}
+                        value={editingSectionModal.data?.subtitle || ''}
+                        onChange={(e) =>
+                          setEditingSectionModal({
+                            ...editingSectionModal,
+                            data: { ...editingSectionModal.data, subtitle: e.target.value },
+                          })
+                        }
+                        placeholder="توضیحات جذاب زیر عنوان اصلی..."
+                        className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs focus:border-amber-500 focus:outline-none leading-relaxed"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-300 mb-1">متن دکمه اصلی (CTA):</label>
+                        <input
+                          type="text"
+                          value={editingSectionModal.data?.ctaButtonText || 'شروع ترجمه کتاب'}
+                          onChange={(e) =>
+                            setEditingSectionModal({
+                              ...editingSectionModal,
+                              data: { ...editingSectionModal.data, ctaButtonText: e.target.value },
+                            })
+                          }
+                          className="w-full px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs focus:border-amber-500 focus:outline-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-300 mb-1">متن دکمه ثانویه (ماشین‌حساب):</label>
+                        <input
+                          type="text"
+                          value={editingSectionModal.data?.calcButtonText || 'محاسبه هزینه ترجمه'}
+                          onChange={(e) =>
+                            setEditingSectionModal({
+                              ...editingSectionModal,
+                              data: { ...editingSectionModal.data, calcButtonText: e.target.value },
+                            })
+                          }
+                          className="w-full px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs focus:border-amber-500 focus:outline-none"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Hero 4 Metrics Box Editor */}
+                    <div className="pt-2">
+                      <label className="block text-xs font-semibold text-amber-400 mb-2">۴ آمار و نشان اعتماد اجتماعی (Social Proof Metrics):</label>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        {(editingSectionModal.data?.metrics || [
+                          { value: '+۲۵۰,۰۰۰', label: 'کلمه ترجمه شده موفق' },
+                          { value: '۱۰۰٪ ابری', label: 'بدون نیاز به باز ماندن تب مرورگر' },
+                          { value: '۴ فرمت کامل', label: 'Word، PDF، EPUB و TXT' },
+                          { value: '۹۹.۹٪', label: 'پایداری با استخر کلیدهای موازی' },
+                        ]).map((m, mIdx) => (
+                          <div key={mIdx} className="p-3 bg-slate-950 border border-slate-800 rounded-xl space-y-1.5">
+                            <span className="text-[10px] text-slate-400">آمار شماره {mIdx + 1}:</span>
+                            <div className="grid grid-cols-2 gap-2">
+                              <input
+                                type="text"
+                                value={m.value}
+                                onChange={(e) => {
+                                  const curMetrics = [...(editingSectionModal.data?.metrics || [])];
+                                  curMetrics[mIdx] = { ...curMetrics[mIdx], value: e.target.value };
+                                  setEditingSectionModal({
+                                    ...editingSectionModal,
+                                    data: { ...editingSectionModal.data, metrics: curMetrics },
+                                  });
+                                }}
+                                placeholder="مقدار عددی (مثلا +۲۵۰,۰۰۰)"
+                                className="px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-amber-400 font-bold text-xs"
+                              />
+                              <input
+                                type="text"
+                                value={m.label}
+                                onChange={(e) => {
+                                  const curMetrics = [...(editingSectionModal.data?.metrics || [])];
+                                  curMetrics[mIdx] = { ...curMetrics[mIdx], label: e.target.value };
+                                  setEditingSectionModal({
+                                    ...editingSectionModal,
+                                    data: { ...editingSectionModal.data, metrics: curMetrics },
+                                  });
+                                }}
+                                placeholder="برچسب توضیحی"
+                                className="px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-slate-300 text-xs"
+                              />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* --- 2. CALCULATOR SPECIFIC FIELDS --- */}
+                {editingSectionModal.type === 'calculator' && (
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-300 mb-1">نشان بالای تیتر (Badge):</label>
+                      <input
+                        type="text"
+                        value={editingSectionModal.data?.badge || ''}
+                        onChange={(e) =>
+                          setEditingSectionModal({
+                            ...editingSectionModal,
+                            data: { ...editingSectionModal.data, badge: e.target.value },
+                          })
+                        }
+                        placeholder="شفافیت مالی و قیمت‌گذاری"
+                        className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs focus:border-amber-500 focus:outline-none"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-300 mb-1">عنوان سکشن ماشین‌حساب:</label>
+                      <input
+                        type="text"
+                        value={editingSectionModal.data?.title || ''}
+                        onChange={(e) =>
+                          setEditingSectionModal({
+                            ...editingSectionModal,
+                            data: { ...editingSectionModal.data, title: e.target.value },
+                          })
+                        }
+                        placeholder="ماشین‌حساب هوشمند هزینه و زمان ترجمه"
+                        className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-white text-sm font-bold focus:border-amber-500 focus:outline-none"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-300 mb-1">زیرعنوان توضیحی:</label>
+                      <textarea
+                        rows={2}
+                        value={editingSectionModal.data?.subtitle || ''}
+                        onChange={(e) =>
+                          setEditingSectionModal({
+                            ...editingSectionModal,
+                            data: { ...editingSectionModal.data, subtitle: e.target.value },
+                          })
+                        }
+                        placeholder="توضیحات نحوه محاسبه نرخ..."
+                        className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs focus:border-amber-500 focus:outline-none"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-300 mb-1">متن یادداشت تخفیف اولیه ثبت‌نام:</label>
+                      <input
+                        type="text"
+                        value={editingSectionModal.data?.discountNote || ''}
+                        onChange={(e) =>
+                          setEditingSectionModal({
+                            ...editingSectionModal,
+                            data: { ...editingSectionModal.data, discountNote: e.target.value },
+                          })
+                        }
+                        placeholder="تخفیف 25,000 تومانی شارژ اولیه به ازای ثبت‌نام اعمال خواهد شد."
+                        className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs focus:border-amber-500 focus:outline-none"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* --- 3. FEATURES SPECIFIC FIELDS --- */}
+                {editingSectionModal.type === 'features' && (
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-300 mb-1">نشان بالای تیتر (Badge):</label>
+                        <input
+                          type="text"
+                          value={editingSectionModal.data?.badge || ''}
+                          onChange={(e) =>
+                            setEditingSectionModal({
+                              ...editingSectionModal,
+                              data: { ...editingSectionModal.data, badge: e.target.value },
+                            })
+                          }
+                          placeholder="برتری‌های فنی و استانداردهای ترجمه"
+                          className="w-full px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs focus:border-amber-500 focus:outline-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-300 mb-1">عنوان اصلی سکشن امکانات:</label>
+                        <input
+                          type="text"
+                          value={editingSectionModal.data?.title || ''}
+                          onChange={(e) =>
+                            setEditingSectionModal({
+                              ...editingSectionModal,
+                              data: { ...editingSectionModal.data, title: e.target.value },
+                            })
+                          }
+                          placeholder="چرا مترجم هوشمند برای کتاب‌های جدی مناسب است؟"
+                          className="w-full px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs font-bold focus:border-amber-500 focus:outline-none"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-300 mb-1">زیرعنوان توضیحی:</label>
+                      <textarea
+                        rows={2}
+                        value={editingSectionModal.data?.subtitle || ''}
+                        onChange={(e) =>
+                          setEditingSectionModal({
+                            ...editingSectionModal,
+                            data: { ...editingSectionModal.data, subtitle: e.target.value },
+                          })
+                        }
+                        placeholder="توضیحات کوتاه زیر تیتر امکانات..."
+                        className="w-full px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs focus:border-amber-500 focus:outline-none"
+                      />
+                    </div>
+
+                    {/* Features Items List Editor */}
+                    <div className="pt-2 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <label className="text-xs font-bold text-amber-400">کارت‌های ویژگی و امکانات ({editingSectionModal.data?.items?.length || 0}):</label>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const cur = [...(editingSectionModal.data?.items || [])];
+                            cur.push({
+                              id: `feat_${Date.now()}`,
+                              title: 'ویژگی جدید',
+                              description: 'توضیحات این قابلیت پلتفرم را وارد کنید.',
+                              icon: 'Zap',
+                            });
+                            setEditingSectionModal({
+                              ...editingSectionModal,
+                              data: { ...editingSectionModal.data, items: cur },
+                            });
+                          }}
+                          className="px-2.5 py-1 rounded-lg bg-amber-500/20 text-amber-300 hover:bg-amber-500/30 text-xs font-bold flex items-center gap-1"
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                          <span>افزودن کارت ویژگی</span>
+                        </button>
+                      </div>
+
+                      <div className="space-y-3">
+                        {(editingSectionModal.data?.items || []).map((item, fIdx) => (
+                          <div key={item.id || fIdx} className="p-3.5 bg-slate-950 border border-slate-800 rounded-2xl space-y-2">
+                            <div className="flex items-center justify-between">
+                              <span className="text-xs font-bold text-slate-300">ویژگی #{fIdx + 1}</span>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const cur = editingSectionModal.data?.items?.filter((_, i) => i !== fIdx) || [];
+                                  setEditingSectionModal({
+                                    ...editingSectionModal,
+                                    data: { ...editingSectionModal.data, items: cur },
+                                  });
+                                }}
+                                className="text-slate-500 hover:text-rose-400 p-1"
+                                title="حذف این ویژگی"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                              <div className="sm:col-span-2">
+                                <input
+                                  type="text"
+                                  value={item.title}
+                                  onChange={(e) => {
+                                    const cur = [...(editingSectionModal.data?.items || [])];
+                                    cur[fIdx] = { ...cur[fIdx], title: e.target.value };
+                                    setEditingSectionModal({
+                                      ...editingSectionModal,
+                                      data: { ...editingSectionModal.data, items: cur },
+                                    });
+                                  }}
+                                  placeholder="عنوان ویژگی"
+                                  className="w-full px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-white font-bold text-xs"
+                                />
+                              </div>
+                              <div>
+                                <select
+                                  value={item.icon || 'BookOpen'}
+                                  onChange={(e) => {
+                                    const cur = [...(editingSectionModal.data?.items || [])];
+                                    cur[fIdx] = { ...cur[fIdx], icon: e.target.value };
+                                    setEditingSectionModal({
+                                      ...editingSectionModal,
+                                      data: { ...editingSectionModal.data, items: cur },
+                                    });
+                                  }}
+                                  className="w-full px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-slate-300 text-xs"
+                                >
+                                  <option value="CloudLightning">آیکون ابر / پردازش (CloudLightning)</option>
+                                  <option value="Calculator">آیکون ماشین‌حساب (Calculator)</option>
+                                  <option value="BookOpen">آیکون کتاب (BookOpen)</option>
+                                  <option value="DownloadCloud">آیکون دانلود (DownloadCloud)</option>
+                                  <option value="Zap">آیکون رعدوبرق (Zap)</option>
+                                  <option value="ShieldCheck">آیکون امنیت (ShieldCheck)</option>
+                                </select>
+                              </div>
+                            </div>
+
+                            <textarea
+                              rows={2}
+                              value={item.description}
+                              onChange={(e) => {
+                                const cur = [...(editingSectionModal.data?.items || [])];
+                                cur[fIdx] = { ...cur[fIdx], description: e.target.value };
+                                setEditingSectionModal({
+                                  ...editingSectionModal,
+                                  data: { ...editingSectionModal.data, items: cur },
+                                });
+                              }}
+                              placeholder="توضیحات این ویژگی..."
+                              className="w-full px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-slate-300 text-xs"
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* --- 4. TONES SPECIFIC FIELDS --- */}
+                {editingSectionModal.type === 'tones' && (
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-300 mb-1">نشان بالای تیتر (Badge):</label>
+                        <input
+                          type="text"
+                          value={editingSectionModal.data?.badge || ''}
+                          onChange={(e) =>
+                            setEditingSectionModal({
+                              ...editingSectionModal,
+                              data: { ...editingSectionModal.data, badge: e.target.value },
+                            })
+                          }
+                          placeholder="تخصصی‌سازی عمیق"
+                          className="w-full px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs focus:border-amber-500 focus:outline-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-300 mb-1">عنوان اصلی سکشن لحن‌ها:</label>
+                        <input
+                          type="text"
+                          value={editingSectionModal.data?.title || ''}
+                          onChange={(e) =>
+                            setEditingSectionModal({
+                              ...editingSectionModal,
+                              data: { ...editingSectionModal.data, title: e.target.value },
+                            })
+                          }
+                          placeholder="لحن‌ها و ژانرهای پشتیبانی‌شده"
+                          className="w-full px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs font-bold focus:border-amber-500 focus:outline-none"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-300 mb-1">زیرعنوان توضیحی:</label>
+                      <textarea
+                        rows={2}
+                        value={editingSectionModal.data?.subtitle || ''}
+                        onChange={(e) =>
+                          setEditingSectionModal({
+                            ...editingSectionModal,
+                            data: { ...editingSectionModal.data, subtitle: e.target.value },
+                          })
+                        }
+                        placeholder="توضیحات کوتاه..."
+                        className="w-full px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs focus:border-amber-500 focus:outline-none"
+                      />
+                    </div>
+
+                    {/* Tone Cards Manager */}
+                    <div className="pt-2 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <label className="text-xs font-bold text-amber-400">کارت‌های سبک و لحن نگارش ({editingSectionModal.data?.items?.length || 0}):</label>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const cur = [...(editingSectionModal.data?.items || [])];
+                            cur.push({
+                              id: `tone_${Date.now()}`,
+                              title: `${cur.length + 1}. سبک جدید`,
+                              description: 'توضیحات لحن نگارش و کلمات کلیدی اثر.',
+                              tags: ['برچسب ۱', 'برچسب ۲'],
+                            });
+                            setEditingSectionModal({
+                              ...editingSectionModal,
+                              data: { ...editingSectionModal.data, items: cur },
+                            });
+                          }}
+                          className="px-2.5 py-1 rounded-lg bg-amber-500/20 text-amber-300 hover:bg-amber-500/30 text-xs font-bold flex items-center gap-1"
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                          <span>افزودن کارت لحن</span>
+                        </button>
+                      </div>
+
+                      <div className="space-y-3">
+                        {(editingSectionModal.data?.items || []).map((tItem, tIdx) => (
+                          <div key={tItem.id || tIdx} className="p-3.5 bg-slate-950 border border-slate-800 rounded-2xl space-y-2">
+                            <div className="flex items-center justify-between">
+                              <span className="text-xs font-bold text-slate-300">لحن شماره {tIdx + 1}</span>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const cur = editingSectionModal.data?.items?.filter((_, i) => i !== tIdx) || [];
+                                  setEditingSectionModal({
+                                    ...editingSectionModal,
+                                    data: { ...editingSectionModal.data, items: cur },
+                                  });
+                                }}
+                                className="text-slate-500 hover:text-rose-400 p-1"
+                                title="حذف این لحن"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+
+                            <input
+                              type="text"
+                              value={tItem.title}
+                              onChange={(e) => {
+                                const cur = [...(editingSectionModal.data?.items || [])];
+                                cur[tIdx] = { ...cur[tIdx], title: e.target.value };
+                                setEditingSectionModal({
+                                  ...editingSectionModal,
+                                  data: { ...editingSectionModal.data, items: cur },
+                                });
+                              }}
+                              placeholder="عنوان لحن (مثلا ۱. معنوی، فلسفی و خودشناسی)"
+                              className="w-full px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-amber-300 font-bold text-xs"
+                            />
+
+                            <textarea
+                              rows={2}
+                              value={tItem.description}
+                              onChange={(e) => {
+                                const cur = [...(editingSectionModal.data?.items || [])];
+                                cur[tIdx] = { ...cur[tIdx], description: e.target.value };
+                                setEditingSectionModal({
+                                  ...editingSectionModal,
+                                  data: { ...editingSectionModal.data, items: cur },
+                                });
+                              }}
+                              placeholder="توضیحات لحن نگارش..."
+                              className="w-full px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-slate-300 text-xs"
+                            />
+
+                            <div>
+                              <label className="block text-[10px] text-slate-400 mb-1">برچسب‌ها و نمونه‌ها (با کاما جدا کنید):</label>
+                              <input
+                                type="text"
+                                value={Array.isArray(tItem.tags) ? tItem.tags.join(', ') : ''}
+                                onChange={(e) => {
+                                  const cur = [...(editingSectionModal.data?.items || [])];
+                                  cur[tIdx] = {
+                                    ...cur[tIdx],
+                                    tags: e.target.value.split(',').map((t) => t.trim()).filter(Boolean),
+                                  };
+                                  setEditingSectionModal({
+                                    ...editingSectionModal,
+                                    data: { ...editingSectionModal.data, items: cur },
+                                  });
+                                }}
+                                placeholder="اکهارت تله, آلن واتس, کریشنا مورتی"
+                                className="w-full px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-slate-300 text-xs font-mono"
+                              />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* --- 5. FAQ SPECIFIC FIELDS --- */}
+                {editingSectionModal.type === 'faq' && (
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-300 mb-1">نشان بالای تیتر (Badge):</label>
+                        <input
+                          type="text"
+                          value={editingSectionModal.data?.badge || ''}
+                          onChange={(e) =>
+                            setEditingSectionModal({
+                              ...editingSectionModal,
+                              data: { ...editingSectionModal.data, badge: e.target.value },
+                            })
+                          }
+                          placeholder="پاسخ به ابهامات متداول"
+                          className="w-full px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs focus:border-amber-500 focus:outline-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-300 mb-1">عنوان اصلی سکشن پرسش‌ها:</label>
+                        <input
+                          type="text"
+                          value={editingSectionModal.data?.title || ''}
+                          onChange={(e) =>
+                            setEditingSectionModal({
+                              ...editingSectionModal,
+                              data: { ...editingSectionModal.data, title: e.target.value },
+                            })
+                          }
+                          placeholder="سوالات متداول کاربران"
+                          className="w-full px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs font-bold focus:border-amber-500 focus:outline-none"
+                        />
+                      </div>
+                    </div>
+
+                    {/* FAQ Items Manager */}
+                    <div className="pt-2 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <label className="text-xs font-bold text-amber-400">پرسش‌ها و پاسخ‌ها ({editingSectionModal.data?.items?.length || 0}):</label>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const cur = [...(editingSectionModal.data?.items || [])];
+                            cur.push({
+                              id: `faq_${Date.now()}`,
+                              q: 'سوال جدید شما چیست؟',
+                              a: 'پاسخ کامل و شفاف به این سوال را در اینجا بنویسید.',
+                            });
+                            setEditingSectionModal({
+                              ...editingSectionModal,
+                              data: { ...editingSectionModal.data, items: cur },
+                            });
+                          }}
+                          className="px-2.5 py-1 rounded-lg bg-amber-500/20 text-amber-300 hover:bg-amber-500/30 text-xs font-bold flex items-center gap-1"
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                          <span>افزودن پرسش جدید</span>
+                        </button>
+                      </div>
+
+                      <div className="space-y-3">
+                        {(editingSectionModal.data?.items || []).map((faqItem, qIdx) => (
+                          <div key={faqItem.id || qIdx} className="p-3.5 bg-slate-950 border border-slate-800 rounded-2xl space-y-2">
+                            <div className="flex items-center justify-between">
+                              <span className="text-xs font-bold text-slate-300">پرسش #{qIdx + 1}</span>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const cur = editingSectionModal.data?.items?.filter((_, i) => i !== qIdx) || [];
+                                  setEditingSectionModal({
+                                    ...editingSectionModal,
+                                    data: { ...editingSectionModal.data, items: cur },
+                                  });
+                                }}
+                                className="text-slate-500 hover:text-rose-400 p-1"
+                                title="حذف این پرسش"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+
+                            <input
+                              type="text"
+                              value={faqItem.q}
+                              onChange={(e) => {
+                                const cur = [...(editingSectionModal.data?.items || [])];
+                                cur[qIdx] = { ...cur[qIdx], q: e.target.value };
+                                setEditingSectionModal({
+                                  ...editingSectionModal,
+                                  data: { ...editingSectionModal.data, items: cur },
+                                });
+                              }}
+                              placeholder="متن پرسش..."
+                              className="w-full px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-white font-bold text-xs"
+                            />
+
+                            <textarea
+                              rows={3}
+                              value={faqItem.a}
+                              onChange={(e) => {
+                                const cur = [...(editingSectionModal.data?.items || [])];
+                                cur[qIdx] = { ...cur[qIdx], a: e.target.value };
+                                setEditingSectionModal({
+                                  ...editingSectionModal,
+                                  data: { ...editingSectionModal.data, items: cur },
+                                });
+                              }}
+                              placeholder="پاسخ تفصیلی..."
+                              className="w-full px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-slate-300 text-xs leading-relaxed"
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* --- 6. CTA SPECIFIC FIELDS --- */}
+                {editingSectionModal.type === 'cta' && (
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-300 mb-1">عنوان بنر اقدام نهایی:</label>
+                      <input
+                        type="text"
+                        value={editingSectionModal.data?.title || ''}
+                        onChange={(e) =>
+                          setEditingSectionModal({
+                            ...editingSectionModal,
+                            data: { ...editingSectionModal.data, title: e.target.value },
+                          })
+                        }
+                        placeholder="همین حالا اولین کتاب خود را ترجمه کنید"
+                        className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-white text-sm font-bold focus:border-amber-500 focus:outline-none"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-300 mb-1">متن توضیحی / مشوق:</label>
+                      <textarea
+                        rows={2}
+                        value={editingSectionModal.data?.subtitle || ''}
+                        onChange={(e) =>
+                          setEditingSectionModal({
+                            ...editingSectionModal,
+                            data: { ...editingSectionModal.data, subtitle: e.target.value },
+                          })
+                        }
+                        placeholder="با عضویت در سامانه، ۲۵,۰۰۰ تومان شارژ هدیه برای آزمایش کیفیت ترجمه دریافت خواهید کرد."
+                        className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs focus:border-amber-500 focus:outline-none"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-300 mb-1">متن روی دکمه:</label>
+                      <input
+                        type="text"
+                        value={editingSectionModal.data?.buttonText || ''}
+                        onChange={(e) =>
+                          setEditingSectionModal({
+                            ...editingSectionModal,
+                            data: { ...editingSectionModal.data, buttonText: e.target.value },
+                          })
+                        }
+                        placeholder="ورود و ثبت‌نام سریع"
+                        className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs focus:border-amber-500 focus:outline-none"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* --- 7. CUSTOM HTML SPECIFIC FIELDS --- */}
+                {editingSectionModal.type === 'custom_html' && (
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-300 mb-1">کلاس‌های CSS کانتینر بیرونی (اختیاری):</label>
+                      <input
+                        type="text"
+                        dir="ltr"
+                        value={editingSectionModal.data?.containerClass || 'py-16 border-b border-slate-800/80 bg-slate-900/30'}
+                        onChange={(e) =>
+                          setEditingSectionModal({
+                            ...editingSectionModal,
+                            data: { ...editingSectionModal.data, containerClass: e.target.value },
+                          })
+                        }
+                        placeholder="py-16 border-b border-slate-800 bg-slate-900/40"
+                        className="w-full px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs font-mono focus:border-amber-500 focus:outline-none text-left"
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between text-xs text-slate-400">
+                        <label className="font-semibold text-slate-300">کدهای HTML این سکشن:</label>
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setEditingSectionModal({
+                                ...editingSectionModal,
+                                data: {
+                                  ...editingSectionModal.data,
+                                  htmlContent: `<div style="max-width: 1100px; margin: 0 auto; padding: 20px; text-align: center;">
+  <span style="color: #f59e0b; font-weight: bold; font-size: 13px;">تخفیف ویژه ناشران و سازمان‌ها</span>
+  <h2 style="font-size: 26px; font-weight: 900; color: #ffffff; margin-top: 8px;">طرح ترجمه سازمانی کتب دانشگاهی و تخصصی</h2>
+  <p style="color: #94a3b8; font-size: 14px; max-width: 650px; margin: 12px auto 24px;">پشتیبانی از قراردادهای حقوقی، تحویل فایل InDesign و Word با رعایت کامل قوانین حق نشر.</p>
+  <a href="#calculator" style="background: linear-gradient(135deg, #f59e0b, #d97706); color: #020617; font-weight: 800; padding: 12px 30px; border-radius: 12px; text-decoration: none; display: inline-block;">درخواست مشاوره اختصاصی</a>
+</div>`,
+                                },
+                              })
+                            }
+                            className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-750 text-slate-300 text-[11px]"
+                          >
+                            قالب آماده بنر طلایی
+                          </button>
+                        </div>
+                      </div>
+
+                      <textarea
+                        rows={10}
+                        dir="ltr"
+                        value={editingSectionModal.data?.htmlContent || ''}
+                        onChange={(e) =>
+                          setEditingSectionModal({
+                            ...editingSectionModal,
+                            data: { ...editingSectionModal.data, htmlContent: e.target.value },
+                          })
+                        }
+                        className="w-full px-4 py-3 rounded-2xl bg-slate-950 border border-slate-800 text-slate-100 font-mono text-xs leading-relaxed focus:border-amber-500 focus:outline-none"
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Modal Footer Actions */}
+              <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-800 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setEditingSectionModal(null)}
+                  className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition"
+                >
+                  انصراف
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSaveEditedSection(editingSectionModal)}
+                  className="px-6 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs shadow-md shadow-amber-500/20 transition flex items-center gap-1.5"
+                >
+                  <Check className="w-4 h-4" />
+                  <span>تأیید و اعمال تغییرات</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ========================================================= */}
+        {/* MODAL: ADD NEW SECTION */}
+        {/* ========================================================= */}
+        {addSectionModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in">
+            <div className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-2xl space-y-4">
+              <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center">
+                    <Plus className="w-4 h-4" />
+                  </div>
+                  <h3 className="font-bold text-base text-white">افزودن سکشن جدید به صفحه اصلی</h3>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setAddSectionModalOpen(false)}
+                  className="p-1.5 rounded-lg text-slate-400 hover:text-white"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <form onSubmit={handleAddCmsSection} className="space-y-4">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">نوع سکشن:</label>
+                  <select
+                    value={newSectionType}
+                    onChange={(e) => setNewSectionType(e.target.value as LandingSectionType)}
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs focus:border-amber-500 focus:outline-none"
+                  >
+                    <option value="custom_html">کدهای اختصاصی HTML (Custom HTML Block)</option>
+                    <option value="cta">بنر دعوت به اقدام یا پیشنهاد ویژه (CTA Banner)</option>
+                    <option value="features">بخش امکانات یا مزایا (Features Grid)</option>
+                    <option value="faq">بخش سوالات متداول (FAQ Accordion)</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">عنوان / نام نمایشی سکشن:</label>
+                  <input
+                    type="text"
+                    value={newSectionTitle}
+                    onChange={(e) => setNewSectionTitle(e.target.value)}
+                    placeholder="مثال: بنر جشنواره تخفیف بهاره ناشران"
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs focus:border-amber-500 focus:outline-none"
+                    required
+                  />
+                </div>
+
+                <div className="flex items-center justify-end gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setAddSectionModalOpen(false)}
+                    className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold"
+                  >
+                    انصراف
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-5 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs shadow-md flex items-center gap-1.5"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>ایجاد و شروع ویرایش</span>
+                  </button>
+                </div>
+              </form>
             </div>
           </div>
         )}

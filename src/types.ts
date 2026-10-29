@@ -181,6 +181,7 @@ export interface SystemSettings {
     supportEmail: string;
     features: Array<{ id: string; title: string; description: string; icon: string }>;
     faqs: Array<{ id: string; q: string; a: string }>;
+    sections?: LandingSection[];
   };
   keyPoolSettings?: {
     allowAutoSwitchOnTranslationFailure: boolean;
@@ -197,6 +198,37 @@ export interface ScriptsInjectionConfig {
   googleTagManagerId?: string; // e.g. GTM-XXXXXXX
   headerScripts?: string; // scripts for <head>
   footerScripts?: string; // scripts for bottom of <body>
+}
+
+export type LandingSectionType =
+  | 'hero'
+  | 'calculator'
+  | 'features'
+  | 'tones'
+  | 'faq'
+  | 'cta'
+  | 'custom_html';
+
+export interface LandingSection {
+  id: string;
+  type: LandingSectionType;
+  title: string;
+  enabled: boolean;
+  order: number;
+  data?: {
+    badgeText?: string;
+    badge?: string;
+    title?: string;
+    subtitle?: string;
+    ctaButtonText?: string;
+    calcButtonText?: string;
+    discountNote?: string;
+    buttonText?: string;
+    htmlContent?: string;
+    containerClass?: string;
+    metrics?: Array<{ value: string; label: string }>;
+    items?: any[];
+  };
 }
 
 export interface BlogPost {

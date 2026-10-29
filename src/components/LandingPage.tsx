@@ -20,9 +20,10 @@ import {
   Cpu,
   LogIn,
   Menu,
-  X
+  X,
 } from 'lucide-react';
-import { SystemSettings, HeaderFooterConfig } from '../types.ts';
+import { SystemSettings, HeaderFooterConfig, LandingSection } from '../types.ts';
+import { DEFAULT_LANDING_SECTIONS } from '../constants/landingDefaults.ts';
 
 interface LandingPageProps {
   onOpenAuth: (defaultTab?: 'login' | 'register') => void;
@@ -205,6 +206,15 @@ export function LandingPage({
     }
   };
 
+  const rawSections: LandingSection[] =
+    cmsConfig?.sections && cmsConfig.sections.length > 0
+      ? cmsConfig.sections
+      : DEFAULT_LANDING_SECTIONS;
+
+  const sortedSections = [...rawSections]
+    .filter((s) => s.enabled !== false)
+    .sort((a, b) => (a.order || 0) - (b.order || 0));
+
   const hasCustomHeader = Boolean(headerFooter?.enabled && headerFooter.headerHtml && headerFooter.headerHtml.trim());
   const hasCustomFooter = Boolean(headerFooter?.enabled && headerFooter.footerHtml && headerFooter.footerHtml.trim());
 
@@ -367,308 +377,371 @@ export function LandingPage({
         </>
       )}
 
-      {/* Hero Section */}
-      <section className="relative overflow-hidden py-16 md:py-24 border-b border-slate-800/80">
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-amber-500/10 via-slate-950 to-slate-950 pointer-events-none" />
-        
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10 text-center">
-          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-400 text-xs md:text-sm font-medium mb-6">
-            <Cpu className="w-4 h-4" />
-            <span>نسل جدید موتور ترجمه ابری با پردازش موازی و صف هوشمند</span>
-          </div>
+      {/* Dynamic Ordered Sections (Reorderable, Toggleable, Editable & Extensible) */}
+      {sortedSections.map((section) => {
+        // 1. HERO SECTION
+        if (section.type === 'hero') {
+          const badgeText = section.data?.badgeText || 'نسل جدید موتور ترجمه ابری با پردازش موازی و صف هوشمند';
+          const heroTitle = section.data?.title || cmsConfig?.heroTitle || 'ترجمه حرفه‌ای و روان کتاب‌های انگلیسی به فارسی با هوش مصنوعی';
+          const heroSubtitle = section.data?.subtitle || cmsConfig?.heroSubtitle || 'دیگر نیازی به باز نگه داشتن مرورگر برای کتاب‌های چندصد صفحه‌ای نیست! فایل PDF، EPUB، یا Word خود را بارگذاری کنید، سبک نگارش را برگزینید و کتاب ترجمه‌شده و صفحه‌آرایی شده خود را تحویل بگیرید.';
+          const ctaBtn = section.data?.ctaButtonText || 'شروع ترجمه کتاب';
+          const calcBtn = section.data?.calcButtonText || 'محاسبه هزینه ترجمه';
+          const metrics = section.data?.metrics || [
+            { value: '+۲۵۰,۰۰۰', label: 'کلمه ترجمه شده موفق' },
+            { value: '۱۰۰٪ ابری', label: 'بدون نیاز به باز ماندن تب مرورگر' },
+            { value: '۴ فرمت کامل', label: 'Word، PDF، EPUB و TXT' },
+            { value: '۹۹.۹٪', label: 'پایداری با استخر کلیدهای موازی' },
+          ];
 
-          <h1 className="text-3xl sm:text-5xl lg:text-6xl font-black text-white leading-tight max-w-4xl mx-auto mb-6">
-            {cmsConfig?.heroTitle || 'ترجمه حرفه‌ای و روان کتاب‌های انگلیسی به فارسی با هوش مصنوعی'}
-          </h1>
-
-          <p className="text-base sm:text-lg text-slate-400 max-w-3xl mx-auto mb-10 leading-relaxed">
-            {cmsConfig?.heroSubtitle || 'دیگر نیازی به باز نگه داشتن مرورگر برای کتاب‌های چندصد صفحه‌ای نیست! فایل PDF، EPUB، یا Word خود را بارگذاری کنید، سبک نگارش را برگزینید و کتاب ترجمه‌شده و صفحه‌آرایی شده خود را تحویل بگیرید.'}
-          </p>
-
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-4 max-w-md mx-auto">
-            <button
-              onClick={() => onOpenAuth('register')}
-              className="w-full sm:w-auto px-8 py-3.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-400 hover:from-amber-400 hover:to-amber-300 text-slate-950 font-bold text-base shadow-xl shadow-amber-500/25 flex items-center justify-center gap-2 transition-all transform hover:-translate-y-0.5"
-            >
-              <span>شروع ترجمه کتاب</span>
-              <ArrowLeft className="w-5 h-5" />
-            </button>
-            <a
-              href="#calculator"
-              className="w-full sm:w-auto px-6 py-3.5 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-200 font-semibold text-sm border border-slate-700 flex items-center justify-center gap-2 transition-all"
-            >
-              <Calculator className="w-4 h-4 text-amber-400" />
-              <span>محاسبه هزینه ترجمه</span>
-            </a>
-          </div>
-
-          {/* Social Proof / Metrics */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-6 mt-16 pt-12 border-t border-slate-800/60 max-w-4xl mx-auto">
-            <div>
-              <div className="text-2xl sm:text-3xl font-extrabold text-amber-400">+۲۵۰,۰۰۰</div>
-              <div className="text-xs text-slate-400 mt-1">کلمه ترجمه شده موفق</div>
-            </div>
-            <div>
-              <div className="text-2xl sm:text-3xl font-extrabold text-white">۱۰۰٪ ابری</div>
-              <div className="text-xs text-slate-400 mt-1">بدون نیاز به باز ماندن تب مرورگر</div>
-            </div>
-            <div>
-              <div className="text-2xl sm:text-3xl font-extrabold text-amber-400">۴ فرمت کامل</div>
-              <div className="text-xs text-slate-400 mt-1">Word، PDF، EPUB و TXT</div>
-            </div>
-            <div>
-              <div className="text-2xl sm:text-3xl font-extrabold text-white">۹۹.۹٪</div>
-              <div className="text-xs text-slate-400 mt-1">پایداری با استخر کلیدهای موازی</div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Interactive Price & Time Calculator */}
-      <section id="calculator" className="py-20 bg-slate-900/60 border-b border-slate-800 relative">
-        <div className="max-w-4xl mx-auto px-4 sm:px-6">
-          <div className="text-center mb-12">
-            <span className="text-amber-400 text-xs font-bold uppercase tracking-wider">شفافیت مالی و قیمت‌گذاری</span>
-            <h2 className="text-2xl sm:text-4xl font-bold text-white mt-2">ماشین‌حساب هوشمند هزینه و زمان ترجمه</h2>
-            <p className="text-sm text-slate-400 mt-2">تعداد کلمات یا حجم کتاب خود را مشخص کنید تا برآورد دقیق هزینه و زمان را مشاهده کنید.</p>
-          </div>
-
-          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-10 shadow-2xl relative overflow-hidden">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-center">
-              <div>
-                <label className="block text-sm font-semibold text-slate-300 mb-2">
-                  تعداد کلمات کتاب: <span className="text-amber-400 font-bold text-lg">{calcWords.toLocaleString('en-US')}</span> کلمه
-                </label>
-                <input
-                  type="range"
-                  min="1000"
-                  max="120000"
-                  step="1000"
-                  value={calcWords}
-                  onChange={(e) => setCalcWords(Number(e.target.value))}
-                  className="w-full h-2.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-amber-500 mb-4"
-                />
-                <div className="flex justify-between text-[11px] text-slate-500 font-mono mb-6">
-                  <span>1,000 کلمه (مقاله)</span>
-                  <span>25,000 کلمه (کتاب کوتاه)</span>
-                  <span>120,000 کلمه (کتاب قطور)</span>
+          return (
+            <section key={section.id} className="relative overflow-hidden py-16 md:py-24 border-b border-slate-800/80">
+              <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-amber-500/10 via-slate-950 to-slate-950 pointer-events-none" />
+              
+              <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10 text-center">
+                <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-400 text-xs md:text-sm font-medium mb-6">
+                  <Cpu className="w-4 h-4" />
+                  <span>{badgeText}</span>
                 </div>
 
-                <label className="block text-sm font-semibold text-slate-300 mb-2">نوع و سبک تخصصی کتاب:</label>
-                <div className="grid grid-cols-2 gap-3 mb-6">
+                <h1 className="text-3xl sm:text-5xl lg:text-6xl font-black text-white leading-tight max-w-4xl mx-auto mb-6">
+                  {heroTitle}
+                </h1>
+
+                <p className="text-base sm:text-lg text-slate-400 max-w-3xl mx-auto mb-10 leading-relaxed">
+                  {heroSubtitle}
+                </p>
+
+                <div className="flex flex-col sm:flex-row items-center justify-center gap-4 max-w-md mx-auto">
                   <button
-                    type="button"
-                    onClick={() => setCalcTone('standard')}
-                    className={`px-4 py-2.5 rounded-xl text-xs font-semibold border text-right transition-all ${
-                      calcTone === 'standard'
-                        ? 'bg-amber-500/10 border-amber-500 text-amber-400'
-                        : 'bg-slate-800/60 border-slate-700 text-slate-300 hover:border-slate-600'
-                    }`}
+                    onClick={() => onOpenAuth('register')}
+                    className="w-full sm:w-auto px-8 py-3.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-400 hover:from-amber-400 hover:to-amber-300 text-slate-950 font-bold text-base shadow-xl shadow-amber-500/25 flex items-center justify-center gap-2 transition-all transform hover:-translate-y-0.5"
                   >
-                    <div>عمومی و خودشناسی</div>
-                    <div className="text-[10px] text-slate-400 font-normal">معنوی، روانشناسی، رمان</div>
+                    <span>{ctaBtn}</span>
+                    <ArrowLeft className="w-5 h-5" />
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => setCalcTone('specialized')}
-                    className={`px-4 py-2.5 rounded-xl text-xs font-semibold border text-right transition-all ${
-                      calcTone === 'specialized'
-                        ? 'bg-amber-500/10 border-amber-500 text-amber-400'
-                        : 'bg-slate-800/60 border-slate-700 text-slate-300 hover:border-slate-600'
-                    }`}
+                  <a
+                    href="#calculator"
+                    className="w-full sm:w-auto px-6 py-3.5 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-200 font-semibold text-sm border border-slate-700 flex items-center justify-center gap-2 transition-all"
                   >
-                    <div>تخصصی و دانشگاهی</div>
-                    <div className="text-[10px] text-slate-400 font-normal">اقتصادی، هوافضا، ریاضیات</div>
-                  </button>
+                    <Calculator className="w-4 h-4 text-amber-400" />
+                    <span>{calcBtn}</span>
+                  </a>
                 </div>
 
-                <div className="flex items-center gap-2 text-xs text-slate-400 bg-slate-950/60 p-3 rounded-xl border border-slate-800">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-                  <span>تخفیف 25,000 تومانی شارژ اولیه به ازای ثبت‌نام اعمال خواهد شد.</span>
+                {/* Social Proof / Metrics */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-6 mt-16 pt-12 border-t border-slate-800/60 max-w-4xl mx-auto">
+                  {metrics.map((m, idx) => (
+                    <div key={idx}>
+                      <div className={`text-2xl sm:text-3xl font-extrabold ${idx % 2 === 0 ? 'text-amber-400' : 'text-white'}`}>{m.value}</div>
+                      <div className="text-xs text-slate-400 mt-1">{m.label}</div>
+                    </div>
+                  ))}
                 </div>
               </div>
+            </section>
+          );
+        }
 
-              {/* Result Card */}
-              <div className="bg-gradient-to-br from-slate-950 to-slate-900 border border-amber-500/30 rounded-2xl p-6 sm:p-8 flex flex-col justify-between shadow-xl">
-                <div>
-                  <div className="text-xs text-slate-400">برآورد کل هزینه ترجمه</div>
-                  <div className="text-3xl sm:text-4xl font-black text-amber-400 mt-1">
-                    {totalPrice.toLocaleString('en-US')} <span className="text-sm font-normal text-slate-300">تومان</span>
-                  </div>
-                  <div className="text-xs text-amber-400/90 mt-1 font-medium">
-                    نرخ محاسبه: {costPerWord.toLocaleString('en-US')} تومان به ازای هر کلمه (نرخ مصوب سیستم)
-                  </div>
+        // 2. CALCULATOR SECTION
+        if (section.type === 'calculator') {
+          const badge = section.data?.badge || 'شفافیت مالی و قیمت‌گذاری';
+          const calcTitle = section.data?.title || 'ماشین‌حساب هوشمند هزینه و زمان ترجمه';
+          const calcSubtitle = section.data?.subtitle || 'تعداد کلمات یا حجم کتاب خود را مشخص کنید تا برآورد دقیق هزینه و زمان را مشاهده کنید.';
+          const discountNote = section.data?.discountNote || 'تخفیف 25,000 تومانی شارژ اولیه به ازای ثبت‌نام اعمال خواهد شد.';
+
+          return (
+            <section key={section.id} id="calculator" className="py-20 bg-slate-900/60 border-b border-slate-800 relative">
+              <div className="max-w-4xl mx-auto px-4 sm:px-6">
+                <div className="text-center mb-12">
+                  <span className="text-amber-400 text-xs font-bold uppercase tracking-wider">{badge}</span>
+                  <h2 className="text-2xl sm:text-4xl font-bold text-white mt-2">{calcTitle}</h2>
+                  <p className="text-sm text-slate-400 mt-2">{calcSubtitle}</p>
                 </div>
 
-                <div className="my-6 space-y-3 pt-6 border-t border-slate-800/80 text-xs">
-                  <div className="flex justify-between text-slate-300">
-                    <span className="flex items-center gap-1.5">
-                      <Clock className="w-3.5 h-3.5 text-amber-400" />
-                      مدت زمان پردازش ابری:
-                    </span>
-                    <span className="font-semibold text-white">حدود {estimatedMinutes} دقیقه</span>
-                  </div>
-                  <div className="flex justify-between text-slate-300">
-                    <span className="flex items-center gap-1.5">
-                      <Layers className="w-3.5 h-3.5 text-amber-400" />
-                      تعداد فصل‌ها / سرفصل‌ها:
-                    </span>
-                    <span className="font-semibold text-white">{estimatedChunks} بخش پیوسته</span>
-                  </div>
-                  <div className="flex justify-between text-slate-300">
-                    <span className="flex items-center gap-1.5">
-                      <CloudLightning className="w-3.5 h-3.5 text-emerald-400" />
-                      وضعیت اجرای پس‌زمینه:
-                    </span>
-                    <span className="font-semibold text-emerald-400">خودکار روی سرور</span>
+                <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-10 shadow-2xl relative overflow-hidden">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-center">
+                    <div>
+                      <label className="block text-sm font-semibold text-slate-300 mb-2">
+                        تعداد کلمات کتاب: <span className="text-amber-400 font-bold text-lg">{calcWords.toLocaleString('en-US')}</span> کلمه
+                      </label>
+                      <input
+                        type="range"
+                        min="1000"
+                        max="120000"
+                        step="1000"
+                        value={calcWords}
+                        onChange={(e) => setCalcWords(Number(e.target.value))}
+                        className="w-full h-2.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-amber-500 mb-4"
+                      />
+                      <div className="flex justify-between text-[11px] text-slate-500 font-mono mb-6">
+                        <span>1,000 کلمه (مقاله)</span>
+                        <span>25,000 کلمه (کتاب کوتاه)</span>
+                        <span>120,000 کلمه (کتاب قطور)</span>
+                      </div>
+
+                      <label className="block text-sm font-semibold text-slate-300 mb-2">نوع و سبک تخصصی کتاب:</label>
+                      <div className="grid grid-cols-2 gap-3 mb-6">
+                        <button
+                          type="button"
+                          onClick={() => setCalcTone('standard')}
+                          className={`px-4 py-2.5 rounded-xl text-xs font-semibold border text-right transition-all ${
+                            calcTone === 'standard'
+                              ? 'bg-amber-500/10 border-amber-500 text-amber-400'
+                              : 'bg-slate-800/60 border-slate-700 text-slate-300 hover:border-slate-600'
+                          }`}
+                        >
+                          <div>عمومی و خودشناسی</div>
+                          <div className="text-[10px] text-slate-400 font-normal">معنوی، روانشناسی، رمان</div>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setCalcTone('specialized')}
+                          className={`px-4 py-2.5 rounded-xl text-xs font-semibold border text-right transition-all ${
+                            calcTone === 'specialized'
+                              ? 'bg-amber-500/10 border-amber-500 text-amber-400'
+                              : 'bg-slate-800/60 border-slate-700 text-slate-300 hover:border-slate-600'
+                          }`}
+                        >
+                          <div>تخصصی و دانشگاهی</div>
+                          <div className="text-[10px] text-slate-400 font-normal">اقتصادی، هوافضا، ریاضیات</div>
+                        </button>
+                      </div>
+
+                      <div className="flex items-center gap-2 text-xs text-slate-400 bg-slate-950/60 p-3 rounded-xl border border-slate-800">
+                        <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                        <span>{discountNote}</span>
+                      </div>
+                    </div>
+
+                    {/* Result Card */}
+                    <div className="bg-gradient-to-br from-slate-950 to-slate-900 border border-amber-500/30 rounded-2xl p-6 sm:p-8 flex flex-col justify-between shadow-xl">
+                      <div>
+                        <div className="text-xs text-slate-400">برآورد کل هزینه ترجمه</div>
+                        <div className="text-3xl sm:text-4xl font-black text-amber-400 mt-1">
+                          {totalPrice.toLocaleString('en-US')} <span className="text-sm font-normal text-slate-300">تومان</span>
+                        </div>
+                        <div className="text-xs text-amber-400/90 mt-1 font-medium">
+                          نرخ محاسبه: {costPerWord.toLocaleString('en-US')} تومان به ازای هر کلمه (نرخ مصوب سیستم)
+                        </div>
+                      </div>
+
+                      <div className="my-6 space-y-3 pt-6 border-t border-slate-800/80 text-xs">
+                        <div className="flex justify-between text-slate-300">
+                          <span className="flex items-center gap-1.5">
+                            <Clock className="w-3.5 h-3.5 text-amber-400" />
+                            مدت زمان پردازش ابری:
+                          </span>
+                          <span className="font-semibold text-white">حدود {estimatedMinutes} دقیقه</span>
+                        </div>
+                        <div className="flex justify-between text-slate-300">
+                          <span className="flex items-center gap-1.5">
+                            <Layers className="w-3.5 h-3.5 text-amber-400" />
+                            تعداد فصل‌ها / سرفصل‌ها:
+                          </span>
+                          <span className="font-semibold text-white">{estimatedChunks} بخش پیوسته</span>
+                        </div>
+                        <div className="flex justify-between text-slate-300">
+                          <span className="flex items-center gap-1.5">
+                            <CloudLightning className="w-3.5 h-3.5 text-emerald-400" />
+                            وضعیت اجرای پس‌زمینه:
+                          </span>
+                          <span className="font-semibold text-emerald-400">خودکار روی سرور</span>
+                        </div>
+                      </div>
+
+                      <button
+                        onClick={() => onOpenAuth('register')}
+                        className="w-full py-3 rounded-xl bg-gradient-to-r from-amber-500 to-amber-400 hover:from-amber-400 hover:to-amber-300 text-slate-950 font-bold text-sm shadow-md transition-all flex items-center justify-center gap-2"
+                      >
+                        <span>ورود و ثبت سفارش این کتاب</span>
+                        <ArrowLeft className="w-4 h-4" />
+                      </button>
+                    </div>
                   </div>
                 </div>
+              </div>
+            </section>
+          );
+        }
 
+        // 3. FEATURES SECTION
+        if (section.type === 'features') {
+          const badge = section.data?.badge || 'برتری‌های فنی و استانداردهای ترجمه';
+          const title = section.data?.title || 'چرا مترجم هوشمند برای کتاب‌های جدی مناسب است؟';
+          const subtitle = section.data?.subtitle || 'بر خلاف ابزارهای عادی ترجمه که متن‌ها را خلاصه می‌کنند یا عناوین ساختگی تولید می‌کنند، این سامانه با ضمانت ۱۰۰٪ کامل ترجمه می‌کند.';
+          const items = section.data?.items && section.data.items.length > 0 ? section.data.items : features;
+
+          return (
+            <section key={section.id} id="features" className="py-20 border-b border-slate-800/80">
+              <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                <div className="text-center max-w-3xl mx-auto mb-16">
+                  <span className="text-amber-400 text-xs font-bold uppercase tracking-wider">{badge}</span>
+                  <h2 className="text-2xl sm:text-4xl font-bold text-white mt-2">{title}</h2>
+                  <p className="text-sm text-slate-400 mt-3">{subtitle}</p>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                  {items.map((f) => (
+                    <div
+                      key={f.id}
+                      className="bg-slate-900/80 border border-slate-800 rounded-2xl p-6 hover:border-amber-500/40 hover:bg-slate-900 transition-all flex flex-col justify-between group"
+                    >
+                      <div>
+                        <div className="w-12 h-12 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 flex items-center justify-center mb-5 group-hover:scale-110 transition-transform">
+                          {f.icon === 'CloudLightning' ? <CloudLightning className="w-6 h-6" /> :
+                           f.icon === 'Calculator' ? <Calculator className="w-6 h-6" /> :
+                           f.icon === 'DownloadCloud' ? <DownloadCloud className="w-6 h-6" /> :
+                           <BookOpen className="w-6 h-6" />}
+                        </div>
+                        <h3 className="text-lg font-bold text-white mb-2">{f.title}</h3>
+                        <p className="text-xs text-slate-400 leading-relaxed">{f.description}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </section>
+          );
+        }
+
+        // 4. TONES SECTION
+        if (section.type === 'tones') {
+          const badge = section.data?.badge || 'تخصصی‌سازی عمیق';
+          const title = section.data?.title || 'لحن‌ها و ژانرهای پشتیبانی‌شده';
+          const subtitle = section.data?.subtitle || 'هر سبک کتابی نیازمند دایره واژگان و آهنگ کلامی متمایز است.';
+          const items = section.data?.items && section.data.items.length > 0 ? section.data.items : [
+            {
+              id: 't1',
+              title: '۱. معنوی، فلسفی و خودشناسی',
+              description: 'لحنی باوقار، متأملانه و شاعرانه در عین وضوح با کاربرد واژگان اصیل «آگاهی»، «حضور»، «مشاهده‌گر»، و «پیکر درون».',
+              tags: ['اکهارت تله', 'آلن واتس', 'کریشنا مورتی'],
+            },
+            {
+              id: 't2',
+              title: '۲. علوم هوافضا و ریاضیات',
+              description: 'لحنی دقیق و فرمال با حفظ نشانه‌گذاری‌های علمی، معادلات، قضایا، مکانیک مداری و اصطلاحات اخترفیزیک.',
+              tags: ['مکانیک مداری', 'فضای هیلبرت', 'اخترفیزیک'],
+            },
+            {
+              id: 't3',
+              title: '۳. اقتصادی، مالی و روانشناسی',
+              description: 'لحنی قاطع، معاصر و تحلیلی متناسب با نیاز مدیران، پژوهشگران بازار سرمایه، کارآفرینان و دانشجویان.',
+              tags: ['سیاست‌های پولی', 'تاب‌آوری روانی', 'چرخه عادات'],
+            },
+          ];
+
+          return (
+            <section key={section.id} id="tones" className="py-20 bg-slate-900/40 border-b border-slate-800">
+              <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                <div className="text-center max-w-3xl mx-auto mb-16">
+                  <span className="text-amber-400 text-xs font-bold uppercase tracking-wider">{badge}</span>
+                  <h2 className="text-2xl sm:text-4xl font-bold text-white mt-2">{title}</h2>
+                  <p className="text-sm text-slate-400 mt-2">{subtitle}</p>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  {items.map((item) => (
+                    <div key={item.id} className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
+                      <div className="text-amber-400 font-bold text-base mb-2">{item.title}</div>
+                      <p className="text-xs text-slate-400 leading-relaxed mb-4">{item.description}</p>
+                      {item.tags && item.tags.length > 0 && (
+                        <div className="flex flex-wrap gap-1.5">
+                          {item.tags.map((tag: string, tIdx: number) => (
+                            <span key={tIdx} className="px-2 py-0.5 rounded bg-amber-500/10 text-amber-300 text-[10px]">
+                              {tag}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </section>
+          );
+        }
+
+        // 5. FAQ SECTION
+        if (section.type === 'faq') {
+          const badge = section.data?.badge || 'پاسخ به ابهامات متداول';
+          const title = section.data?.title || 'سوالات متداول کاربران';
+          const items = section.data?.items && section.data.items.length > 0 ? section.data.items : faqs;
+
+          return (
+            <section key={section.id} id="faq" className="py-20 border-b border-slate-800">
+              <div className="max-w-4xl mx-auto px-4 sm:px-6">
+                <div className="text-center mb-14">
+                  <span className="text-amber-400 text-xs font-bold uppercase tracking-wider">{badge}</span>
+                  <h2 className="text-2xl sm:text-4xl font-bold text-white mt-2">{title}</h2>
+                </div>
+
+                <div className="space-y-4">
+                  {items.map((faq) => {
+                    const isOpen = openFaq === faq.id;
+                    return (
+                      <div
+                        key={faq.id}
+                        className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden transition-all"
+                      >
+                        <button
+                          type="button"
+                          onClick={() => setOpenFaq(isOpen ? null : faq.id)}
+                          className="w-full px-6 py-5 text-right font-semibold text-sm sm:text-base text-slate-200 flex items-center justify-between gap-4"
+                        >
+                          <span>{faq.q}</span>
+                          {isOpen ? <ChevronUp className="w-5 h-5 text-amber-400" /> : <ChevronDown className="w-5 h-5 text-slate-500" />}
+                        </button>
+                        {isOpen && (
+                          <div className="px-6 pb-6 text-xs sm:text-sm text-slate-400 leading-relaxed border-t border-slate-800/60 pt-4">
+                            {faq.a}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </section>
+          );
+        }
+
+        // 6. BOTTOM CTA SECTION
+        if (section.type === 'cta') {
+          const title = section.data?.title || 'همین حالا اولین کتاب خود را ترجمه کنید';
+          const subtitle = section.data?.subtitle || 'با عضویت در سامانه، ۲۵,۰۰۰ تومان شارژ هدیه برای آزمایش کیفیت ترجمه دریافت خواهید کرد.';
+          const btnText = section.data?.buttonText || 'ورود و ثبت‌نام سریع';
+
+          return (
+            <section key={section.id} className="py-16 bg-gradient-to-b from-slate-900 to-slate-950">
+              <div className="max-w-4xl mx-auto px-4 text-center">
+                <h2 className="text-2xl sm:text-3xl font-extrabold text-white mb-4">{title}</h2>
+                <p className="text-sm text-slate-400 mb-8 max-w-xl mx-auto">{subtitle}</p>
                 <button
                   onClick={() => onOpenAuth('register')}
-                  className="w-full py-3 rounded-xl bg-gradient-to-r from-amber-500 to-amber-400 hover:from-amber-400 hover:to-amber-300 text-slate-950 font-bold text-sm shadow-md transition-all flex items-center justify-center gap-2"
+                  className="px-8 py-3.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-400 text-slate-950 font-bold text-base shadow-lg shadow-amber-500/25 hover:from-amber-400 hover:to-amber-300 transition-all transform hover:-translate-y-0.5 inline-flex items-center gap-2"
                 >
-                  <span>ورود و ثبت سفارش این کتاب</span>
-                  <ArrowLeft className="w-4 h-4" />
+                  <span>{btnText}</span>
+                  <ArrowLeft className="w-5 h-5" />
                 </button>
               </div>
-            </div>
-          </div>
-        </div>
-      </section>
+            </section>
+          );
+        }
 
-      {/* Features Grid */}
-      <section id="features" className="py-20 border-b border-slate-800/80">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center max-w-3xl mx-auto mb-16">
-            <span className="text-amber-400 text-xs font-bold uppercase tracking-wider">برتری‌های فنی و استانداردهای ترجمه</span>
-            <h2 className="text-2xl sm:text-4xl font-bold text-white mt-2">چرا مترجم هوشمند برای کتاب‌های جدی مناسب است؟</h2>
-            <p className="text-sm text-slate-400 mt-3">بر خلاف ابزارهای عادی ترجمه که متن‌ها را خلاصه می‌کنند یا عناوین ساختگی تولید می‌کنند، این سامانه با ضمانت ۱۰۰٪ کامل ترجمه می‌کند.</p>
-          </div>
+        // 7. CUSTOM HTML SECTION
+        if (section.type === 'custom_html') {
+          return (
+            <section
+              key={section.id}
+              className={section.data?.containerClass || 'py-16 border-b border-slate-800/80 bg-slate-900/30'}
+              dangerouslySetInnerHTML={{ __html: processCustomHtml(section.data?.htmlContent || '') }}
+              onClick={handlePageLinkClick}
+            />
+          );
+        }
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            {features.map((f) => (
-              <div
-                key={f.id}
-                className="bg-slate-900/80 border border-slate-800 rounded-2xl p-6 hover:border-amber-500/40 hover:bg-slate-900 transition-all flex flex-col justify-between group"
-              >
-                <div>
-                  <div className="w-12 h-12 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 flex items-center justify-center mb-5 group-hover:scale-110 transition-transform">
-                    {f.icon === 'CloudLightning' ? <CloudLightning className="w-6 h-6" /> :
-                     f.icon === 'Calculator' ? <Calculator className="w-6 h-6" /> :
-                     f.icon === 'DownloadCloud' ? <DownloadCloud className="w-6 h-6" /> :
-                     <BookOpen className="w-6 h-6" />}
-                  </div>
-                  <h3 className="text-lg font-bold text-white mb-2">{f.title}</h3>
-                  <p className="text-xs text-slate-400 leading-relaxed">{f.description}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* Tones Showcase */}
-      <section id="tones" className="py-20 bg-slate-900/40 border-b border-slate-800">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center max-w-3xl mx-auto mb-16">
-            <span className="text-amber-400 text-xs font-bold uppercase tracking-wider">تخصصی‌سازی عمیق</span>
-            <h2 className="text-2xl sm:text-4xl font-bold text-white mt-2">لحن‌ها و ژانرهای پشتیبانی‌شده</h2>
-            <p className="text-sm text-slate-400 mt-2">هر سبک کتابی نیازمند دایره واژگان و آهنگ کلامی متمایز است.</p>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
-              <div className="text-amber-400 font-bold text-base mb-2">۱. معنوی، فلسفی و خودشناسی</div>
-              <p className="text-xs text-slate-400 leading-relaxed mb-4">
-                لحنی باوقار، متأملانه و شاعرانه در عین وضوح با کاربرد واژگان اصیل «آگاهی»، «حضور»، «مشاهده‌گر»، و «پیکر درون».
-              </p>
-              <div className="flex flex-wrap gap-1.5">
-                <span className="px-2 py-0.5 rounded bg-amber-500/10 text-amber-300 text-[10px]">اکهارت تله</span>
-                <span className="px-2 py-0.5 rounded bg-amber-500/10 text-amber-300 text-[10px]">آلن واتس</span>
-                <span className="px-2 py-0.5 rounded bg-amber-500/10 text-amber-300 text-[10px]">کریشنا مورتی</span>
-              </div>
-            </div>
-
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
-              <div className="text-amber-400 font-bold text-base mb-2">۲. علوم هوافضا و ریاضیات</div>
-              <p className="text-xs text-slate-400 leading-relaxed mb-4">
-                لحنی دقیق و فرمال با حفظ نشانه‌گذاری‌های علمی، معادلات، قضایا، مکانیک مداری و اصطلاحات اخترفیزیک.
-              </p>
-              <div className="flex flex-wrap gap-1.5">
-                <span className="px-2 py-0.5 rounded bg-amber-500/10 text-amber-300 text-[10px]">مکانیک مداری</span>
-                <span className="px-2 py-0.5 rounded bg-amber-500/10 text-amber-300 text-[10px]">فضای هیلبرت</span>
-                <span className="px-2 py-0.5 rounded bg-amber-500/10 text-amber-300 text-[10px]">اخترفیزیک</span>
-              </div>
-            </div>
-
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
-              <div className="text-amber-400 font-bold text-base mb-2">۳. اقتصادی، مالی و روانشناسی</div>
-              <p className="text-xs text-slate-400 leading-relaxed mb-4">
-                لحنی قاطع، معاصر و تحلیلی متناسب با نیاز مدیران، پژوهشگران بازار سرمایه، کارآفرینان و دانشجویان.
-              </p>
-              <div className="flex flex-wrap gap-1.5">
-                <span className="px-2 py-0.5 rounded bg-amber-500/10 text-amber-300 text-[10px]">سیاست‌های پولی</span>
-                <span className="px-2 py-0.5 rounded bg-amber-500/10 text-amber-300 text-[10px]">تاب‌آوری روانی</span>
-                <span className="px-2 py-0.5 rounded bg-amber-500/10 text-amber-300 text-[10px]">چرخه عادات</span>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* FAQ Accordion */}
-      <section id="faq" className="py-20 border-b border-slate-800">
-        <div className="max-w-4xl mx-auto px-4 sm:px-6">
-          <div className="text-center mb-14">
-            <span className="text-amber-400 text-xs font-bold uppercase tracking-wider">پاسخ به ابهامات متداول</span>
-            <h2 className="text-2xl sm:text-4xl font-bold text-white mt-2">سوالات متداول کاربران</h2>
-          </div>
-
-          <div className="space-y-4">
-            {faqs.map((faq) => {
-              const isOpen = openFaq === faq.id;
-              return (
-                <div
-                  key={faq.id}
-                  className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden transition-all"
-                >
-                  <button
-                    type="button"
-                    onClick={() => setOpenFaq(isOpen ? null : faq.id)}
-                    className="w-full px-6 py-5 text-right font-semibold text-sm sm:text-base text-slate-200 flex items-center justify-between gap-4"
-                  >
-                    <span>{faq.q}</span>
-                    {isOpen ? <ChevronUp className="w-5 h-5 text-amber-400" /> : <ChevronDown className="w-5 h-5 text-slate-500" />}
-                  </button>
-                  {isOpen && (
-                    <div className="px-6 pb-6 text-xs sm:text-sm text-slate-400 leading-relaxed border-t border-slate-800/60 pt-4">
-                      {faq.a}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      </section>
-
-      {/* Bottom CTA Banner */}
-      <section className="py-16 bg-gradient-to-b from-slate-900 to-slate-950">
-        <div className="max-w-4xl mx-auto px-4 text-center">
-          <h2 className="text-2xl sm:text-3xl font-extrabold text-white mb-4">همین حالا اولین کتاب خود را ترجمه کنید</h2>
-          <p className="text-sm text-slate-400 mb-8 max-w-xl mx-auto">
-            با عضویت در سامانه، ۲۵,۰۰۰ تومان شارژ هدیه برای آزمایش کیفیت ترجمه دریافت خواهید کرد.
-          </p>
-          <button
-            onClick={() => onOpenAuth('register')}
-            className="px-8 py-3.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-400 text-slate-950 font-bold text-base shadow-lg shadow-amber-500/25 hover:from-amber-400 hover:to-amber-300 transition-all transform hover:-translate-y-0.5 inline-flex items-center gap-2"
-          >
-            <span>ورود و ثبت‌نام سریع</span>
-            <ArrowLeft className="w-5 h-5" />
-          </button>
-        </div>
-      </section>
+        return null;
+      })}
 
       {/* Footer: Custom HTML Footer (REPLACES default footer) OR Default Footer */}
       {hasCustomFooter ? (
