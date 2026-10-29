@@ -13,6 +13,7 @@ import { ChunkListSidebar } from './components/ChunkListSidebar.tsx';
 // Code-split heavy views and modals for sub-second FCP and minimal bundle size
 const DedicatedAuthPage = React.lazy(() => import('./components/DedicatedAuthPage.tsx').then(m => ({ default: m.DedicatedAuthPage })));
 const CustomPageView = React.lazy(() => import('./components/CustomPageView.tsx').then(m => ({ default: m.CustomPageView })));
+const BlogView = React.lazy(() => import('./components/BlogView.tsx').then(m => ({ default: m.BlogView })));
 const AdminPanel = React.lazy(() => import('./components/AdminPanel.tsx').then(m => ({ default: m.AdminPanel })));
 const UserDashboard = React.lazy(() => import('./components/UserDashboard.tsx').then(m => ({ default: m.UserDashboard })));
 const TranslationWorkspace = React.lazy(() => import('./components/TranslationWorkspace.tsx').then(m => ({ default: m.TranslationWorkspace })));
@@ -38,7 +39,8 @@ import {
   TranslationJob,
   SystemSettings,
   HeaderFooterConfig,
-  CustomPage
+  CustomPage,
+  ScriptsInjectionConfig,
 } from './types.ts';
 import { SAMPLE_BOOKS, SampleBook } from './utils/sampleBooks.ts';
 import { chunkBookText } from './utils/chunker.ts';
@@ -103,6 +105,18 @@ export default function App() {
     }
     return null;
   });
+  const [activeBlogSlug, setActiveBlogSlug] = useState<string | null | false>(() => {
+    if (typeof window !== 'undefined') {
+      if (window.location.pathname === '/blog' || window.location.pathname === '/blog/') {
+        return null; // list view
+      }
+      if (window.location.pathname.startsWith('/blog/')) {
+        return window.location.pathname.replace('/blog/', ''); // article slug
+      }
+    }
+    return false; // not on blog
+  });
+  const [scriptsInjection, setScriptsInjection] = useState<ScriptsInjectionConfig | undefined>(undefined);
 
   // User Books & Jobs
   const [books, setBooks] = useState<BookProject[]>([]);
@@ -207,7 +221,7 @@ export default function App() {
 
   // 1. Initial Load: Public Config & Validate Auth Token
   useEffect(() => {
-    // Fetch public CMS, pricing, header/footer, and custom pages
+    // Fetch public CMS, pricing, header/footer, custom pages, and scripts injection
     fetch('/api/public/config')
       .then((res) => res.json())
       .then((data) => {
@@ -223,6 +237,10 @@ export default function App() {
         if (data.pricing?.costPerWord) setCostPerWord(data.pricing.costPerWord);
         if (data.headerFooter) setHeaderFooter(data.headerFooter);
         if (data.customPages) setCustomPagesList(data.customPages);
+        if (data.scriptsInjection) {
+          setScriptsInjection(data.scriptsInjection);
+          injectCustomScripts(data.scriptsInjection);
+        }
       })
       .catch((err) => console.warn('Could not load public config', err));
 
@@ -253,13 +271,114 @@ export default function App() {
     }
   }, []);
 
-  // Listen for browser forward/back buttons on custom page paths
+  // Inject Google Search Console, Google Analytics, GTM, and custom scripts
+  const injectCustomScripts = (scripts: ScriptsInjectionConfig) => {
+    if (!scripts || !scripts.enabled) return;
+
+    // 1. Google Search Console Verification Meta Tag
+    if (scripts.googleSearchConsoleVerification) {
+      let contentVal = scripts.googleSearchConsoleVerification.trim();
+      const match = contentVal.match(/content=["']([^"']+)["']/i);
+      if (match) contentVal = match[1];
+      if (contentVal) {
+        let metaTag = document.querySelector('meta[name="google-site-verification"]');
+        if (!metaTag) {
+          metaTag = document.createElement('meta');
+          metaTag.setAttribute('name', 'google-site-verification');
+          document.head.appendChild(metaTag);
+        }
+        metaTag.setAttribute('content', contentVal);
+      }
+    }
+
+    // 2. Google Analytics 4 (GA4)
+    if (scripts.googleAnalyticsId && !document.getElementById('ga4-script')) {
+      const gaId = scripts.googleAnalyticsId.trim();
+      const gaScript = document.createElement('script');
+      gaScript.id = 'ga4-script';
+      gaScript.async = true;
+      gaScript.src = `https://www.googletagmanager.com/gtag/js?id=${gaId}`;
+      document.head.appendChild(gaScript);
+
+      const initScript = document.createElement('script');
+      initScript.id = 'ga4-inline-init';
+      initScript.innerHTML = `
+        window.dataLayer = window.dataLayer || [];
+        function gtag(){dataLayer.push(arguments);}
+        gtag('js', new Date());
+        gtag('config', '${gaId}');
+      `;
+      document.head.appendChild(initScript);
+    }
+
+    // 3. Google Tag Manager (GTM)
+    if (scripts.googleTagManagerId && !document.getElementById('gtm-script')) {
+      const gtmId = scripts.googleTagManagerId.trim();
+      const gtmScript = document.createElement('script');
+      gtmScript.id = 'gtm-script';
+      gtmScript.innerHTML = `
+        (function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
+        new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
+        j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
+        'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
+        })(window,document,'script','dataLayer','${gtmId}');
+      `;
+      document.head.appendChild(gtmScript);
+    }
+
+    // 4. Custom Header Scripts (<head>)
+    if (scripts.headerScripts) {
+      let container = document.getElementById('custom-header-scripts-container');
+      if (!container) {
+        container = document.createElement('div');
+        container.id = 'custom-header-scripts-container';
+        document.head.appendChild(container);
+      }
+      container.innerHTML = scripts.headerScripts;
+      const scriptsInContainer = container.querySelectorAll('script');
+      scriptsInContainer.forEach((s) => {
+        const newScript = document.createElement('script');
+        Array.from(s.attributes).forEach((attr) => newScript.setAttribute(attr.name, attr.value));
+        newScript.innerHTML = s.innerHTML;
+        s.parentNode?.replaceChild(newScript, s);
+      });
+    }
+
+    // 5. Custom Footer Scripts (<body> End)
+    if (scripts.footerScripts) {
+      let container = document.getElementById('custom-footer-scripts-container');
+      if (!container) {
+        container = document.createElement('div');
+        container.id = 'custom-footer-scripts-container';
+        document.body.appendChild(container);
+      }
+      container.innerHTML = scripts.footerScripts;
+      const scriptsInContainer = container.querySelectorAll('script');
+      scriptsInContainer.forEach((s) => {
+        const newScript = document.createElement('script');
+        Array.from(s.attributes).forEach((attr) => newScript.setAttribute(attr.name, attr.value));
+        newScript.innerHTML = s.innerHTML;
+        s.parentNode?.replaceChild(newScript, s);
+      });
+    }
+  };
+
+  // Listen for browser forward/back buttons on custom page paths and blog paths
   useEffect(() => {
     const handlePopState = () => {
-      if (window.location.pathname.startsWith('/page/')) {
-        setActiveCustomPageSlug(window.location.pathname.replace('/page/', ''));
+      const path = window.location.pathname;
+      if (path.startsWith('/page/')) {
+        setActiveCustomPageSlug(path.replace('/page/', ''));
+        setActiveBlogSlug(false);
+      } else if (path === '/blog' || path === '/blog/') {
+        setActiveBlogSlug(null);
+        setActiveCustomPageSlug(null);
+      } else if (path.startsWith('/blog/')) {
+        setActiveBlogSlug(path.replace('/blog/', ''));
+        setActiveCustomPageSlug(null);
       } else {
         setActiveCustomPageSlug(null);
+        setActiveBlogSlug(false);
       }
     };
     window.addEventListener('popstate', handlePopState);
@@ -268,11 +387,30 @@ export default function App() {
 
   const handleOpenCustomPage = (slug: string) => {
     setActiveCustomPageSlug(slug);
+    setActiveBlogSlug(false);
     window.history.pushState({}, '', `/page/${slug}`);
   };
 
   const handleBackFromCustomPage = () => {
     setActiveCustomPageSlug(null);
+    window.history.pushState({}, '', '/');
+  };
+
+  const handleOpenBlog = (categorySlug?: string) => {
+    setActiveBlogSlug(null);
+    setActiveCustomPageSlug(null);
+    const url = categorySlug && categorySlug !== 'all' ? `/blog?category=${encodeURIComponent(categorySlug)}` : '/blog';
+    window.history.pushState({}, '', url);
+  };
+
+  const handleOpenBlogPost = (slug: string) => {
+    setActiveBlogSlug(slug);
+    setActiveCustomPageSlug(null);
+    window.history.pushState({}, '', `/blog/${slug}`);
+  };
+
+  const handleBackFromBlog = () => {
+    setActiveBlogSlug(false);
     window.history.pushState({}, '', '/');
   };
 
@@ -804,6 +942,38 @@ export default function App() {
   }
 
   // ========================================================
+  // BLOG & ARTICLES VIEW (e.g. /blog or /blog/:slug)
+  // Accessible to both guests and logged-in users
+  // ========================================================
+  if (activeBlogSlug !== false) {
+    return (
+      <Suspense fallback={viewFallback}>
+        <BlogView
+          currentSlug={activeBlogSlug}
+          onNavigateHome={handleBackFromBlog}
+          onNavigatePost={handleOpenBlogPost}
+          onNavigateBlog={handleOpenBlog}
+          onOpenAuthModal={() => {
+            if (currentUser) {
+              setCurrentView('dashboard');
+              setActiveBlogSlug(false);
+            } else {
+              setAuthModalTab('login');
+              setIsAuthModalOpen(true);
+            }
+          }}
+        />
+        <AuthModal
+          isOpen={isAuthModalOpen}
+          initialTab={authModalTab}
+          onClose={() => setIsAuthModalOpen(false)}
+          onAuthSuccess={handleAuthSuccess}
+        />
+      </Suspense>
+    );
+  }
+
+  // ========================================================
   // STRICT LOGIN BARRIER: If user is not authenticated
   // ========================================================
   if (!currentUser) {
@@ -839,6 +1009,7 @@ export default function App() {
           headerFooter={headerFooter}
           customPages={customPagesList}
           onOpenCustomPage={handleOpenCustomPage}
+          onOpenBlog={handleOpenBlog}
         />
         <AuthModal
           isOpen={isAuthModalOpen}

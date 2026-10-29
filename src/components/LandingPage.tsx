@@ -32,6 +32,7 @@ interface LandingPageProps {
   headerFooter?: HeaderFooterConfig;
   customPages?: Array<{ id: string; title: string; slug: string; metaDescription?: string; showInHeader?: boolean; showInFooter?: boolean }>;
   onOpenCustomPage?: (slug: string) => void;
+  onOpenBlog?: (categorySlug?: string) => void;
 }
 
 export function LandingPage({
@@ -42,6 +43,7 @@ export function LandingPage({
   headerFooter,
   customPages = [],
   onOpenCustomPage,
+  onOpenBlog,
 }: LandingPageProps) {
   // Interactive Calculator State
   const [calcWords, setCalcWords] = useState<number>(15000);
@@ -178,6 +180,21 @@ export function LandingPage({
       return;
     }
 
+    // 3. Blog Navigation (/blog or /blog/...)
+    if (href === '/blog' || href.startsWith('/blog/')) {
+      e.preventDefault();
+      if (onOpenBlog) {
+        if (href === '/blog' || href === '/blog/') {
+          onOpenBlog();
+        } else {
+          onOpenBlog(href.replace('/blog/', ''));
+        }
+      } else {
+        window.location.href = href;
+      }
+      return;
+    }
+
     // 3. In-page Section Hash Scrolling
     if (href.startsWith('#') && href.length > 1) {
       const el = document.querySelector(href);
@@ -244,6 +261,14 @@ export function LandingPage({
                 <a href="#calculator" className="hover:text-amber-400 transition-colors">ماشین‌حساب هزینه</a>
                 <a href="#tones" className="hover:text-amber-400 transition-colors">لحن‌ها و ژانرها</a>
                 <a href="#faq" className="hover:text-amber-400 transition-colors">سوالات متداول</a>
+                <button
+                  type="button"
+                  onClick={() => onOpenBlog ? onOpenBlog() : window.location.assign('/blog')}
+                  className="hover:text-amber-400 transition-colors flex items-center gap-1 font-medium text-amber-300"
+                >
+                  <FileText className="w-3.5 h-3.5 text-amber-400" />
+                  <span>وبلاگ و مقالات</span>
+                </button>
 
                 {/* Only custom pages specifically enabled for Header */}
                 {customPages.filter((page) => page.showInHeader).map((page) => (
@@ -311,6 +336,17 @@ export function LandingPage({
                 >
                   سوالات متداول
                 </a>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMobileMenuOpen(false);
+                    if (onOpenBlog) onOpenBlog();
+                    else window.location.assign('/blog');
+                  }}
+                  className="block w-full text-right py-2 px-3 rounded-lg hover:bg-slate-800 text-amber-300 font-semibold"
+                >
+                  وبلاگ و مقالات تخصصی
+                </button>
                 {customPages.filter((page) => page.showInHeader).map((page) => (
                   <button
                     key={page.id}
@@ -663,21 +699,25 @@ export function LandingPage({
               </div>
             </div>
 
-            {/* Custom Pages specifically enabled for Footer */}
-            {customPages.filter((p) => p.showInFooter).length > 0 && (
-              <div className="flex flex-wrap items-center gap-4 text-xs">
-                {customPages.filter((p) => p.showInFooter).map((page) => (
-                  <button
-                    key={page.id}
-                    type="button"
-                    onClick={() => onOpenCustomPage ? onOpenCustomPage(page.slug) : window.location.assign(`/page/${page.slug}`)}
-                    className="text-slate-400 hover:text-amber-400 transition"
-                  >
-                    {page.title}
-                  </button>
-                ))}
-              </div>
-            )}
+            <div className="flex flex-wrap items-center gap-4 text-xs">
+              <button
+                type="button"
+                onClick={() => onOpenBlog ? onOpenBlog() : window.location.assign('/blog')}
+                className="text-amber-400 hover:text-amber-300 font-medium transition"
+              >
+                وبلاگ و مقالات تخصصی
+              </button>
+              {customPages.filter((p) => p.showInFooter).map((page) => (
+                <button
+                  key={page.id}
+                  type="button"
+                  onClick={() => onOpenCustomPage ? onOpenCustomPage(page.slug) : window.location.assign(`/page/${page.slug}`)}
+                  className="text-slate-400 hover:text-amber-400 transition"
+                >
+                  {page.title}
+                </button>
+              ))}
+            </div>
 
             <div className="flex flex-wrap items-center gap-6 text-slate-400">
               {cmsConfig?.supportPhone && (

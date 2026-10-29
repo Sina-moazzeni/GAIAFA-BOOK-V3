@@ -187,6 +187,49 @@ export interface SystemSettings {
     allowAutoSwitchOnTest: boolean;
     preferredFallbackModel?: string;
   };
+  scriptsInjection?: ScriptsInjectionConfig;
+}
+
+export interface ScriptsInjectionConfig {
+  enabled: boolean;
+  googleSearchConsoleVerification?: string; // meta tag or verification token
+  googleAnalyticsId?: string; // e.g. G-XXXXXXX
+  googleTagManagerId?: string; // e.g. GTM-XXXXXXX
+  headerScripts?: string; // scripts for <head>
+  footerScripts?: string; // scripts for bottom of <body>
+}
+
+export interface BlogPost {
+  id: string;
+  title: string;
+  slug: string;
+  excerpt: string;
+  content: string; // rich HTML
+  category: string;
+  categorySlug?: string;
+  tags: string[];
+  coverImage?: string;
+  authorId?: string;
+  authorName: string;
+  authorRole?: string;
+  readingTimeMinutes: number;
+  views: number;
+  isPublished: boolean;
+  metaTitle?: string;
+  metaDescription?: string;
+  canonicalUrl?: string;
+  publishedAt: number;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface BlogCategory {
+  id: string;
+  name: string;
+  slug: string;
+  description?: string;
+  color?: string;
+  postsCount?: number;
 }
 
 export interface CustomPage {

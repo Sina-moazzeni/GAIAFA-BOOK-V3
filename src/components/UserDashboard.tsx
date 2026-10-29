@@ -213,6 +213,18 @@ export function UserDashboard({
               <Plus className="w-3.5 h-3.5 text-amber-400 mr-1" />
             </button>
 
+            {/* Blog Quick Link */}
+            <a
+              href="/blog"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="hidden md:inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700/80 border border-slate-700 text-xs text-slate-300 hover:text-amber-400 transition-all shrink-0"
+              title="مشاهده وبلاگ و مقالات"
+            >
+              <FileText className="w-4 h-4 text-amber-400" />
+              <span>وبلاگ</span>
+            </a>
+
             {/* Admin / Staff Switcher */}
             {(user.role === 'admin' || user.role === 'staff') && onOpenAdmin && (
               <button

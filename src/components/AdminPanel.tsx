@@ -60,7 +60,10 @@ import {
   TranslationJob,
   CustomPage,
   HeaderFooterConfig,
-  MonthlyAnalytics
+  MonthlyAnalytics,
+  BlogPost,
+  BlogCategory,
+  ScriptsInjectionConfig,
 } from '../types.ts';
 import { DailyRevenueView } from './DailyRevenueView.tsx';
 
@@ -80,6 +83,8 @@ export type AdminTab =
   | 'coupons'
   | 'api_pool'
   | 'finance'
+  | 'blog_manager'
+  | 'scripts_analytics'
   | 'page_builder'
   | 'header_footer'
   | 'cms'
@@ -251,6 +256,57 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
   const [hfActiveSubTab, setHfActiveSubTab] = useState<'header' | 'footer' | 'css'>('header');
   const [hfSaveSuccess, setHfSaveSuccess] = useState(false);
 
+  // Blog Management Data
+  const [blogPosts, setBlogPosts] = useState<BlogPost[]>([]);
+  const [blogCategories, setBlogCategories] = useState<BlogCategory[]>([]);
+  const [loadingBlog, setLoadingBlog] = useState(false);
+  const [blogSearch, setBlogSearch] = useState('');
+  const [blogCategoryFilter, setBlogCategoryFilter] = useState('all');
+  const [editPostModal, setEditPostModal] = useState<BlogPost | null>(null);
+  const [isCreatingPost, setIsCreatingPost] = useState(false);
+  const [postForm, setPostForm] = useState({
+    id: '',
+    title: '',
+    slug: '',
+    excerpt: '',
+    content: '',
+    category: 'آموزش ترجمه کتاب',
+    categorySlug: 'translation-guides',
+    tags: '',
+    coverImage: '',
+    authorName: '',
+    authorRole: '',
+    readingTimeMinutes: 5,
+    isPublished: true,
+    metaTitle: '',
+    metaDescription: '',
+    canonicalUrl: '',
+  });
+  const [postSaveSuccess, setPostSaveSuccess] = useState(false);
+  const [isSavingPost, setIsSavingPost] = useState(false);
+
+  // Blog Category Modal
+  const [categoryModal, setCategoryModal] = useState(false);
+  const [categoryForm, setCategoryForm] = useState({
+    id: '',
+    name: '',
+    slug: '',
+    description: '',
+    color: '#3b82f6',
+  });
+
+  // Scripts & Analytics Injection Data
+  const [scriptsConfig, setScriptsConfig] = useState<ScriptsInjectionConfig>({
+    enabled: true,
+    googleSearchConsoleVerification: '',
+    googleAnalyticsId: '',
+    googleTagManagerId: '',
+    headerScripts: '',
+    footerScripts: '',
+  });
+  const [isSavingScripts, setIsSavingScripts] = useState(false);
+  const [scriptsSaveSuccess, setScriptsSaveSuccess] = useState(false);
+
   // Users Data & Create User Modal
   const [users, setUsers] = useState<any[]>([]);
   const [userSearch, setUserSearch] = useState('');
@@ -374,6 +430,9 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
     fetchCustomPages();
     fetchHeaderFooter();
     fetchQueueStats();
+    fetchBlogPosts();
+    fetchBlogCategories();
+    fetchScriptsConfig();
   }, []);
 
   const fetchCoupons = async () => {
@@ -1545,6 +1604,221 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
     }
   };
 
+  // --- Blog & Articles Handlers ---
+  const fetchBlogPosts = async () => {
+    setLoadingBlog(true);
+    try {
+      const res = await fetch('/api/admin/blog/posts', {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setBlogPosts(data.posts || []);
+      }
+    } catch (e) {
+      console.warn('Could not fetch blog posts');
+    } finally {
+      setLoadingBlog(false);
+    }
+  };
+
+  const fetchBlogCategories = async () => {
+    try {
+      const res = await fetch('/api/admin/blog/categories', {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setBlogCategories(data.categories || []);
+      }
+    } catch (e) {
+      console.warn('Could not fetch blog categories');
+    }
+  };
+
+  const handleStartCreatePost = () => {
+    setEditPostModal(null);
+    setIsCreatingPost(true);
+    setPostForm({
+      id: '',
+      title: '',
+      slug: `article-${Date.now().toString().slice(-4)}`,
+      excerpt: '',
+      content: '<h2>مقدمه</h2>\n<p>متن خود را در این بخش بنویسید...</p>',
+      category: blogCategories[0]?.name || 'آموزش ترجمه کتاب',
+      categorySlug: blogCategories[0]?.slug || 'translation-guides',
+      tags: 'ترجمه کتاب, هوش مصنوعی',
+      coverImage: 'https://images.unsplash.com/photo-1457369804613-52c61a468e7d?auto=format&fit=crop&w=1200&q=80',
+      authorName: currentUser.name || 'کارشناس تحریریه',
+      authorRole: currentUser.role === 'admin' ? 'مدیر ارشد' : 'کارشناس تحریریه',
+      readingTimeMinutes: 5,
+      isPublished: true,
+      metaTitle: '',
+      metaDescription: '',
+      canonicalUrl: '',
+    });
+  };
+
+  const handleStartEditPost = (post: BlogPost) => {
+    setIsCreatingPost(false);
+    setEditPostModal(post);
+    setPostForm({
+      id: post.id,
+      title: post.title,
+      slug: post.slug,
+      excerpt: post.excerpt,
+      content: post.content,
+      category: post.category,
+      categorySlug: post.categorySlug || 'translation-guides',
+      tags: Array.isArray(post.tags) ? post.tags.join(', ') : '',
+      coverImage: post.coverImage || '',
+      authorName: post.authorName || 'تیم تحریریه',
+      authorRole: post.authorRole || 'کارشناس تحریریه',
+      readingTimeMinutes: post.readingTimeMinutes || 5,
+      isPublished: post.isPublished,
+      metaTitle: post.metaTitle || '',
+      metaDescription: post.metaDescription || '',
+      canonicalUrl: post.canonicalUrl || '',
+    });
+  };
+
+  const handleSavePost = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!postForm.title.trim() || !postForm.slug.trim() || !postForm.content.trim()) {
+      alert('لطفاً عنوان، آدرس پیوند (Slug) و محتوای مقاله را وارد نمایید.');
+      return;
+    }
+    setIsSavingPost(true);
+    try {
+      const selectedCat = blogCategories.find(c => c.name === postForm.category || c.slug === postForm.categorySlug);
+      const res = await fetch('/api/admin/blog/posts', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          ...postForm,
+          category: selectedCat ? selectedCat.name : postForm.category,
+          categorySlug: selectedCat ? selectedCat.slug : postForm.categorySlug,
+          tags: postForm.tags.split(',').map(t => t.trim()).filter(Boolean),
+        }),
+      });
+      if (res.ok) {
+        setPostSaveSuccess(true);
+        setTimeout(() => setPostSaveSuccess(false), 3000);
+        setIsCreatingPost(false);
+        setEditPostModal(null);
+        fetchBlogPosts();
+      } else {
+        const errData = await res.json();
+        alert(errData.error || 'خطا در ذخیره مقاله');
+      }
+    } catch (e: any) {
+      alert(`خطا: ${e.message}`);
+    } finally {
+      setIsSavingPost(false);
+    }
+  };
+
+  const handleDeletePost = async (id: string, title: string) => {
+    if (!confirm(`آیا از حذف مقاله «${title}» اطمینان دارید؟`)) return;
+    try {
+      const res = await fetch(`/api/admin/blog/posts/${id}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        fetchBlogPosts();
+      } else {
+        alert('خطا در حذف مقاله');
+      }
+    } catch (e) {}
+  };
+
+  const handleSaveBlogCategory = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!categoryForm.name.trim() || !categoryForm.slug.trim()) {
+      alert('لطفاً نام و نامک (Slug) انگلیسی دسته‌بندی را وارد نمایید.');
+      return;
+    }
+    try {
+      const res = await fetch('/api/admin/blog/categories', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(categoryForm),
+      });
+      if (res.ok) {
+        setCategoryModal(false);
+        setCategoryForm({ id: '', name: '', slug: '', description: '', color: '#3b82f6' });
+        fetchBlogCategories();
+      } else {
+        const err = await res.json();
+        alert(err.error || 'خطا در ثبت دسته‌بندی');
+      }
+    } catch (e) {}
+  };
+
+  const handleDeleteBlogCategory = async (id: string, name: string) => {
+    if (!confirm(`آیا از حذف دسته‌بندی «${name}» اطمینان دارید؟`)) return;
+    try {
+      const res = await fetch(`/api/admin/blog/categories/${id}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        fetchBlogCategories();
+      }
+    } catch (e) {}
+  };
+
+  // --- Scripts & Analytics Handlers ---
+  const fetchScriptsConfig = async () => {
+    try {
+      const res = await fetch('/api/admin/settings/scripts', {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.scriptsInjection) {
+          setScriptsConfig(data.scriptsInjection);
+        }
+      }
+    } catch (e) {
+      console.warn('Could not fetch scripts injection config');
+    }
+  };
+
+  const handleSaveScriptsConfig = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSavingScripts(true);
+    try {
+      const res = await fetch('/api/admin/settings/scripts', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(scriptsConfig),
+      });
+      if (res.ok) {
+        setScriptsSaveSuccess(true);
+        setTimeout(() => setScriptsSaveSuccess(false), 3000);
+        alert('تنظیمات اسکریپت‌ها، سرچ کنسول و آمارگیر با موفقیت ذخیره شد و اعمال گردید.');
+      } else {
+        const err = await res.json();
+        alert(err.error || 'خطا در ذخیره اسکریپت‌ها');
+      }
+    } catch (e: any) {
+      alert(`خطا: ${e.message}`);
+    } finally {
+      setIsSavingScripts(false);
+    }
+  };
+
   const filteredUsers = users.filter((u) => {
     const s = userSearch.toLowerCase();
     return (
@@ -1820,6 +2094,33 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
               <Globe className="w-4 h-4 shrink-0 text-teal-400" />
               <span className="truncate">سئو و برندینگ</span>
             </button>
+
+            <button
+              onClick={() => { setActiveTab('blog_manager'); fetchBlogPosts(); fetchBlogCategories(); }}
+              className={`p-2.5 rounded-xl transition-all flex items-center justify-center gap-2 border ${
+                activeTab === 'blog_manager'
+                  ? 'bg-amber-500 text-slate-950 font-bold border-amber-400 shadow-md shadow-amber-500/20'
+                  : 'bg-slate-950/60 text-slate-300 border-slate-800/80 hover:bg-slate-800 hover:text-white'
+              }`}
+            >
+              <FileText className="w-4 h-4 shrink-0 text-amber-400" />
+              <span className="truncate">وبلاگ و مقالات</span>
+              <span className="text-[9px] px-1 rounded bg-amber-500/20 text-amber-300 font-bold">{blogPosts.length}</span>
+            </button>
+
+            {!isStaff && (
+              <button
+                onClick={() => { setActiveTab('scripts_analytics'); fetchScriptsConfig(); }}
+                className={`p-2.5 rounded-xl transition-all flex items-center justify-center gap-2 border ${
+                  activeTab === 'scripts_analytics'
+                    ? 'bg-amber-500 text-slate-950 font-bold border-amber-400 shadow-md shadow-amber-500/20'
+                    : 'bg-slate-950/60 text-slate-300 border-slate-800/80 hover:bg-slate-800 hover:text-white'
+                }`}
+              >
+                <Sliders className="w-4 h-4 shrink-0 text-emerald-400" />
+                <span className="truncate">آمارگیر و سرچ کنسول</span>
+              </button>
+            )}
 
             {!isStaff && (
               <button
@@ -7590,6 +7891,743 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
                   </div>
                 ))}
             </div>
+          </div>
+        )}
+
+        {/* ========================================================= */}
+        {/* TAB 8: BLOG & ARTICLES MANAGEMENT */}
+        {/* ========================================================= */}
+        {activeTab === 'blog_manager' && (
+          <div className="space-y-6 animate-in fade-in">
+            {/* Top Toolbar */}
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+              <div>
+                <div className="flex items-center gap-2">
+                  <h2 className="text-xl font-bold text-white">مدیریت وبلاگ و تولید محتوا (سئو)</h2>
+                  <span className="text-[10px] px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 font-bold">
+                    {blogPosts.length} مقاله
+                  </span>
+                </div>
+                <p className="text-xs text-slate-400 mt-1">
+                  تولید و انتشار منظم مقالات تخصصی توسط پرسنل و مدیران جهت ارتقای رتبه گوگل (SEO)، جذب ناشران و مترجمان
+                </p>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <a
+                  href="/blog"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-3.5 py-2 rounded-xl bg-slate-900 border border-slate-700/80 hover:bg-slate-800 text-slate-200 text-xs font-semibold flex items-center gap-1.5 transition"
+                >
+                  <ExternalLink className="w-4 h-4 text-amber-400" />
+                  <span>مشاهده وبلاگ زنده</span>
+                </a>
+                <button
+                  type="button"
+                  onClick={() => setCategoryModal(true)}
+                  className="px-3.5 py-2 rounded-xl bg-slate-900 border border-slate-700/80 hover:bg-slate-800 text-slate-200 text-xs font-semibold flex items-center gap-1.5 transition"
+                >
+                  <Tag className="w-4 h-4 text-indigo-400" />
+                  <span>دسته‌بندی‌ها ({blogCategories.length})</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleStartCreatePost}
+                  className="px-4 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-amber-400 hover:from-amber-400 text-slate-950 font-bold text-xs flex items-center gap-1.5 shadow-md shadow-amber-500/20 transition"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>نوشتن مقاله جدید</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Filter and Search Bar */}
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 flex flex-col sm:flex-row items-center justify-between gap-3">
+              <div className="flex-1 w-full sm:w-auto relative">
+                <Search className="w-4 h-4 text-slate-400 absolute right-3.5 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  placeholder="جستجو در عنوان، پیوند، متن یا برچسب‌های مقالات..."
+                  value={blogSearch}
+                  onChange={(e) => setBlogSearch(e.target.value)}
+                  className="w-full pr-10 pl-4 py-2 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs placeholder-slate-500 focus:border-amber-500 focus:outline-none"
+                />
+              </div>
+
+              <div className="flex items-center gap-2 w-full sm:w-auto">
+                <select
+                  value={blogCategoryFilter}
+                  onChange={(e) => setBlogCategoryFilter(e.target.value)}
+                  className="px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs focus:border-amber-500 focus:outline-none"
+                >
+                  <option value="all">همه دسته‌بندی‌ها</option>
+                  {blogCategories.map((c) => (
+                    <option key={c.id} value={c.slug}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+
+                <button
+                  type="button"
+                  onClick={fetchBlogPosts}
+                  className="p-2 rounded-xl bg-slate-950 border border-slate-800 text-slate-400 hover:text-white"
+                  title="بروزرسانی لیست"
+                >
+                  <RefreshCw className={`w-4 h-4 ${loadingBlog ? 'animate-spin' : ''}`} />
+                </button>
+              </div>
+            </div>
+
+            {/* Articles Table */}
+            <div className="bg-slate-900 border border-slate-800 rounded-3xl overflow-hidden shadow-xl">
+              <div className="overflow-x-auto">
+                <table className="w-full text-right text-xs">
+                  <thead className="bg-slate-950/80 text-slate-400 border-b border-slate-800 font-bold">
+                    <tr>
+                      <th className="py-3.5 px-4">عنوان مقاله</th>
+                      <th className="py-3.5 px-4">دسته‌بندی</th>
+                      <th className="py-3.5 px-4">نویسنده</th>
+                      <th className="py-3.5 px-4 text-center">زمان مطالعه</th>
+                      <th className="py-3.5 px-4 text-center">بازدید</th>
+                      <th className="py-3.5 px-4 text-center">وضعیت انتشار</th>
+                      <th className="py-3.5 px-4 text-center">عملیات</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-800/60 text-slate-300">
+                    {blogPosts
+                      .filter((p) => {
+                        if (blogCategoryFilter !== 'all' && p.categorySlug !== blogCategoryFilter && p.category !== blogCategoryFilter) {
+                          return false;
+                        }
+                        if (!blogSearch.trim()) return true;
+                        const s = blogSearch.toLowerCase();
+                        return (
+                          p.title?.toLowerCase().includes(s) ||
+                          p.slug?.toLowerCase().includes(s) ||
+                          p.excerpt?.toLowerCase().includes(s) ||
+                          (p.tags && p.tags.some((t) => t.toLowerCase().includes(s)))
+                        );
+                      })
+                      .map((post) => (
+                        <tr key={post.id} className="hover:bg-slate-800/40 transition">
+                          <td className="py-3.5 px-4">
+                            <div className="flex items-center gap-3">
+                              {post.coverImage ? (
+                                <img
+                                  src={post.coverImage}
+                                  alt={post.title}
+                                  className="w-12 h-9 rounded-lg object-cover bg-slate-950 shrink-0 border border-slate-800"
+                                />
+                              ) : (
+                                <div className="w-12 h-9 rounded-lg bg-slate-950 border border-slate-800 flex items-center justify-center text-slate-600 shrink-0">
+                                  <FileText className="w-4 h-4" />
+                                </div>
+                              )}
+                              <div>
+                                <div className="font-bold text-white text-sm line-clamp-1">{post.title}</div>
+                                <div className="text-[11px] text-amber-400/90 font-mono flex items-center gap-1 mt-0.5" dir="ltr">
+                                  <Globe className="w-3 h-3" />
+                                  <span>/blog/{post.slug}</span>
+                                </div>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="py-3.5 px-4">
+                            <span className="px-2.5 py-1 rounded-md text-[11px] font-semibold bg-amber-500/10 text-amber-300 border border-amber-500/20 whitespace-nowrap">
+                              {post.category}
+                            </span>
+                          </td>
+                          <td className="py-3.5 px-4 whitespace-nowrap">
+                            <div className="font-medium text-slate-200">{post.authorName}</div>
+                            <div className="text-[10px] text-slate-500">{post.authorRole}</div>
+                          </td>
+                          <td className="py-3.5 px-4 text-center whitespace-nowrap">
+                            <span className="text-slate-400">{post.readingTimeMinutes || 5} دقیقه</span>
+                          </td>
+                          <td className="py-3.5 px-4 text-center whitespace-nowrap">
+                            <span className="font-mono text-slate-300">{post.views || 0}</span>
+                          </td>
+                          <td className="py-3.5 px-4 text-center whitespace-nowrap">
+                            <span
+                              className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                                post.isPublished
+                                  ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                                  : 'bg-slate-800 text-slate-400'
+                              }`}
+                            >
+                              {post.isPublished ? 'منتشر شده' : 'پیش‌نویس'}
+                            </span>
+                          </td>
+                          <td className="py-3.5 px-4 text-center whitespace-nowrap">
+                            <div className="flex items-center justify-center gap-1.5">
+                              <a
+                                href={`/blog/${post.slug}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition"
+                                title="مشاهده آنلاین"
+                              >
+                                <Eye className="w-3.5 h-3.5 text-cyan-400" />
+                              </a>
+                              <button
+                                type="button"
+                                onClick={() => handleStartEditPost(post)}
+                                className="p-1.5 rounded-lg bg-slate-800 hover:bg-amber-500/20 text-slate-300 hover:text-amber-300 transition"
+                                title="ویرایش مقاله"
+                              >
+                                <Edit2 className="w-3.5 h-3.5 text-amber-400" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDeletePost(post.id, post.title)}
+                                className="p-1.5 rounded-lg bg-slate-800 hover:bg-rose-500/20 text-slate-300 hover:text-rose-400 transition"
+                                title="حذف مقاله"
+                              >
+                                <Trash2 className="w-3.5 h-3.5 text-rose-400" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {blogPosts.length === 0 && (
+                <div className="text-center py-12 text-slate-500 text-xs">
+                  هیچ مقاله‌ای یافت نشد. برای ایجاد نخستین مقاله روی دکمه «نوشتن مقاله جدید» کلیک کنید.
+                </div>
+              )}
+            </div>
+
+            {/* Post Create / Edit Modal */}
+            {(isCreatingPost || editPostModal) && (
+              <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+                <div className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-4xl p-6 shadow-2xl space-y-5 my-8 max-h-[90vh] overflow-y-auto">
+                  <div className="flex items-center justify-between pb-4 border-b border-slate-800">
+                    <div className="flex items-center gap-2">
+                      <div className="w-9 h-9 rounded-xl bg-amber-500/10 text-amber-400 flex items-center justify-center">
+                        <FileText className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <h3 className="font-bold text-base text-white">
+                          {editPostModal ? 'ویرایش مقاله وبلاگ' : 'نوشتن مقاله جدید در وبلاگ'}
+                        </h3>
+                        <p className="text-xs text-slate-400">
+                          تنظیم محتوا، دسته‌بندی و متاتگ‌های سئو جهت ایندکس در گوگل
+                        </p>
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsCreatingPost(false);
+                        setEditPostModal(null);
+                      }}
+                      className="p-1.5 rounded-xl bg-slate-800 text-slate-400 hover:text-white"
+                    >
+                      <X className="w-5 h-5" />
+                    </button>
+                  </div>
+
+                  <form onSubmit={handleSavePost} className="space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-300 mb-1.5">عنوان مقاله (H1):</label>
+                        <input
+                          type="text"
+                          required
+                          placeholder="مثال: اصول ترجمه کتاب با هوش مصنوعی"
+                          value={postForm.title}
+                          onChange={(e) => setPostForm({ ...postForm, title: e.target.value })}
+                          className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs focus:border-amber-500 focus:outline-none"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-300 mb-1.5">پیوند یکتا (Slug انگلیسی یا فارسی):</label>
+                        <input
+                          type="text"
+                          required
+                          dir="ltr"
+                          placeholder="ai-book-translation-guide"
+                          value={postForm.slug}
+                          onChange={(e) => setPostForm({ ...postForm, slug: e.target.value.toLowerCase().replace(/\s+/g, '-') })}
+                          className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-amber-300 font-mono text-xs focus:border-amber-500 focus:outline-none"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-300 mb-1.5">دسته‌بندی مقاله:</label>
+                        <select
+                          value={postForm.category}
+                          onChange={(e) => {
+                            const cat = blogCategories.find((c) => c.name === e.target.value);
+                            setPostForm({
+                              ...postForm,
+                              category: e.target.value,
+                              categorySlug: cat ? cat.slug : 'translation-guides',
+                            });
+                          }}
+                          className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs focus:border-amber-500 focus:outline-none"
+                        >
+                          {blogCategories.map((c) => (
+                            <option key={c.id} value={c.name}>
+                              {c.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-300 mb-1.5">نام نویسنده:</label>
+                        <input
+                          type="text"
+                          placeholder="مثال: دکتر علیرضا کاظمی"
+                          value={postForm.authorName}
+                          onChange={(e) => setPostForm({ ...postForm, authorName: e.target.value })}
+                          className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs focus:border-amber-500 focus:outline-none"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-300 mb-1.5">سمت نویسنده:</label>
+                        <input
+                          type="text"
+                          placeholder="مثال: کارشناس ارشد زبان‌شناسی"
+                          value={postForm.authorRole}
+                          onChange={(e) => setPostForm({ ...postForm, authorRole: e.target.value })}
+                          className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs focus:border-amber-500 focus:outline-none"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-300 mb-1.5">تصویر شاخص (Cover Image URL):</label>
+                      <input
+                        type="url"
+                        dir="ltr"
+                        placeholder="https://images.unsplash.com/photo-..."
+                        value={postForm.coverImage}
+                        onChange={(e) => setPostForm({ ...postForm, coverImage: e.target.value })}
+                        className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-white font-mono text-xs focus:border-amber-500 focus:outline-none"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-300 mb-1.5">چکیده / لید مقاله (Excerpt):</label>
+                      <textarea
+                        rows={2}
+                        placeholder="خلاصه‌ای جذاب در ۱ الی ۲ جمله برای نمایش در کارت‌های وبلاگ و شبکه‌های اجتماعی..."
+                        value={postForm.excerpt}
+                        onChange={(e) => setPostForm({ ...postForm, excerpt: e.target.value })}
+                        className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs leading-relaxed focus:border-amber-500 focus:outline-none"
+                      />
+                    </div>
+
+                    <div>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <label className="text-xs font-semibold text-slate-300">محتوای کامل مقاله (HTML / متن ساختاریافته):</label>
+                        <span className="text-[11px] text-slate-500">پشتیبانی از تگ‌های p, h2, h3, ul, ol, blockquote, strong</span>
+                      </div>
+                      <textarea
+                        rows={10}
+                        required
+                        dir="rtl"
+                        value={postForm.content}
+                        onChange={(e) => setPostForm({ ...postForm, content: e.target.value })}
+                        className="w-full p-4 rounded-xl bg-slate-950 border border-slate-800 text-white font-mono text-xs leading-relaxed focus:border-amber-500 focus:outline-none"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-300 mb-1.5">برچسب‌ها (با کاما جدا کنید):</label>
+                        <input
+                          type="text"
+                          placeholder="ترجمه کتاب, هوش مصنوعی, رمان, ویراستاری"
+                          value={postForm.tags}
+                          onChange={(e) => setPostForm({ ...postForm, tags: e.target.value })}
+                          className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs focus:border-amber-500 focus:outline-none"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-300 mb-1.5">تخمین زمان مطالعه (دقیقه):</label>
+                        <input
+                          type="number"
+                          min={1}
+                          max={60}
+                          value={postForm.readingTimeMinutes}
+                          onChange={(e) => setPostForm({ ...postForm, readingTimeMinutes: Number(e.target.value) })}
+                          className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs focus:border-amber-500 focus:outline-none"
+                        />
+                      </div>
+                    </div>
+
+                    {/* SEO Meta Box */}
+                    <div className="p-4 rounded-2xl bg-slate-950/80 border border-slate-800 space-y-3">
+                      <div className="text-xs font-bold text-amber-400 flex items-center gap-1.5">
+                        <Globe className="w-3.5 h-3.5" />
+                        <span>تنظیمات اختصاصی سئو و موتورهای جستجو (SEO Metadata)</span>
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-[11px] text-slate-400 mb-1">عنوان سئو (Meta Title):</label>
+                          <input
+                            type="text"
+                            placeholder="خالی بگذارید تا از عنوان مقاله استفاده شود"
+                            value={postForm.metaTitle}
+                            onChange={(e) => setPostForm({ ...postForm, metaTitle: e.target.value })}
+                            className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-800 text-white text-xs focus:border-amber-500 focus:outline-none"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[11px] text-slate-400 mb-1">توضیحات متا (Meta Description):</label>
+                          <input
+                            type="text"
+                            placeholder="خالی بگذارید تا از چکیده استفاده شود"
+                            value={postForm.metaDescription}
+                            onChange={(e) => setPostForm({ ...postForm, metaDescription: e.target.value })}
+                            className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-800 text-white text-xs focus:border-amber-500 focus:outline-none"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Publish Toggle */}
+                    <div className="flex items-center gap-3 pt-2">
+                      <input
+                        type="checkbox"
+                        id="isPublishedCheck"
+                        checked={postForm.isPublished}
+                        onChange={(e) => setPostForm({ ...postForm, isPublished: e.target.checked })}
+                        className="w-4 h-4 rounded text-amber-500 focus:ring-amber-500 border-slate-700 bg-slate-950"
+                      />
+                      <label htmlFor="isPublishedCheck" className="text-xs font-semibold text-slate-200 cursor-pointer">
+                        انتشار عمومی در وبلاگ (در صورت برداشتن تیک، به عنوان پیش‌نویس ذخیره می‌شود)
+                      </label>
+                    </div>
+
+                    <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-800">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsCreatingPost(false);
+                          setEditPostModal(null);
+                        }}
+                        className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium"
+                      >
+                        انصراف
+                      </button>
+                      <button
+                        type="submit"
+                        disabled={isSavingPost}
+                        className="px-6 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs shadow-md shadow-amber-500/20 flex items-center gap-2"
+                      >
+                        {isSavingPost ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                        <span>{isSavingPost ? 'در حال ذخیره...' : 'ذخیره و انتشار مقاله'}</span>
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            )}
+
+            {/* Category Management Modal */}
+            {categoryModal && (
+              <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+                <div className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-xl p-6 shadow-2xl space-y-5">
+                  <div className="flex items-center justify-between pb-4 border-b border-slate-800">
+                    <div className="flex items-center gap-2">
+                      <Tag className="w-5 h-5 text-indigo-400" />
+                      <h3 className="font-bold text-base text-white">مدیریت دسته‌بندی‌های وبلاگ</h3>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setCategoryModal(false)}
+                      className="p-1.5 rounded-xl bg-slate-800 text-slate-400 hover:text-white"
+                    >
+                      <X className="w-5 h-5" />
+                    </button>
+                  </div>
+
+                  {/* Add Category Form */}
+                  <form onSubmit={handleSaveBlogCategory} className="bg-slate-950/60 border border-slate-800 rounded-2xl p-4 space-y-3">
+                    <div className="text-xs font-bold text-slate-300">افزودن دسته‌بندی جدید:</div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-[11px] text-slate-400 mb-1">نام دسته‌بندی (فارسی):</label>
+                        <input
+                          type="text"
+                          required
+                          placeholder="مثال: نقد و بررسی کتاب"
+                          value={categoryForm.name}
+                          onChange={(e) => setCategoryForm({ ...categoryForm, name: e.target.value })}
+                          className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-800 text-white text-xs focus:border-amber-500 focus:outline-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] text-slate-400 mb-1">نامک پیوند (Slug انگلیسی):</label>
+                        <input
+                          type="text"
+                          required
+                          dir="ltr"
+                          placeholder="book-reviews"
+                          value={categoryForm.slug}
+                          onChange={(e) => setCategoryForm({ ...categoryForm, slug: e.target.value.toLowerCase().replace(/\s+/g, '-') })}
+                          className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-800 text-amber-300 font-mono text-xs focus:border-amber-500 focus:outline-none"
+                        />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-end">
+                      <div className="sm:col-span-2">
+                        <label className="block text-[11px] text-slate-400 mb-1">توضیح کوتاه:</label>
+                        <input
+                          type="text"
+                          placeholder="معرفی و نقد آثار برگزیده جهان"
+                          value={categoryForm.description}
+                          onChange={(e) => setCategoryForm({ ...categoryForm, description: e.target.value })}
+                          className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-800 text-white text-xs focus:border-amber-500 focus:outline-none"
+                        />
+                      </div>
+                      <div>
+                        <button
+                          type="submit"
+                          className="w-full py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-lg text-xs transition"
+                        >
+                          ثبت دسته‌بندی
+                        </button>
+                      </div>
+                    </div>
+                  </form>
+
+                  {/* Existing Categories List */}
+                  <div className="space-y-2 max-h-60 overflow-y-auto">
+                    <div className="text-xs font-bold text-slate-400 pb-1">دسته‌بندی‌های موجود:</div>
+                    {blogCategories.map((cat) => (
+                      <div
+                        key={cat.id}
+                        className="flex items-center justify-between p-3 rounded-xl bg-slate-950/80 border border-slate-800 text-xs"
+                      >
+                        <div className="flex items-center gap-2">
+                          <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: cat.color || '#3b82f6' }}></span>
+                          <span className="font-bold text-slate-200">{cat.name}</span>
+                          <span className="text-[11px] text-slate-500 font-mono" dir="ltr">({cat.slug})</span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteBlogCategory(cat.id, cat.name)}
+                          className="text-slate-400 hover:text-rose-400 p-1"
+                          title="حذف دسته‌بندی"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ========================================================= */}
+        {/* TAB 9: SCRIPTS INJECTION & GOOGLE SEARCH CONSOLE */}
+        {/* ========================================================= */}
+        {activeTab === 'scripts_analytics' && (
+          <div className="space-y-6 animate-in fade-in">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+              <div>
+                <div className="flex items-center gap-2">
+                  <h2 className="text-xl font-bold text-white">اتصال آمارگیر، سرچ کنسول گوگل و اسکریپت‌های سفارشی</h2>
+                  <span className="text-[10px] px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-bold">
+                    Head & Footer Injector
+                  </span>
+                </div>
+                <p className="text-xs text-slate-400 mt-1">
+                  تایید فوری مالکیت دامنه در گوگل، اتصال گوگل آنالیتیکس ۴، تگ منیجر و ابزارهای چت آنلاین و ترک کاربر (گفتینو، کریسپ، کلاریتی و یکتانت)
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={handleSaveScriptsConfig}
+                disabled={isSavingScripts}
+                className="px-5 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs shadow-md shadow-emerald-500/20 flex items-center gap-2 transition"
+              >
+                {scriptsSaveSuccess ? <Check className="w-4 h-4" /> : <Save className="w-4 h-4" />}
+                <span>{scriptsSaveSuccess ? 'ذخیره شد!' : 'ذخیره و اعمال فوری اسکریپت‌ها'}</span>
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveScriptsConfig} className="space-y-6">
+              {/* Master Toggle */}
+              <div className="bg-slate-900 border border-slate-800 rounded-3xl p-5 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-2xl bg-emerald-500/10 text-emerald-400 flex items-center justify-center">
+                    <Zap className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-white">فعال‌سازی تزریق کدهای آمارگیر و اسکریپت‌ها</h3>
+                    <p className="text-xs text-slate-400">در صورت غیرفعال بودن، هیچ‌یک از کدهای زیر در خروجی صفحات بارگذاری نخواهند شد.</p>
+                  </div>
+                </div>
+
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={scriptsConfig.enabled}
+                    onChange={(e) => setScriptsConfig({ ...scriptsConfig, enabled: e.target.checked })}
+                    className="sr-only peer"
+                  />
+                  <div className="w-11 h-6 bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:right-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-500"></div>
+                </label>
+              </div>
+
+              {/* Google Search Console & Webmaster Tools */}
+              <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 space-y-4 shadow-xl">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-amber-400 font-bold text-sm">
+                    <Globe className="w-5 h-5" />
+                    <span>تایید مالکیت گوگل سرچ کنسول (Google Search Console Verification)</span>
+                  </div>
+                  <a
+                    href="https://search.google.com/search-console"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-[11px] text-amber-400 hover:underline flex items-center gap-1"
+                  >
+                    ورود به کنسول سرچ گوگل <ExternalLink className="w-3 h-3" />
+                  </a>
+                </div>
+
+                <p className="text-xs text-slate-300 leading-relaxed">
+                  کد تایید HTML tag سرچ کنسول یا توکن اختصاصی گوگل را در این فیلد وارد کنید. سیستم به صورت خودکار آن را در بخش <code className="text-amber-400 font-mono">&lt;head&gt;</code> قرار می‌دهد:
+                </p>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1.5">کد تاییدیه یا تگ متای گوگل سرچ کنسول:</label>
+                  <input
+                    type="text"
+                    dir="ltr"
+                    placeholder='مثال: <meta name="google-site-verification" content="abcdef123456" /> یا تنها abcdef123456'
+                    value={scriptsConfig.googleSearchConsoleVerification || ''}
+                    onChange={(e) => setScriptsConfig({ ...scriptsConfig, googleSearchConsoleVerification: e.target.value })}
+                    className="w-full px-4 py-3 rounded-xl bg-slate-950 border border-slate-800 text-amber-300 font-mono text-xs focus:border-amber-500 focus:outline-none shadow-inner"
+                  />
+                  <div className="text-[11px] text-slate-500 mt-1.5">
+                    نکته: چه کل تگ <code className="text-slate-400 font-mono">&lt;meta ...&gt;</code> را کپی کنید و چه فقط مقدار داخل <code className="text-slate-400 font-mono">content</code> را، سیستم به صورت کاملاً استاندارد آن را تزریق می‌کند.
+                  </div>
+                </div>
+              </div>
+
+              {/* Google Analytics 4 & Tag Manager */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 space-y-3 shadow-xl">
+                  <div className="flex items-center gap-2 text-cyan-400 font-bold text-sm">
+                    <BarChart3 className="w-5 h-5" />
+                    <span>گوگل آنالیتیکس ۴ (Google Analytics 4 - GA4)</span>
+                  </div>
+                  <p className="text-xs text-slate-400 leading-relaxed">
+                    شناسه سنجش گوگل آنالیتیکس (Measurement ID) را وارد کنید تا کدهای gtag.js به صورت هوشمند لود شوند:
+                  </p>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-300 mb-1.5">Measurement ID:</label>
+                    <input
+                      type="text"
+                      dir="ltr"
+                      placeholder="G-XXXXXXXXXX"
+                      value={scriptsConfig.googleAnalyticsId || ''}
+                      onChange={(e) => setScriptsConfig({ ...scriptsConfig, googleAnalyticsId: e.target.value.trim() })}
+                      className="w-full px-4 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-cyan-300 font-mono text-xs focus:border-cyan-500 focus:outline-none"
+                    />
+                  </div>
+                </div>
+
+                <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 space-y-3 shadow-xl">
+                  <div className="flex items-center gap-2 text-purple-400 font-bold text-sm">
+                    <Sliders className="w-5 h-5" />
+                    <span>گوگل تگ منیجر (Google Tag Manager - GTM)</span>
+                  </div>
+                  <p className="text-xs text-slate-400 leading-relaxed">
+                    شناسه کانتینر گوگل تگ منیجر را برای مدیریت متمرکز تگ‌ها و ایونت‌های کاربر وارد نمایید:
+                  </p>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-300 mb-1.5">GTM Container ID:</label>
+                    <input
+                      type="text"
+                      dir="ltr"
+                      placeholder="GTM-XXXXXXX"
+                      value={scriptsConfig.googleTagManagerId || ''}
+                      onChange={(e) => setScriptsConfig({ ...scriptsConfig, googleTagManagerId: e.target.value.trim() })}
+                      className="w-full px-4 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-purple-300 font-mono text-xs focus:border-purple-500 focus:outline-none"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Custom Header Code Injection (<head>) */}
+              <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 space-y-3 shadow-xl">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-amber-400 font-bold text-sm">
+                    <Code className="w-5 h-5" />
+                    <span>اسکریپت‌ها و کدهای سفارشی در هدر (&lt;head&gt;)</span>
+                  </div>
+                  <span className="text-[11px] text-slate-500">مانند یکتانت، مایکروسافت کلاریتی، فونت‌های سفارشی و غیره</span>
+                </div>
+                <textarea
+                  rows={6}
+                  dir="ltr"
+                  placeholder={`<!-- کدهای دلخواه جاوااسکریپت یا CSS در هدر سایت -->
+<script>
+  console.log("Custom script loaded");
+</script>`}
+                  value={scriptsConfig.headerScripts || ''}
+                  onChange={(e) => setScriptsConfig({ ...scriptsConfig, headerScripts: e.target.value })}
+                  className="w-full p-4 rounded-xl bg-slate-950 border border-slate-800 text-emerald-400 font-mono text-xs leading-relaxed focus:border-amber-500 focus:outline-none"
+                />
+              </div>
+
+              {/* Custom Footer Code Injection (<body> End) */}
+              <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 space-y-3 shadow-xl">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-blue-400 font-bold text-sm">
+                    <Code className="w-5 h-5" />
+                    <span>اسکریپت‌ها و ابزارک‌های انتهای صفحه (&lt;body&gt; Footer)</span>
+                  </div>
+                  <span className="text-[11px] text-slate-500">مانند ویجت گفتینو (Goftino)، کریسپ (Crisp) یا رایچت</span>
+                </div>
+                <textarea
+                  rows={6}
+                  dir="ltr"
+                  placeholder={`<!-- کدهای چت آنلاین یا پیکسلهای ریتارگتینگ -->
+<script type="text/javascript">
+  !function(){var i="xxxxxx",a=window;/* Goftino / Crisp snippet */ }();
+</script>`}
+                  value={scriptsConfig.footerScripts || ''}
+                  onChange={(e) => setScriptsConfig({ ...scriptsConfig, footerScripts: e.target.value })}
+                  className="w-full p-4 rounded-xl bg-slate-950 border border-slate-800 text-blue-300 font-mono text-xs leading-relaxed focus:border-blue-500 focus:outline-none"
+                />
+              </div>
+
+              {/* Save Button */}
+              <div className="flex justify-end pt-2">
+                <button
+                  type="submit"
+                  disabled={isSavingScripts}
+                  className="px-6 py-3 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-bold text-xs shadow-lg shadow-emerald-500/20 flex items-center gap-2 transition"
+                >
+                  {scriptsSaveSuccess ? <Check className="w-4 h-4" /> : <Save className="w-4 h-4" />}
+                  <span>{scriptsSaveSuccess ? 'تنظیمات با موفقیت ذخیره شد!' : 'ذخیره کلیه تنظیمات آمارگیر و سرچ کنسول'}</span>
+                </button>
+              </div>
+            </form>
           </div>
         )}
       </main>

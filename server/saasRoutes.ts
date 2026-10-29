@@ -102,6 +102,7 @@ export function setupSaasRoutes(app: express.Express) {
         showInHeader: p.showInHeader ?? false,
         showInFooter: p.showInFooter ?? true,
       })),
+      scriptsInjection: db.getScriptsInjection(),
       maintenanceMode: settings.security.maintenanceMode,
     });
   });
@@ -2011,5 +2012,231 @@ export function setupSaasRoutes(app: express.Express) {
     const ok = db.deleteBook(req.params.id);
     if (!ok) return res.status(404).json({ error: 'کتاب یافت نشد.' });
     return res.json({ success: true, message: 'کتاب با موفقیت از سیستم حذف گردید.' });
+  });
+
+  // ==========================================
+  // 12. BLOG & SEO CONTENT MANAGEMENT
+  // ==========================================
+
+  // Public: Get published blog posts
+  app.get('/api/blog/posts', (req, res) => {
+    try {
+      const categorySlug = req.query.category as string | undefined;
+      const posts = db.getBlogPosts(true, categorySlug);
+      const categories = db.getBlogCategories();
+      return res.json({
+        posts: posts.map(p => ({
+          id: p.id,
+          title: p.title,
+          slug: p.slug,
+          excerpt: p.excerpt,
+          category: p.category,
+          categorySlug: p.categorySlug,
+          tags: p.tags,
+          coverImage: p.coverImage,
+          authorName: p.authorName,
+          authorRole: p.authorRole,
+          readingTimeMinutes: p.readingTimeMinutes,
+          views: p.views,
+          publishedAt: p.publishedAt,
+        })),
+        categories,
+      });
+    } catch (err: any) {
+      return res.status(500).json({ error: `خطا در بارگذاری مقالات: ${err.message}` });
+    }
+  });
+
+  // Public: Get single blog post by slug
+  app.get('/api/blog/posts/:slug', (req, res) => {
+    try {
+      const post = db.getBlogPostBySlug(req.params.slug);
+      if (!post || (!post.isPublished && !(req as any).user)) {
+        return res.status(404).json({ error: 'مقاله مورد نظر یافت نشد.' });
+      }
+
+      // Increment views
+      db.incrementBlogPostViews(post.id);
+
+      // Related posts in same category
+      const related = db.getBlogPosts(true)
+        .filter(p => p.id !== post.id && (p.categorySlug === post.categorySlug || p.category === post.category))
+        .slice(0, 3)
+        .map(p => ({
+          id: p.id,
+          title: p.title,
+          slug: p.slug,
+          excerpt: p.excerpt,
+          coverImage: p.coverImage,
+          readingTimeMinutes: p.readingTimeMinutes,
+          publishedAt: p.publishedAt,
+        }));
+
+      return res.json({
+        post: {
+          ...post,
+          views: (post.views || 0) + 1,
+        },
+        related,
+      });
+    } catch (err: any) {
+      return res.status(500).json({ error: `خطا در دریافت مقاله: ${err.message}` });
+    }
+  });
+
+  // Public: Get blog categories
+  app.get('/api/blog/categories', (_req, res) => {
+    try {
+      const categories = db.getBlogCategories();
+      const allPosts = db.getBlogPosts(true);
+      const categoriesWithCount = categories.map(cat => ({
+        ...cat,
+        postsCount: allPosts.filter(p => (p.categorySlug || '').toLowerCase() === cat.slug.toLowerCase() || p.category === cat.name).length,
+      }));
+      return res.json({ categories: categoriesWithCount });
+    } catch (err: any) {
+      return res.status(500).json({ error: `خطا در دریافت دسته‌بندی‌ها: ${err.message}` });
+    }
+  });
+
+  // Staff & Admin: Get all blog posts (including drafts)
+  app.get('/api/admin/blog/posts', requireStaffOrAdmin, (_req, res) => {
+    try {
+      const posts = db.getBlogPosts(false);
+      return res.json({ posts });
+    } catch (err: any) {
+      return res.status(500).json({ error: `خطا در دریافت لیست مقالات: ${err.message}` });
+    }
+  });
+
+  // Staff & Admin: Create or update blog post
+  app.post('/api/admin/blog/posts', requireStaffOrAdmin, (req, res) => {
+    try {
+      const user = (req as any).user;
+      const {
+        id,
+        title,
+        slug,
+        excerpt,
+        content,
+        category,
+        categorySlug,
+        tags,
+        coverImage,
+        authorName,
+        authorRole,
+        readingTimeMinutes,
+        isPublished,
+        metaTitle,
+        metaDescription,
+        canonicalUrl,
+      } = req.body;
+
+      if (!title || !slug || !content) {
+        return res.status(400).json({ error: 'عنوان، آدرس پیوند (Slug) و محتوای مقاله الزامی است.' });
+      }
+
+      const saved = db.saveBlogPost({
+        id,
+        title,
+        slug,
+        excerpt,
+        content,
+        category: category || 'آموزش ترجمه کتاب',
+        categorySlug: categorySlug || 'translation-guides',
+        tags: Array.isArray(tags) ? tags : (typeof tags === 'string' ? tags.split(',').map((t: string) => t.trim()).filter(Boolean) : []),
+        coverImage: coverImage || '',
+        authorId: user?.id,
+        authorName: authorName || user?.name || 'تیم تحریریه',
+        authorRole: authorRole || (user?.role === 'admin' ? 'مدیر ارشد' : 'کارشناس تحریریه'),
+        readingTimeMinutes: readingTimeMinutes ? Number(readingTimeMinutes) : undefined,
+        isPublished: isPublished !== false,
+        metaTitle,
+        metaDescription,
+        canonicalUrl,
+      });
+
+      return res.json({ success: true, post: saved });
+    } catch (err: any) {
+      return res.status(500).json({ error: `خطا در ذخیره مقاله: ${err.message}` });
+    }
+  });
+
+  // Staff & Admin: Delete blog post
+  app.delete('/api/admin/blog/posts/:id', requireStaffOrAdmin, (req, res) => {
+    try {
+      const ok = db.deleteBlogPost(req.params.id);
+      if (!ok) return res.status(404).json({ error: 'مقاله یافت نشد.' });
+      return res.json({ success: true, message: 'مقاله با موفقیت حذف شد.' });
+    } catch (err: any) {
+      return res.status(500).json({ error: `خطا در حذف مقاله: ${err.message}` });
+    }
+  });
+
+  // Staff & Admin: Get blog categories
+  app.get('/api/admin/blog/categories', requireStaffOrAdmin, (_req, res) => {
+    try {
+      const categories = db.getBlogCategories();
+      return res.json({ categories });
+    } catch (err: any) {
+      return res.status(500).json({ error: `خطا در دریافت دسته‌بندی‌ها: ${err.message}` });
+    }
+  });
+
+  // Staff & Admin: Create or update blog category
+  app.post('/api/admin/blog/categories', requireStaffOrAdmin, (req, res) => {
+    try {
+      const { id, name, slug, description, color } = req.body;
+      if (!name || !slug) {
+        return res.status(400).json({ error: 'نام و نامک (Slug) دسته‌بندی الزامی است.' });
+      }
+      const saved = db.saveBlogCategory({ id, name, slug, description, color });
+      return res.json({ success: true, category: saved });
+    } catch (err: any) {
+      return res.status(500).json({ error: `خطا در ذخیره دسته‌بندی: ${err.message}` });
+    }
+  });
+
+  // Staff & Admin: Delete blog category
+  app.delete('/api/admin/blog/categories/:id', requireStaffOrAdmin, (req, res) => {
+    try {
+      const ok = db.deleteBlogCategory(req.params.id);
+      if (!ok) return res.status(404).json({ error: 'دسته‌بندی یافت نشد.' });
+      return res.json({ success: true, message: 'دسته‌بندی با موفقیت حذف شد.' });
+    } catch (err: any) {
+      return res.status(500).json({ error: `خطا در حذف دسته‌بندی: ${err.message}` });
+    }
+  });
+
+  // ==========================================
+  // 13. SCRIPTS & GOOGLE SEARCH CONSOLE / ANALYTICS
+  // ==========================================
+
+  // Admin & Staff: Get Scripts Injection Settings
+  app.get('/api/admin/settings/scripts', requireStaffOrAdmin, (_req, res) => {
+    try {
+      const config = db.getScriptsInjection();
+      return res.json({ scriptsInjection: config });
+    } catch (err: any) {
+      return res.status(500).json({ error: `خطا در دریافت تنظیمات اسکریپت‌ها: ${err.message}` });
+    }
+  });
+
+  // Admin: Update Scripts Injection Settings
+  app.post('/api/admin/settings/scripts', requireAdmin, (req, res) => {
+    try {
+      const { enabled, googleSearchConsoleVerification, googleAnalyticsId, googleTagManagerId, headerScripts, footerScripts } = req.body;
+      const updated = db.updateScriptsInjection({
+        enabled: enabled !== undefined ? Boolean(enabled) : true,
+        googleSearchConsoleVerification: (googleSearchConsoleVerification || '').trim(),
+        googleAnalyticsId: (googleAnalyticsId || '').trim(),
+        googleTagManagerId: (googleTagManagerId || '').trim(),
+        headerScripts: headerScripts || '',
+        footerScripts: footerScripts || '',
+      });
+      return res.json({ success: true, scriptsInjection: updated });
+    } catch (err: any) {
+      return res.status(500).json({ error: `خطا در ذخیره تنظیمات اسکریپت‌ها: ${err.message}` });
+    }
   });
 }

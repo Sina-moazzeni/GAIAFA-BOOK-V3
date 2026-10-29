@@ -226,6 +226,48 @@ export interface SystemSettings {
     allowAutoSwitchOnTest: boolean; // default true
     preferredFallbackModel?: string;
   };
+  scriptsInjection?: ScriptsInjectionConfig;
+}
+
+export interface ScriptsInjectionConfig {
+  enabled: boolean;
+  googleSearchConsoleVerification?: string; // meta tag or verification token
+  googleAnalyticsId?: string; // e.g. G-XXXXXXX
+  googleTagManagerId?: string; // e.g. GTM-XXXXXXX
+  headerScripts?: string; // raw HTML / scripts for <head>
+  footerScripts?: string; // raw HTML / scripts for body bottom
+}
+
+export interface BlogPost {
+  id: string;
+  title: string;
+  slug: string;
+  excerpt: string;
+  content: string; // rich HTML
+  category: string;
+  categorySlug?: string;
+  tags: string[];
+  coverImage?: string;
+  authorId?: string;
+  authorName: string;
+  authorRole: string; // 'مدیر ارشد' | 'کارشناس تحریریه'
+  readingTimeMinutes: number;
+  views: number;
+  isPublished: boolean;
+  metaTitle?: string;
+  metaDescription?: string;
+  canonicalUrl?: string;
+  publishedAt: number;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface BlogCategory {
+  id: string;
+  name: string;
+  slug: string;
+  description?: string;
+  color?: string;
 }
 
 export interface CustomPage {
@@ -257,6 +299,8 @@ export interface DatabaseSchema {
   transactions: TransactionRecord[];
   apiKeys: ApiKeyConfig[];
   customPages: CustomPage[];
+  blogPosts?: BlogPost[];
+  blogCategories?: BlogCategory[];
   coupons?: any[];
   headerFooterConfig?: HeaderFooterConfig;
   otpStore: Record<string, { code: string; expiresAt: number; attempts: number }>;
@@ -462,6 +506,14 @@ const DEFAULT_SETTINGS: SystemSettings = {
     allowAutoSwitchOnTest: true,
     preferredFallbackModel: 'gemini-3.1-flash-lite',
   },
+  scriptsInjection: {
+    enabled: true,
+    googleSearchConsoleVerification: '',
+    googleAnalyticsId: '',
+    googleTagManagerId: '',
+    headerScripts: '',
+    footerScripts: '',
+  },
 };
 
 const DEFAULT_CUSTOM_PAGES: CustomPage[] = [
@@ -537,6 +589,95 @@ const DEFAULT_CUSTOM_PAGES: CustomPage[] = [
   },
 ];
 
+const DEFAULT_BLOG_CATEGORIES: BlogCategory[] = [
+  { id: 'cat_trans', name: 'آموزش ترجمه کتاب', slug: 'translation-guides', color: '#3b82f6', description: 'راهکارها و اصول تخصصی ترجمه رمان، کتب دانشگاهی و ادبیات' },
+  { id: 'cat_ai', name: 'هوش مصنوعی و زبان‌شناسی', slug: 'ai-linguistics', color: '#f59e0b', description: 'معماری مدل‌های زبانی بزرگ، مقایسه Gemini، GPT و ترجمه متون بلند' },
+  { id: 'cat_publish', name: 'صنعت نشر و کتاب', slug: 'publishing-industry', color: '#10b981', description: 'استانداردهای صفحه‌آرایی، قطع کتاب، فرمت‌های PDF و Word و اخذ مجوز' },
+  { id: 'cat_news', name: 'اخبار و به‌روزرسانی‌ها', slug: 'platform-news', color: '#8b5cf6', description: 'امکانات جدید، موتورهای ترجمه تازه و اطلاعیه‌های رسمی پلتفرم' },
+];
+
+const DEFAULT_BLOG_POSTS: BlogPost[] = [
+  {
+    id: 'post_1',
+    title: 'اصول ترجمه کتاب‌های حجیم با هوش مصنوعی؛ چگونه لحن نویسنده را حفظ کنیم؟',
+    slug: 'ai-book-translation-tone-preservation',
+    category: 'آموزش ترجمه کتاب',
+    categorySlug: 'translation-guides',
+    excerpt: 'بررسی روش‌های نوین ترجمه کتاب با هوش مصنوعی و راهکارهای جلوگیری از یکنواختی و حفظ لحن داستانی یا آکادمیک نویسنده در تمام فصول.',
+    content: `<p>ترجمه یک رمان ۴۰۰ صفحه‌ای یا یک کتاب درسی دانشگاهی همواره یکی از پرزحمت‌ترین و زمان‌برترین پروژه‌های مترجمان و ناشران است. با ظهور مدل‌های زبانی پیشرفته، امکان ترجمه هوشمند با سرعت بسیار بالا فراهم شده است؛ اما چالش اصلی همواره <strong>حفظ پیوستگی لحن و واژگان تخصصی</strong> در سراسر اثر است.</p>
+<h2>۱. واژه‌نامه یکپارچه (Glossary Alignment)</h2>
+<p>مهم‌ترین گام پیش از شروع ترجمه، استخراج کلیدواژه‌ها، اسامی خاص شخصیت‌ها و اصطلاحات کلیدی کتاب است. وقتی یک اصطلاح علمی یا نام شخص در فصل اول به شکلی خاص ترجمه می‌شود، هوش مصنوعی باید در فصل بیستم نیز دقیقاً از همان معادل استفاده کند.</p>
+<h2>۲. گزینش لحن متناسب با ژانر کتاب</h2>
+<p>ترجمه رمان نیازمند جمله‌بندی شیوا، اصطلاحات ادبی و توصیف‌های تصویری است؛ در حالی که ترجمه کتاب‌های ریاضیات، فیزیک یا پزشکی مستلزم لحنی دقیق، مستقیم و وفادار به تعاریف علمی است. در این سامانه با دسته‌بندی لحن‌ها (ادبی، دانشگاهی، روانشناسی، اقتصادی و معنوی) موتور هوش مصنوعی پرامپت هدایت‌کننده خود را با زمینه کتاب تطبیق می‌دهد.</p>
+<h2>۳. بازبینی نهایی و صفحه‌آرایی استاندارد</h2>
+<p>ترجمه اولیه ماشینی هرچقدر هم دقیق باشد، نیازمند کنترل انسانی در محیط ویرایشگر زنده و خروجی با فونت‌های استاندارد فارسی نظیر وزیرمتن است تا کتاب آماده چاپ یا توزیع دیجیتال گردد.</p>`,
+    tags: ['ترجمه کتاب', 'هوش مصنوعی', 'لحن ادبی', 'واژه‌نامه'],
+    coverImage: 'https://images.unsplash.com/photo-1457369804613-52c61a468e7d?auto=format&fit=crop&w=1200&q=80',
+    authorName: 'دکتر علیرضا کاظمی',
+    authorRole: 'مدیر تحریریه',
+    readingTimeMinutes: 5,
+    views: 480,
+    isPublished: true,
+    metaTitle: 'اصول ترجمه کتاب با هوش مصنوعی و حفظ لحن ادبی | وبلاگ مترجم کتاب',
+    metaDescription: 'راهنمای گام‌به‌گام ترجمه کتاب‌های قطور با هوش مصنوعی، واژه‌نامه تخصصی و حفظ لحن یکپارچه داستانی و دانشگاهی.',
+    publishedAt: Date.now() - 7 * 86400000,
+    createdAt: Date.now() - 7 * 86400000,
+    updatedAt: Date.now() - 2 * 86400000,
+  },
+  {
+    id: 'post_2',
+    title: 'مقایسه موتورهای زبانی در ترجمه فارسی: چرا Gemini در متون بلند و رمان پیشتاز است؟',
+    slug: 'gemini-vs-other-llms-persian-translation',
+    category: 'هوش مصنوعی و زبان‌شناسی',
+    categorySlug: 'ai-linguistics',
+    excerpt: 'تحلیل فنی و زبانی برتری‌های مدل‌های Gemini در درک ساختار زبان فارسی، ضرب‌المثل‌ها و پردازش کتاب‌های دارای پنجره کانتکست چند صدهزار توکنی.',
+    content: `<p>در سال‌های اخیر مدل‌های متعددی نظیر GPT-4o، DeepSeek، Claude و Gemini معرفی شده‌اند. اما در کاربرد خاص <strong>ترجمه متون فارسی بلند و کتاب</strong>، مدل‌های شرکت گوگل (Gemini 3.5 و Gemini 3.8) برتری‌های چشمگیری نشان داده‌اند.</p>
+<h2>پنجره زمینه میلیونی (Huge Context Window)</h2>
+<p>جمینای قادر است صدها هزار کلمه را هم‌زمان در حافظه فعال خود نگه دارد. این ویژگی باعث می‌شود خلاصه‌ای پویا از رویدادهای فصول پیشین رمان را به یاد داشته باشد و ارجاعات داستانی به درستی ترجمه شوند.</p>
+<h2>درک عمیق از ادبیات فارسی و استعاره‌ها</h2>
+<p>آموزش چندزبانه گسترده جمینای باعث شده که اصطلاحات فارسی را به جای ترجمه کلمه به کلمه، به زیباترین معادل‌های مفهومی بازگردانی کند؛ امری که برای رمان‌ها و کتب روانشناسی حیاتی است.</p>`,
+    tags: ['Gemini', 'هوش مصنوعی', 'مقایسه مدل‌ها', 'زبان فارسی'],
+    coverImage: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=1200&q=80',
+    authorName: 'مهندس نیما رحیمی',
+    authorRole: 'مدیر ارشد فنی',
+    readingTimeMinutes: 6,
+    views: 890,
+    isPublished: true,
+    metaTitle: 'چرا جمینای بهترین مدل ترجمه رمان و کتاب فارسی است؟',
+    metaDescription: 'بررسی مقایسه‌ای قدرت مدل‌های هوش مصنوعی جمینای در ترجمه متون بلند و حفظ بافت داستانی در زبان فارسی.',
+    publishedAt: Date.now() - 14 * 86400000,
+    createdAt: Date.now() - 14 * 86400000,
+    updatedAt: Date.now() - 4 * 86400000,
+  },
+  {
+    id: 'post_3',
+    title: 'استانداردهای قطع و صفحه‌آرایی کتاب برای چاپ: رقعی، وزیری یا رحلی؟',
+    slug: 'book-trim-sizes-and-typography-guide',
+    category: 'صنعت نشر و کتاب',
+    categorySlug: 'publishing-industry',
+    excerpt: 'کدام قطع کتاب برای اثر شما مناسب‌تر است؟ تفاوت‌های رقعی، وزیری و رحلی و اهمیت هدر تکرارشونده و مارجین صفحات در خروجی PDF.',
+    content: `<p>انتخاب قطع کتاب یکی از نخستین تصمیم‌های هر ناشر و نویسنده است. قطع نامناسب می‌تواند هزینه چاپ را افزایش دهد و خوانش کتاب را برای مخاطب خسته‌کننده سازد.</p>
+<h2>قطع رقعی (۱۴.۵ × ۲۱.۵ سانتی‌متر)</h2>
+<p>محبوب‌ترین قطع در ایران برای رمان‌ها، کتاب‌های خودشناسی، شعر و ادبیات عمومی است. این قطع به راحتی در دست جای می‌گیرد و وزن سبکی دارد.</p>
+<h2>قطع وزیری (۱۷.۵ × ۲۵ سانتی‌متر)</h2>
+<p>قطع استاندارد کتاب‌های دانشگاهی، درسی، پژوهشی و کتب قطور. فضای مناسبی برای فرمول‌ها، پانوشت‌ها و جدول‌ها ارائه می‌دهد.</p>
+<h2>قطع رحلی (A4 - ۲۱ × ۲۹.۷ سانتی‌متر)</h2>
+<p>مخصوص کتاب‌های نفیس، کتب مصور کودکان، دانشنامه‌ها و مجلات تخصصی.</p>`,
+    tags: ['صفحه‌آرایی', 'قطع کتاب', 'چاپ PDF', 'صنعت نشر'],
+    coverImage: 'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?auto=format&fit=crop&w=1200&q=80',
+    authorName: 'سارا امینی',
+    authorRole: 'ویراستار و طراح کتاب',
+    readingTimeMinutes: 4,
+    views: 340,
+    isPublished: true,
+    metaTitle: 'راهنمای انتخاب قطع کتاب: رقعی، وزیری یا رحلی؟',
+    metaDescription: 'بررسی جامع انواع قطع کتاب برای رمان، کتب درسی و مقالات همراه با استانداردهای صفحه‌آرایی و چاپ.',
+    publishedAt: Date.now() - 21 * 86400000,
+    createdAt: Date.now() - 21 * 86400000,
+    updatedAt: Date.now() - 5 * 86400000,
+  },
+];
+
 class Database {
   private data: DatabaseSchema;
 
@@ -565,6 +706,8 @@ class Database {
           transactions: parsed.transactions || [],
           apiKeys: parsed.apiKeys || [],
           customPages: parsed.customPages && parsed.customPages.length > 0 ? parsed.customPages : DEFAULT_CUSTOM_PAGES,
+          blogPosts: parsed.blogPosts && parsed.blogPosts.length > 0 ? parsed.blogPosts : DEFAULT_BLOG_POSTS,
+          blogCategories: parsed.blogCategories && parsed.blogCategories.length > 0 ? parsed.blogCategories : DEFAULT_BLOG_CATEGORIES,
           otpStore: parsed.otpStore || {},
           sessions: parsed.sessions || {},
           settings: {
@@ -610,6 +753,10 @@ class Database {
             headerFooter: {
               ...DEFAULT_SETTINGS.headerFooter,
               ...(parsed.settings?.headerFooter || {}),
+            },
+            scriptsInjection: {
+              ...DEFAULT_SETTINGS.scriptsInjection,
+              ...(parsed.settings?.scriptsInjection || {}),
             },
           },
         };
@@ -1009,6 +1156,8 @@ class Database {
         },
       ],
       customPages: DEFAULT_CUSTOM_PAGES,
+      blogPosts: DEFAULT_BLOG_POSTS,
+      blogCategories: DEFAULT_BLOG_CATEGORIES,
       otpStore: {},
       sessions: {},
       settings: DEFAULT_SETTINGS,
@@ -1557,6 +1706,8 @@ class Database {
         apiKeys: this.data.apiKeys.length,
         coupons: (this.data.coupons || []).length,
         customPages: (this.data.customPages || []).length,
+        blogPosts: (this.data.blogPosts || []).length,
+        blogCategories: (this.data.blogCategories || []).length,
       },
       data: {
         users: this.data.users,
@@ -1565,6 +1716,8 @@ class Database {
         transactions: this.data.transactions,
         settings: this.data.settings,
         customPages: this.data.customPages || [],
+        blogPosts: this.data.blogPosts || [],
+        blogCategories: this.data.blogCategories || [],
         coupons: this.data.coupons || [],
         headerFooterConfig: this.data.headerFooterConfig,
       },
@@ -1661,7 +1814,36 @@ class Database {
       this.data.headerFooterConfig = { ...this.data.headerFooterConfig, ...incoming.headerFooterConfig };
     }
 
-    // 6. Restore Transactions if present
+    // 6. Restore Blog Categories & Posts
+    let restoredBlogPosts = 0;
+    if (Array.isArray(incoming.blogCategories)) {
+      if (!this.data.blogCategories) this.data.blogCategories = [];
+      incoming.blogCategories.forEach((inCat: BlogCategory) => {
+        if (!inCat || !inCat.slug) return;
+        const idx = this.data.blogCategories!.findIndex(c => c.id === inCat.id || c.slug === inCat.slug);
+        if (idx !== -1) {
+          this.data.blogCategories![idx] = inCat;
+        } else {
+          this.data.blogCategories!.push(inCat);
+        }
+      });
+    }
+
+    if (Array.isArray(incoming.blogPosts)) {
+      if (!this.data.blogPosts) this.data.blogPosts = [];
+      incoming.blogPosts.forEach((inPost: BlogPost) => {
+        if (!inPost || !inPost.slug) return;
+        const idx = this.data.blogPosts!.findIndex(p => p.id === inPost.id || p.slug === inPost.slug);
+        if (idx !== -1) {
+          this.data.blogPosts![idx] = inPost;
+        } else {
+          this.data.blogPosts!.push(inPost);
+        }
+        restoredBlogPosts++;
+      });
+    }
+
+    // 7. Restore Transactions if present
     if (Array.isArray(incoming.transactions)) {
       if (!this.data.transactions) this.data.transactions = [];
       incoming.transactions.forEach((inTx: TransactionRecord) => {
@@ -1768,7 +1950,172 @@ class Database {
     return this.data.settings.headerFooter;
   }
 
-  // --- Monthly Analytics & Comparisons ---
+  // --- Blog & Content Management ---
+  public getBlogPosts(onlyPublished = false, categorySlug?: string): BlogPost[] {
+    if (!this.data.blogPosts) {
+      this.data.blogPosts = DEFAULT_BLOG_POSTS;
+    }
+    let posts = [...this.data.blogPosts];
+    if (onlyPublished) {
+      posts = posts.filter(p => p.isPublished);
+    }
+    if (categorySlug && categorySlug !== 'all') {
+      const cleanSlug = categorySlug.trim().toLowerCase();
+      posts = posts.filter(p => (p.categorySlug || '').toLowerCase() === cleanSlug || p.category.toLowerCase() === cleanSlug);
+    }
+    return posts.sort((a, b) => (b.publishedAt || b.createdAt) - (a.publishedAt || a.createdAt));
+  }
+
+  public getBlogPostBySlug(slug: string): BlogPost | undefined {
+    if (!this.data.blogPosts) this.data.blogPosts = DEFAULT_BLOG_POSTS;
+    const cleanSlug = slug.trim().toLowerCase();
+    return this.data.blogPosts.find(p => p.slug.toLowerCase() === cleanSlug || p.id === cleanSlug);
+  }
+
+  public getBlogPostById(id: string): BlogPost | undefined {
+    if (!this.data.blogPosts) this.data.blogPosts = DEFAULT_BLOG_POSTS;
+    return this.data.blogPosts.find(p => p.id === id);
+  }
+
+  public saveBlogPost(postData: Partial<BlogPost> & { title: string; slug: string; content: string }): BlogPost {
+    if (!this.data.blogPosts) this.data.blogPosts = DEFAULT_BLOG_POSTS;
+    const cleanSlug = postData.slug.trim().toLowerCase().replace(/\s+/g, '-');
+    const existingIndex = postData.id
+      ? this.data.blogPosts.findIndex(p => p.id === postData.id)
+      : this.data.blogPosts.findIndex(p => p.slug.toLowerCase() === cleanSlug);
+
+    const now = Date.now();
+    // Calculate reading time based on Persian words count (~200 words/min)
+    const wordCount = postData.content ? postData.content.replace(/<[^>]+>/g, ' ').trim().split(/\s+/).length : 500;
+    const calculatedReadingTime = Math.max(1, Math.ceil(wordCount / 200));
+
+    let savedPost: BlogPost;
+    if (existingIndex !== -1) {
+      const existing = this.data.blogPosts[existingIndex];
+      savedPost = {
+        ...existing,
+        ...postData,
+        slug: cleanSlug,
+        readingTimeMinutes: postData.readingTimeMinutes || existing.readingTimeMinutes || calculatedReadingTime,
+        updatedAt: now,
+        publishedAt: postData.isPublished && !existing.publishedAt ? now : (postData.publishedAt || existing.publishedAt || now),
+      };
+      this.data.blogPosts[existingIndex] = savedPost;
+    } else {
+      savedPost = {
+        id: postData.id || `post_${Date.now()}_${crypto.randomBytes(3).toString('hex')}`,
+        title: postData.title.trim(),
+        slug: cleanSlug,
+        excerpt: postData.excerpt || (postData.content ? postData.content.replace(/<[^>]+>/g, ' ').slice(0, 180) + '...' : ''),
+        content: postData.content,
+        category: postData.category || 'آموزش ترجمه کتاب',
+        categorySlug: postData.categorySlug || 'translation-guides',
+        tags: postData.tags || ['کتاب', 'ترجمه'],
+        coverImage: postData.coverImage || 'https://images.unsplash.com/photo-1457369804613-52c61a468e7d?auto=format&fit=crop&w=1200&q=80',
+        authorId: postData.authorId,
+        authorName: postData.authorName || 'تیم تحریریه',
+        authorRole: postData.authorRole || 'کارشناس محتوا',
+        readingTimeMinutes: postData.readingTimeMinutes || calculatedReadingTime,
+        views: postData.views || 0,
+        isPublished: postData.isPublished !== false,
+        metaTitle: postData.metaTitle || postData.title,
+        metaDescription: postData.metaDescription || postData.excerpt || '',
+        canonicalUrl: postData.canonicalUrl || '',
+        publishedAt: postData.isPublished !== false ? (postData.publishedAt || now) : 0,
+        createdAt: now,
+        updatedAt: now,
+      };
+      this.data.blogPosts.unshift(savedPost);
+    }
+
+    this.saveData(this.data);
+    return savedPost;
+  }
+
+  public deleteBlogPost(idOrSlug: string): boolean {
+    if (!this.data.blogPosts) return false;
+    const initialLen = this.data.blogPosts.length;
+    this.data.blogPosts = this.data.blogPosts.filter(p => p.id !== idOrSlug && p.slug !== idOrSlug);
+    this.saveData(this.data);
+    return this.data.blogPosts.length < initialLen;
+  }
+
+  public incrementBlogPostViews(idOrSlug: string): number {
+    if (!this.data.blogPosts) return 0;
+    const post = this.data.blogPosts.find(p => p.id === idOrSlug || p.slug === idOrSlug);
+    if (post) {
+      post.views = (post.views || 0) + 1;
+      this.saveData(this.data);
+      return post.views;
+    }
+    return 0;
+  }
+
+  // --- Blog Categories ---
+  public getBlogCategories(): BlogCategory[] {
+    if (!this.data.blogCategories || this.data.blogCategories.length === 0) {
+      this.data.blogCategories = DEFAULT_BLOG_CATEGORIES;
+    }
+    return this.data.blogCategories;
+  }
+
+  public saveBlogCategory(catData: Partial<BlogCategory> & { name: string; slug: string }): BlogCategory {
+    if (!this.data.blogCategories) this.data.blogCategories = DEFAULT_BLOG_CATEGORIES;
+    const cleanSlug = catData.slug.trim().toLowerCase().replace(/\s+/g, '-');
+    const existingIndex = catData.id
+      ? this.data.blogCategories.findIndex(c => c.id === catData.id)
+      : this.data.blogCategories.findIndex(c => c.slug.toLowerCase() === cleanSlug);
+
+    let savedCategory: BlogCategory;
+    if (existingIndex !== -1) {
+      savedCategory = {
+        ...this.data.blogCategories[existingIndex],
+        ...catData,
+        slug: cleanSlug,
+      };
+      this.data.blogCategories[existingIndex] = savedCategory;
+    } else {
+      savedCategory = {
+        id: catData.id || `cat_${Date.now()}_${crypto.randomBytes(3).toString('hex')}`,
+        name: catData.name.trim(),
+        slug: cleanSlug,
+        description: catData.description || '',
+        color: catData.color || '#3b82f6',
+      };
+      this.data.blogCategories.push(savedCategory);
+    }
+
+    this.saveData(this.data);
+    return savedCategory;
+  }
+
+  public deleteBlogCategory(idOrSlug: string): boolean {
+    if (!this.data.blogCategories) return false;
+    const initialLen = this.data.blogCategories.length;
+    this.data.blogCategories = this.data.blogCategories.filter(c => c.id !== idOrSlug && c.slug !== idOrSlug);
+    this.saveData(this.data);
+    return this.data.blogCategories.length < initialLen;
+  }
+
+  // --- Scripts & Analytics Injection ---
+  public getScriptsInjection(): ScriptsInjectionConfig {
+    if (!this.data.settings.scriptsInjection) {
+      this.data.settings.scriptsInjection = DEFAULT_SETTINGS.scriptsInjection!;
+    }
+    return this.data.settings.scriptsInjection;
+  }
+
+  public updateScriptsInjection(config: Partial<ScriptsInjectionConfig>): ScriptsInjectionConfig {
+    if (!this.data.settings.scriptsInjection) {
+      this.data.settings.scriptsInjection = DEFAULT_SETTINGS.scriptsInjection!;
+    }
+    this.data.settings.scriptsInjection = {
+      ...this.data.settings.scriptsInjection,
+      ...config,
+    };
+    this.saveData(this.data);
+    return this.data.settings.scriptsInjection;
+  }
   public getMonthlyAnalytics() {
     const now = Date.now();
     const thirtyDaysMs = 30 * 86400000;
