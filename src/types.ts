@@ -50,7 +50,7 @@ export interface TransactionRecord {
   amount: number;
   type: 'deposit' | 'charge' | 'refund' | 'admin_gift';
   description: string;
-  gateway?: 'zarinpal' | 'zibal' | 'nextpay' | 'idpay' | 'stripe' | 'manual';
+  gateway?: 'zarinpal' | 'zibal' | 'nextpay' | 'idpay' | 'bitpay' | 'stripe' | 'manual';
   status: 'success' | 'pending' | 'failed';
   trackingCode?: string;
   authority?: string;
@@ -95,6 +95,11 @@ export interface SystemSettings {
       currency?: 'IRT' | 'IRR';
       refererDomain?: string;
       callbackDomain?: string;
+    };
+    bitpay: {
+      enabled: boolean;
+      apiKey: string;
+      name?: string;
     };
     zibal: {
       enabled: boolean;

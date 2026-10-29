@@ -26,15 +26,17 @@ interface WalletModalProps {
 export function WalletModal({ isOpen, onClose, user, onBalanceUpdated }: WalletModalProps) {
   const [activeTab, setActiveTab] = useState<'recharge' | 'history'>('recharge');
   const [amount, setAmount] = useState<number>(100000);
-  const [gateway, setGateway] = useState<'zarinpal' | 'zibal' | 'nextpay' | 'idpay'>('zarinpal');
+  const [gateway, setGateway] = useState<'zarinpal' | 'bitpay' | 'zibal' | 'nextpay' | 'idpay'>('zarinpal');
   const [activeGateways, setActiveGateways] = useState<{
     zarinpal: boolean;
+    bitpay: boolean;
     zibal: boolean;
     nextpay: boolean;
     idpay: boolean;
     stripe: boolean;
   }>({
     zarinpal: true,
+    bitpay: true,
     zibal: true,
     nextpay: false,
     idpay: false,
@@ -64,6 +66,8 @@ export function WalletModal({ isOpen, onClose, user, onBalanceUpdated }: WalletM
           // Auto-select first enabled gateway
           if (data.gateways.zarinpal) {
             setGateway('zarinpal');
+          } else if (data.gateways.bitpay) {
+            setGateway('bitpay');
           } else if (data.gateways.zibal) {
             setGateway('zibal');
           } else if (data.gateways.nextpay) {
@@ -150,8 +154,9 @@ export function WalletModal({ isOpen, onClose, user, onBalanceUpdated }: WalletM
       const invoiceData = await invoiceRes.json();
       if (!invoiceRes.ok) throw new Error(invoiceData.error || 'خطا در ایجاد فاکتور');
 
-      // Direct redirect to official ZarinPal / Shaparak Gateway
-      setStatusMessage({ type: 'success', text: 'در حال انتقال مستقیم به درگاه پرداخت اینترنتی زرین‌پال...' });
+      // Direct redirect to payment gateway
+      const gatewayName = gateway === 'bitpay' ? 'بیت‌پی (شاپرک)' : gateway === 'zarinpal' ? 'زرین‌پال' : gateway === 'zibal' ? 'زیبال' : 'بانکی';
+      setStatusMessage({ type: 'success', text: `در حال انتقال مستقیم به درگاه پرداخت اینترنتی ${gatewayName}...` });
       const redirectUrl = invoiceData.paymentUrl || `/payment/gateway/${invoiceData.transactionId}`;
       window.location.href = redirectUrl;
     } catch (err: any) {
@@ -272,12 +277,33 @@ export function WalletModal({ isOpen, onClose, user, onBalanceUpdated }: WalletM
                 <label className="block text-xs font-semibold text-slate-300 mb-2">
                   درگاه پرداخت بانکی:
                 </label>
-                {(!activeGateways.zarinpal && !activeGateways.zibal && !activeGateways.nextpay && !activeGateways.idpay) ? (
+                {(!activeGateways.zarinpal && !activeGateways.bitpay && !activeGateways.zibal && !activeGateways.nextpay && !activeGateways.idpay) ? (
                   <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs text-center">
                     در حال حاضر هیچ درگاه پرداختی توسط مدیریت فعال نشده است. لطفاً با پشتیبانی سامانه تماس حاصل فرمایید.
                   </div>
                 ) : (
                   <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5">
+                    {activeGateways.bitpay && (
+                      <button
+                        type="button"
+                        onClick={() => setGateway('bitpay')}
+                        className={`p-3 rounded-xl border text-right transition-all flex items-center justify-between ${
+                          gateway === 'bitpay'
+                            ? 'bg-amber-500/15 border-amber-500 text-amber-400 shadow-md shadow-amber-500/10'
+                            : 'bg-slate-950 border-slate-800 text-slate-300 hover:border-slate-700'
+                        }`}
+                      >
+                        <div>
+                          <div className="font-bold text-xs text-white flex items-center gap-1.5">
+                            <span>بیت‌پی (BitPay)</span>
+                            <span className="text-[9px] px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">مستقیم</span>
+                          </div>
+                          <div className="text-[10px] text-slate-400 mt-0.5">درگاه مستقیم شاپرک / سداد</div>
+                        </div>
+                        <CreditCard className="w-4 h-4 text-emerald-400" />
+                      </button>
+                    )}
+
                     {activeGateways.zarinpal && (
                       <button
                         type="button"

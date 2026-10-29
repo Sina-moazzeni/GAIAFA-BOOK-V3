@@ -5,6 +5,7 @@ import { queueManager } from './queue.ts';
 import { GoogleGenAI } from '@google/genai';
 import { sendRealOtpSms } from './smsService.ts';
 import { zarinpalService } from './zarinpalService.ts';
+import { bitpayService } from './bitpayService.ts';
 import { bookCacheManager } from './bookCacheManager.ts';
 
 // Helper to extract authenticated user from Authorization header
@@ -88,6 +89,7 @@ export function setupSaasRoutes(app: express.Express) {
       pricing: settings.pricing,
       gateways: {
         zarinpal: Boolean(settings.gateways?.zarinpal?.enabled),
+        bitpay: Boolean(settings.gateways?.bitpay?.enabled),
         zibal: Boolean(settings.gateways?.zibal?.enabled),
         nextpay: Boolean(settings.gateways?.nextpay?.enabled),
         idpay: Boolean(settings.gateways?.idpay?.enabled),
@@ -937,6 +939,60 @@ export function setupSaasRoutes(app: express.Express) {
       });
     }
 
+    // 2. BitPay (bitpay.ir) Real Merchant Gateway Flow
+    if (gateway === 'bitpay') {
+      const bpConfig = settings.gateways.bitpay;
+      if (!bpConfig?.enabled) {
+        return res.status(400).json({ error: 'درگاه پرداخت بیت‌پی در حال حاضر توسط مدیریت سامانه غیرفعال است.' });
+      }
+
+      const apiKey = (bpConfig.apiKey || '').trim();
+      if (!apiKey) {
+        return res.status(400).json({
+          error: 'کلید API درگاه بیت‌پی (BitPay) در پنل مدیریت هنوز تنظیم نشده است. لطفاً مدیر سامانه کلید API اختصاصی پذیرنده را در تنظیمات درگاه‌ها ثبت نماید.',
+        });
+      }
+
+      const baseCallback = (settings.gateways.zarinpal as any)?.callbackDomain?.trim()
+        ? (settings.gateways.zarinpal as any).callbackDomain.trim().replace(/\/+$/, '')
+        : `${protocol}://${host}`;
+      const callbackUrl = `${baseCallback}/api/payment/bitpay/callback?txId=${tx.id}`;
+
+      const bpResult = await bitpayService.requestPayment({
+        apiKey,
+        amountTomans: cleanAmount,
+        redirectUrl: callbackUrl,
+        name: user.name,
+        email: user.email || undefined,
+        description: `افزایش موجودی کیف پول کاربر ${user.name || user.phone}`,
+        factorId: tx.id,
+      });
+
+      if (!bpResult.success) {
+        tx.status = 'failed';
+        db.saveDatabase();
+        return res.status(400).json({
+          error: bpResult.error || 'خطا در اتصال به درگاه پرداخت بیت‌پی',
+          code: bpResult.code,
+          details: bpResult,
+        });
+      }
+
+      // Store generated idGet in authority
+      tx.authority = String(bpResult.idGet);
+      db.saveDatabase();
+
+      return res.json({
+        success: true,
+        transactionId: tx.id,
+        trackingCode: tx.trackingCode,
+        authority: String(bpResult.idGet),
+        amount: cleanAmount,
+        gateway: 'bitpay',
+        paymentUrl: bpResult.paymentUrl,
+      });
+    }
+
     // Direct sandbox/fallback checkout URL
     return res.json({
       success: true,
@@ -1004,6 +1060,64 @@ export function setupSaasRoutes(app: express.Express) {
       tx.status = 'failed';
       db.saveDatabase();
       return res.redirect(`/?payment=failed&txId=${tx.id}&message=` + encodeURIComponent(verifyResult.error || 'تراکنش توسط وب‌سرویس زرین‌پال تایید نشد.'));
+    }
+  });
+
+  // BitPay Callback Handler (Invoked when user returns from bitpay.ir payment portal)
+  app.get('/api/payment/bitpay/callback', async (req, res) => {
+    const transId = (req.query.trans_id || req.query.transId) as string;
+    const idGet = (req.query.id_get || req.query.idGet) as string;
+    const txId = req.query.txId as string;
+
+    const transactions = db.getTransactions();
+    const tx = transactions.find(t => (txId && t.id === txId) || (idGet && t.authority === String(idGet)));
+
+    if (!tx) {
+      return res.redirect('/?payment=error&message=' + encodeURIComponent('تراکنش مالی در سامانه یافت نشد.'));
+    }
+
+    // If transaction was already verified
+    if (tx.status === 'success') {
+      return res.redirect(`/?payment=success&txId=${tx.id}&amount=${tx.amount}&trackingCode=${tx.trackingCode}`);
+    }
+
+    const numTransId = Number(transId);
+    if (!transId || isNaN(numTransId) || numTransId <= 0) {
+      tx.status = 'failed';
+      db.saveDatabase();
+      return res.redirect(`/?payment=canceled&txId=${tx.id}&message=` + encodeURIComponent('پرداخت توسط خریدار در درگاه بانک لغو شد یا شناسه تراکنش نامعتبر است.'));
+    }
+
+    const settings = db.getSettings();
+    const bpConfig = settings.gateways.bitpay;
+    const apiKey = bpConfig?.apiKey?.trim() || '';
+
+    const verifyResult = await bitpayService.verifyPayment({
+      apiKey,
+      transId: numTransId,
+      idGet,
+    });
+
+    if (verifyResult.success) {
+      tx.status = 'success';
+      tx.trackingCode = String(transId);
+      tx.refId = transId;
+      if (verifyResult.cardNum) {
+        tx.cardPan = verifyResult.cardNum;
+      }
+
+      const user = db.getUserById(tx.userId);
+      if (user) {
+        user.walletBalance = (user.walletBalance || 0) + tx.amount;
+        db.updateUser(user.id, { walletBalance: user.walletBalance });
+      }
+      db.saveDatabase();
+
+      return res.redirect(`/?payment=success&txId=${tx.id}&amount=${tx.amount}&trackingCode=${transId}&cardPan=${verifyResult.cardNum || ''}`);
+    } else {
+      tx.status = 'failed';
+      db.saveDatabase();
+      return res.redirect(`/?payment=failed&txId=${tx.id}&message=` + encodeURIComponent(verifyResult.error || 'تراکنش توسط درگاه بیت‌پی تایید نشد.'));
     }
   });
 
@@ -1819,6 +1933,17 @@ export function setupSaasRoutes(app: express.Express) {
     const effectiveReferer = referer || settings.gateways.zarinpal.refererDomain || 'https://gaiafa.ir/';
 
     const result = await zarinpalService.testConnection(effectiveMerchant, effectiveSandbox, effectiveCurrency, effectiveReferer);
+    return res.json(result);
+  });
+
+  // Admin Test BitPay Web-Service Connection
+  app.post('/api/admin/gateways/test-bitpay', requireAdmin, async (req, res) => {
+    const { apiKey, redirectUrl } = req.body;
+    const settings = db.getSettings();
+    const effectiveApiKey = (apiKey || settings.gateways.bitpay?.apiKey || '').trim();
+    const effectiveRedirect = redirectUrl || (settings.gateways.zarinpal as any)?.callbackDomain || 'https://gaiafa.ir/test-callback';
+
+    const result = await bitpayService.testConnection(effectiveApiKey, effectiveRedirect);
     return res.json(result);
   });
 

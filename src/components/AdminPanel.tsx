@@ -407,6 +407,10 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
   const [testingZarinpal, setTestingZarinpal] = useState(false);
   const [zarinpalTestResult, setZarinpalTestResult] = useState<{ success: boolean; message: string; details?: any } | null>(null);
 
+  // Test BitPay Gateway State
+  const [testingBitpay, setTestingBitpay] = useState(false);
+  const [bitpayTestResult, setBitpayTestResult] = useState<{ success: boolean; message: string; details?: any } | null>(null);
+
   // Test SMS phone
   const [testSmsPhone, setTestSmsPhone] = useState('09121234567');
   const [smsResult, setSmsResult] = useState<string | null>(null);
@@ -5689,6 +5693,151 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
                         <div>۲. ریدایرکت مستقیم خریدار به <code className="text-amber-300 bg-slate-900 px-1 rounded">https://www.zarinpal.com/pg/StartPay/[Authority]</code></div>
                         <div>۳. بازگشت خریدار به Callback و تایید قطعی با <code className="text-amber-300 bg-slate-900 px-1 rounded">https://api.zarinpal.com/pg/v4/payment/verify.json</code></div>
                       </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* BitPay (bitpay.ir - Direct Merchant) */}
+              <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-2">
+                    <CreditCard className="w-5 h-5 text-emerald-400" />
+                    <div>
+                      <h4 className="font-bold text-sm text-white flex items-center gap-2">
+                        <span>درگاه مستقیم بیت‌پی (BitPay.ir - مرچنت مستقیم بانکی)</span>
+                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 font-bold">
+                          مرچنت مستقیم
+                        </span>
+                      </h4>
+                      <p className="text-[11px] text-slate-400 mt-0.5">اتصال مستقیم به شبکه شاپرک و درگاه‌های سداد، به‌پرداخت و سامان</p>
+                    </div>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={settings.gateways.bitpay?.enabled ?? false}
+                      onChange={(e) =>
+                        setSettings({
+                          ...settings,
+                          gateways: {
+                            ...settings.gateways,
+                            bitpay: {
+                              enabled: e.target.checked,
+                              apiKey: settings.gateways.bitpay?.apiKey || '',
+                              name: 'بیت‌پی (bitpay.ir)',
+                            },
+                          },
+                        })
+                      }
+                      className="sr-only peer"
+                    />
+                    <div className="w-11 h-6 bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:right-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-500"></div>
+                  </label>
+                </div>
+
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-300 mb-1">
+                      کلید دسترسی اختصاصی (Merchant API Key):
+                    </label>
+                    <input
+                      type="text"
+                      dir="ltr"
+                      value={settings.gateways.bitpay?.apiKey || ''}
+                      onChange={(e) =>
+                        setSettings({
+                          ...settings,
+                          gateways: {
+                            ...settings.gateways,
+                            bitpay: {
+                              enabled: settings.gateways.bitpay?.enabled ?? true,
+                              apiKey: e.target.value,
+                              name: 'بیت‌پی (bitpay.ir)',
+                            },
+                          },
+                        })
+                      }
+                      placeholder="مثلاً: *****-*****-*****-*****-****************************"
+                      className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-white font-mono text-xs focus:border-emerald-500 focus:outline-none text-left"
+                    />
+                    <p className="text-[10px] text-slate-400 mt-1">
+                      کلید API مرچنت مستقیم خود را که از پنل پذیرندگان بیت‌پی (bitpay.ir) دریافت کرده‌اید در این قسمت قرار دهید.
+                    </p>
+                  </div>
+
+                  {/* Test BitPay Gateway Action */}
+                  <div className="pt-2 border-t border-slate-800">
+                    <div className="flex items-center justify-between gap-2">
+                      <button
+                        type="button"
+                        disabled={testingBitpay}
+                        onClick={async () => {
+                          setTestingBitpay(true);
+                          setBitpayTestResult(null);
+                          try {
+                            const res = await fetch('/api/admin/gateways/test-bitpay', {
+                              method: 'POST',
+                              headers: {
+                                'Content-Type': 'application/json',
+                                Authorization: `Bearer ${token}`,
+                              },
+                              body: JSON.stringify({
+                                apiKey: settings.gateways.bitpay?.apiKey,
+                              }),
+                            });
+                            const data = await res.json();
+                            setBitpayTestResult(data);
+                          } catch (err: any) {
+                            setBitpayTestResult({ success: false, message: `خطا در ارتباط با سرور: ${err.message}` });
+                          } finally {
+                            setTestingBitpay(false);
+                          }
+                        }}
+                        className="px-3.5 py-2 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-xs font-bold flex items-center gap-1.5 transition disabled:opacity-50"
+                      >
+                        {testingBitpay ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Zap className="w-3.5 h-3.5" />}
+                        <span>{testingBitpay ? 'درحال بررسی وب‌سرویس بیت‌پی...' : 'آزمایش اتصال به درگاه بیت‌پی (BitPay)'}</span>
+                      </button>
+
+                      <span className="text-[10px] text-slate-400">تست ارسال درخواست و اعتبارسنجی API Key</span>
+                    </div>
+
+                    {bitpayTestResult && (
+                      <div
+                        className={`mt-2.5 p-3 rounded-xl border text-xs flex items-start gap-2 ${
+                          bitpayTestResult.success
+                            ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
+                            : 'bg-rose-500/10 border-rose-500/30 text-rose-300'
+                        }`}
+                      >
+                        {bitpayTestResult.success ? (
+                          <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-400 mt-0.5" />
+                        ) : (
+                          <AlertCircle className="w-4 h-4 shrink-0 text-rose-400 mt-0.5" />
+                        )}
+                        <div>
+                          <div className="font-bold">{bitpayTestResult.message}</div>
+                          {bitpayTestResult.details?.idGet && (
+                            <div className="font-mono text-[10px] opacity-80 mt-1">
+                              شناسه فاکتور تست (id_get): {bitpayTestResult.details.idGet}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Official BitPay Specs Guide */}
+                  <div className="p-3 bg-slate-950/70 border border-slate-800 rounded-xl space-y-1.5 text-[11px] text-slate-300">
+                    <div className="font-bold text-emerald-400 flex items-center gap-1">
+                      <ShieldCheck className="w-3.5 h-3.5" />
+                      <span>گردش کار رسمی درگاه بیت‌پی (BitPay.ir Workflow):</span>
+                    </div>
+                    <div className="text-[10px] text-slate-400 space-y-1 leading-relaxed">
+                      <div>۱. ارسال اطلاعات به <code className="text-emerald-300 bg-slate-900 px-1 rounded">https://bitpay.ir/payment/gateway-send</code> همراه با API و مبلغ ریالی</div>
+                      <div>۲. دریافت شناسه <code className="text-emerald-300 font-mono">id_get</code> و هدایت به <code className="text-emerald-300 bg-slate-900 px-1 rounded">https://bitpay.ir/payment/gateway-[id_get]-get</code></div>
+                      <div>۳. بازگشت خریدار به آدرس بازگشت (Callback) همراه با <code className="text-emerald-300 font-mono">trans_id</code> و تایید نهایی در متد <code className="text-emerald-300 bg-slate-900 px-1 rounded">gateway-result-second</code></div>
                     </div>
                   </div>
                 </div>

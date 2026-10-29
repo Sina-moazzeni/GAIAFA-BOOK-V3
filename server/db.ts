@@ -89,7 +89,7 @@ export interface TransactionRecord {
   amount: number; // positive for deposit, negative for charge
   type: 'deposit' | 'charge' | 'refund' | 'admin_gift';
   description: string;
-  gateway?: 'zarinpal' | 'zibal' | 'nextpay' | 'idpay' | 'stripe' | 'manual';
+  gateway?: 'zarinpal' | 'bitpay' | 'zibal' | 'nextpay' | 'idpay' | 'stripe' | 'manual';
   status: 'success' | 'pending' | 'failed';
   trackingCode?: string;
   authority?: string;
@@ -134,6 +134,11 @@ export interface SystemSettings {
       currency?: 'IRT' | 'IRR';
       refererDomain?: string;
       callbackDomain?: string;
+    };
+    bitpay: {
+      enabled: boolean;
+      apiKey: string;
+      name?: string;
     };
     zibal: {
       enabled: boolean;
@@ -505,6 +510,11 @@ const DEFAULT_SETTINGS: SystemSettings = {
       currency: 'IRT',
       refererDomain: 'https://gaiafa.ir/',
       callbackDomain: '',
+    },
+    bitpay: {
+      enabled: true,
+      apiKey: '',
+      name: 'بیت‌پی (bitpay.ir)',
     },
     zibal: {
       enabled: true,
@@ -902,6 +912,10 @@ class Database {
               zarinpal: {
                 ...DEFAULT_SETTINGS.gateways.zarinpal,
                 ...(parsed.settings?.gateways?.zarinpal || {}),
+              },
+              bitpay: {
+                ...DEFAULT_SETTINGS.gateways.bitpay,
+                ...(parsed.settings?.gateways?.bitpay || {}),
               },
               zibal: {
                 ...DEFAULT_SETTINGS.gateways.zibal,
