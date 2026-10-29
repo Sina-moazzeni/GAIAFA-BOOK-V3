@@ -102,22 +102,94 @@ export function LandingPage({
     },
   ];
 
-  // Intercept links to custom pages
+  // Process custom HTML with dynamic CMS bindings (site title, logo, contact, custom pages)
+  const processCustomHtml = (rawHtml?: string): string => {
+    if (!rawHtml || !rawHtml.trim()) return '';
+    let processed = rawHtml;
+
+    const siteTitle = seoConfig?.siteTitle || 'سامانه هوشمند ترجمه کتاب';
+    processed = processed.replace(/\{\{\s*siteTitle\s*\}\}/gi, siteTitle);
+
+    if (seoConfig?.logoUrl) {
+      processed = processed.replace(/\{\{\s*logoUrl\s*\}\}/gi, seoConfig.logoUrl);
+    }
+    if (cmsConfig?.supportPhone) {
+      processed = processed.replace(/\{\{\s*supportPhone\s*\}\}/gi, cmsConfig.supportPhone);
+    }
+    if (cmsConfig?.supportEmail) {
+      processed = processed.replace(/\{\{\s*supportEmail\s*\}\}/gi, cmsConfig.supportEmail);
+    }
+
+    // Auto-generate header navigation links for custom pages if requested
+    if (processed.includes('{{customPagesHeader}}')) {
+      const headerLinks = customPages
+        .filter((p) => p.showInHeader)
+        .map((p) => `<a href="/page/${p.slug}" style="color: inherit; text-decoration: none; margin: 0 10px;">${p.title}</a>`)
+        .join('');
+      processed = processed.replace(/\{\{\s*customPagesHeader\s*\}\}/gi, headerLinks);
+    }
+
+    // Auto-generate footer navigation links for custom pages if requested
+    if (processed.includes('{{customPagesFooter}}')) {
+      const footerLinks = customPages
+        .filter((p) => p.showInFooter)
+        .map((p) => `<a href="/page/${p.slug}" style="color: inherit; text-decoration: none; margin: 0 10px;">${p.title}</a>`)
+        .join('');
+      processed = processed.replace(/\{\{\s*customPagesFooter\s*\}\}/gi, footerLinks);
+    }
+
+    return processed;
+  };
+
+  // Intercept links to custom pages, auth modals, and section scrolls
   const handlePageLinkClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    const target = (e.target as HTMLElement).closest('a');
-    if (target && target.getAttribute('href')) {
-      const href = target.getAttribute('href')!;
-      if (href.startsWith('/page/')) {
+    const target = (e.target as HTMLElement).closest('a, button');
+    if (!target) return;
+
+    const href = target.getAttribute('href') || '';
+    const dataAuth = target.getAttribute('data-auth');
+
+    // 1. Auth Triggers (Login / Register modal)
+    if (
+      dataAuth === 'login' ||
+      dataAuth === 'register' ||
+      href === '#login' ||
+      href === '/login' ||
+      href === '#register' ||
+      href === '/register' ||
+      href === '#auth' ||
+      target.classList.contains('auth-trigger')
+    ) {
+      e.preventDefault();
+      const tab = (dataAuth === 'register' || href.includes('register')) ? 'register' : 'login';
+      onOpenAuth(tab);
+      return;
+    }
+
+    // 2. Custom Pages (/page/...)
+    if (href.startsWith('/page/')) {
+      e.preventDefault();
+      const slug = href.replace('/page/', '');
+      if (onOpenCustomPage) {
+        onOpenCustomPage(slug);
+      } else {
+        window.location.href = href;
+      }
+      return;
+    }
+
+    // 3. In-page Section Hash Scrolling
+    if (href.startsWith('#') && href.length > 1) {
+      const el = document.querySelector(href);
+      if (el) {
         e.preventDefault();
-        const slug = href.replace('/page/', '');
-        if (onOpenCustomPage) {
-          onOpenCustomPage(slug);
-        } else {
-          window.location.href = href;
-        }
+        el.scrollIntoView({ behavior: 'smooth' });
       }
     }
   };
+
+  const hasCustomHeader = Boolean(headerFooter?.enabled && headerFooter.headerHtml && headerFooter.headerHtml.trim());
+  const hasCustomFooter = Boolean(headerFooter?.enabled && headerFooter.footerHtml && headerFooter.footerHtml.trim());
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-['Vazirmatn'] selection:bg-amber-500/30">
@@ -126,135 +198,138 @@ export function LandingPage({
         <style dangerouslySetInnerHTML={{ __html: headerFooter.customCss }} />
       )}
 
-      {/* Top Custom HTML Header if enabled in Admin Panel */}
-      {headerFooter?.enabled && headerFooter.headerHtml && (
+      {/* Top Header: Custom HTML Header (REPLACES default header & announcement) OR Default Navbar & Announcement */}
+      {hasCustomHeader ? (
         <div
-          dangerouslySetInnerHTML={{ __html: headerFooter.headerHtml }}
+          id="custom-header-wrapper"
+          className="w-full relative z-40"
+          dangerouslySetInnerHTML={{ __html: processCustomHtml(headerFooter?.headerHtml) }}
           onClick={handlePageLinkClick}
         />
-      )}
+      ) : (
+        <>
+          {/* Top Announcement Bar (Configurable in Admin SEO/Settings) */}
+          {(seoConfig?.announcementEnabled !== false && (seoConfig?.announcementText || cmsConfig?.announcement)) && (
+            <div className="bg-gradient-to-r from-amber-600 via-amber-500 to-amber-600 text-slate-950 px-4 py-2 text-xs md:text-sm font-semibold text-center shadow-inner flex items-center justify-center gap-2">
+              <Sparkles className="w-4 h-4 animate-spin" />
+              <span>{seoConfig?.announcementText || cmsConfig?.announcement}</span>
+            </div>
+          )}
 
-      {/* Top Announcement Bar */}
-      {/* Top Announcement Bar (Configurable in Admin SEO/Settings) */}
-      {(seoConfig?.announcementEnabled !== false && (seoConfig?.announcementText || cmsConfig?.announcement)) && (
-        <div className="bg-gradient-to-r from-amber-600 via-amber-500 to-amber-600 text-slate-950 px-4 py-2 text-xs md:text-sm font-semibold text-center shadow-inner flex items-center justify-center gap-2">
-          <Sparkles className="w-4 h-4 animate-spin" />
-          <span>{seoConfig?.announcementText || cmsConfig?.announcement}</span>
-        </div>
-      )}
+          {/* Main Navbar */}
+          <header className="sticky top-0 z-40 bg-slate-900/95 backdrop-blur-md border-b border-slate-800">
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 sm:h-20 flex items-center justify-between">
+              <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
+                {seoConfig?.logoUrl ? (
+                  <img
+                    src={seoConfig.logoUrl}
+                    alt="Logo"
+                    className="w-9 h-9 sm:w-11 sm:h-11 rounded-2xl object-contain border border-amber-500/20 shadow-md shadow-amber-500/20 bg-slate-900 shrink-0"
+                  />
+                ) : (
+                  <div className="w-9 h-9 sm:w-11 sm:h-11 rounded-2xl bg-gradient-to-tr from-amber-500 to-amber-400 flex items-center justify-center text-slate-950 shadow-lg shadow-amber-500/20 shrink-0">
+                    <BookOpen className="w-5 h-5 sm:w-6 sm:h-6" />
+                  </div>
+                )}
+                <div className="min-w-0">
+                  <span className="text-sm sm:text-lg md:text-xl font-bold bg-gradient-to-r from-white via-slate-100 to-amber-400 bg-clip-text text-transparent truncate block max-w-[170px] xs:max-w-xs sm:max-w-none">
+                    {seoConfig?.siteTitle || 'مترجم و ویراستار هوشمند کتاب'}
+                  </span>
+                  <p className="text-[10px] sm:text-[11px] text-slate-400 truncate hidden xs:block">سامانه تجاری ترجمه کتاب و متون تخصصی با هوش مصنوعی</p>
+                </div>
+              </div>
 
-      {/* Main Navbar */}
-      <header className="sticky top-0 z-40 bg-slate-900/95 backdrop-blur-md border-b border-slate-800">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 sm:h-20 flex items-center justify-between">
-          <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
-            {seoConfig?.logoUrl ? (
-              <img
-                src={seoConfig.logoUrl}
-                alt="Logo"
-                className="w-9 h-9 sm:w-11 sm:h-11 rounded-2xl object-contain border border-amber-500/20 shadow-md shadow-amber-500/20 bg-slate-900 shrink-0"
-              />
-            ) : (
-              <div className="w-9 h-9 sm:w-11 sm:h-11 rounded-2xl bg-gradient-to-tr from-amber-500 to-amber-400 flex items-center justify-center text-slate-950 shadow-lg shadow-amber-500/20 shrink-0">
-                <BookOpen className="w-5 h-5 sm:w-6 sm:h-6" />
+              <nav className="hidden lg:flex items-center gap-5 xl:gap-6 text-xs xl:text-sm text-slate-300">
+                <a href="#features" className="hover:text-amber-400 transition-colors">امکانات پلتفرم</a>
+                <a href="#calculator" className="hover:text-amber-400 transition-colors">ماشین‌حساب هزینه</a>
+                <a href="#tones" className="hover:text-amber-400 transition-colors">لحن‌ها و ژانرها</a>
+                <a href="#faq" className="hover:text-amber-400 transition-colors">سوالات متداول</a>
+
+                {/* Only custom pages specifically enabled for Header */}
+                {customPages.filter((page) => page.showInHeader).map((page) => (
+                  <button
+                    key={page.id}
+                    type="button"
+                    onClick={() => onOpenCustomPage ? onOpenCustomPage(page.slug) : window.location.assign(`/page/${page.slug}`)}
+                    className="text-amber-400 hover:text-amber-300 font-medium transition-colors"
+                  >
+                    {page.title}
+                  </button>
+                ))}
+              </nav>
+
+              <div className="flex items-center gap-2 sm:gap-3">
+                <button
+                  onClick={() => onOpenAuth('login')}
+                  className="inline-flex items-center gap-1.5 px-3 py-2 sm:px-5 sm:py-2.5 text-xs sm:text-sm font-semibold rounded-xl bg-gradient-to-r from-amber-500 to-amber-400 hover:from-amber-400 hover:to-amber-300 text-slate-950 shadow-md shadow-amber-500/20 transition-all shrink-0"
+                >
+                  <LogIn className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                  <span className="hidden sm:inline">ورود به سامانه / ثبت‌نام</span>
+                  <span className="sm:hidden">ورود / ثبت‌نام</span>
+                </button>
+
+                {/* Mobile Menu Hamburger */}
+                <button
+                  type="button"
+                  onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+                  className="lg:hidden p-2 rounded-xl bg-slate-800 text-slate-300 hover:text-white border border-slate-700"
+                  aria-label="منوی موبایل"
+                >
+                  {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+                </button>
+              </div>
+            </div>
+
+            {/* Mobile Navigation Drawer */}
+            {mobileMenuOpen && (
+              <div className="lg:hidden bg-slate-900 border-b border-slate-800 px-4 py-4 space-y-3 text-xs sm:text-sm animate-in slide-in-from-top-2">
+                <a
+                  href="#features"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="block py-2 px-3 rounded-lg hover:bg-slate-800 text-slate-200"
+                >
+                  امکانات پلتفرم
+                </a>
+                <a
+                  href="#calculator"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="block py-2 px-3 rounded-lg hover:bg-slate-800 text-slate-200"
+                >
+                  ماشین‌حساب هزینه و زمان
+                </a>
+                <a
+                  href="#tones"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="block py-2 px-3 rounded-lg hover:bg-slate-800 text-slate-200"
+                >
+                  لحن‌ها و ژانرهای تخصصی
+                </a>
+                <a
+                  href="#faq"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="block py-2 px-3 rounded-lg hover:bg-slate-800 text-slate-200"
+                >
+                  سوالات متداول
+                </a>
+                {customPages.filter((page) => page.showInHeader).map((page) => (
+                  <button
+                    key={page.id}
+                    type="button"
+                    onClick={() => {
+                      setMobileMenuOpen(false);
+                      if (onOpenCustomPage) onOpenCustomPage(page.slug);
+                      else window.location.assign(`/page/${page.slug}`);
+                    }}
+                    className="block w-full text-right py-2 px-3 rounded-lg hover:bg-slate-800 text-amber-400 font-medium"
+                  >
+                    {page.title}
+                  </button>
+                ))}
               </div>
             )}
-            <div className="min-w-0">
-              <span className="text-sm sm:text-lg md:text-xl font-bold bg-gradient-to-r from-white via-slate-100 to-amber-400 bg-clip-text text-transparent truncate block max-w-[170px] xs:max-w-xs sm:max-w-none">
-                {seoConfig?.siteTitle || 'مترجم و ویراستار هوشمند کتاب'}
-              </span>
-              <p className="text-[10px] sm:text-[11px] text-slate-400 truncate hidden xs:block">سامانه تجاری ترجمه کتاب و متون تخصصی با هوش مصنوعی</p>
-            </div>
-          </div>
-
-          <nav className="hidden lg:flex items-center gap-5 xl:gap-6 text-xs xl:text-sm text-slate-300">
-            <a href="#features" className="hover:text-amber-400 transition-colors">امکانات پلتفرم</a>
-            <a href="#calculator" className="hover:text-amber-400 transition-colors">ماشین‌حساب هزینه</a>
-            <a href="#tones" className="hover:text-amber-400 transition-colors">لحن‌ها و ژانرها</a>
-            <a href="#faq" className="hover:text-amber-400 transition-colors">سوالات متداول</a>
-
-            {/* Only custom pages specifically enabled for Header */}
-            {customPages.filter((page) => page.showInHeader).map((page) => (
-              <button
-                key={page.id}
-                type="button"
-                onClick={() => onOpenCustomPage ? onOpenCustomPage(page.slug) : window.location.assign(`/page/${page.slug}`)}
-                className="text-amber-400 hover:text-amber-300 font-medium transition-colors"
-              >
-                {page.title}
-              </button>
-            ))}
-          </nav>
-
-          <div className="flex items-center gap-2 sm:gap-3">
-            <button
-              onClick={() => onOpenAuth('login')}
-              className="inline-flex items-center gap-1.5 px-3 py-2 sm:px-5 sm:py-2.5 text-xs sm:text-sm font-semibold rounded-xl bg-gradient-to-r from-amber-500 to-amber-400 hover:from-amber-400 hover:to-amber-300 text-slate-950 shadow-md shadow-amber-500/20 transition-all shrink-0"
-            >
-              <LogIn className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-              <span className="hidden sm:inline">ورود به سامانه / ثبت‌نام</span>
-              <span className="sm:hidden">ورود / ثبت‌نام</span>
-            </button>
-
-            {/* Mobile Menu Hamburger */}
-            <button
-              type="button"
-              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              className="lg:hidden p-2 rounded-xl bg-slate-800 text-slate-300 hover:text-white border border-slate-700"
-              aria-label="منوی موبایل"
-            >
-              {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
-            </button>
-          </div>
-        </div>
-
-        {/* Mobile Navigation Drawer */}
-        {mobileMenuOpen && (
-          <div className="lg:hidden bg-slate-900 border-b border-slate-800 px-4 py-4 space-y-3 text-xs sm:text-sm animate-in slide-in-from-top-2">
-            <a
-              href="#features"
-              onClick={() => setMobileMenuOpen(false)}
-              className="block py-2 px-3 rounded-lg hover:bg-slate-800 text-slate-200"
-            >
-              امکانات پلتفرم
-            </a>
-            <a
-              href="#calculator"
-              onClick={() => setMobileMenuOpen(false)}
-              className="block py-2 px-3 rounded-lg hover:bg-slate-800 text-slate-200"
-            >
-              ماشین‌حساب هزینه و زمان
-            </a>
-            <a
-              href="#tones"
-              onClick={() => setMobileMenuOpen(false)}
-              className="block py-2 px-3 rounded-lg hover:bg-slate-800 text-slate-200"
-            >
-              لحن‌ها و ژانرهای تخصصی
-            </a>
-            <a
-              href="#faq"
-              onClick={() => setMobileMenuOpen(false)}
-              className="block py-2 px-3 rounded-lg hover:bg-slate-800 text-slate-200"
-            >
-              سوالات متداول
-            </a>
-            {customPages.filter((page) => page.showInHeader).map((page) => (
-              <button
-                key={page.id}
-                type="button"
-                onClick={() => {
-                  setMobileMenuOpen(false);
-                  if (onOpenCustomPage) onOpenCustomPage(page.slug);
-                  else window.location.assign(`/page/${page.slug}`);
-                }}
-                className="block w-full text-right py-2 px-3 rounded-lg hover:bg-slate-800 text-amber-400 font-medium"
-              >
-                {page.title}
-              </button>
-            ))}
-          </div>
-        )}
-      </header>
+          </header>
+        </>
+      )}
 
       {/* Hero Section */}
       <section className="relative overflow-hidden py-16 md:py-24 border-b border-slate-800/80">
@@ -559,71 +634,72 @@ export function LandingPage({
         </div>
       </section>
 
-      {/* Custom Designed Footer (HTML) from Admin Panel */}
-      {headerFooter?.enabled && headerFooter.footerHtml && (
+      {/* Footer: Custom HTML Footer (REPLACES default footer) OR Default Footer */}
+      {hasCustomFooter ? (
         <div
-          dangerouslySetInnerHTML={{ __html: headerFooter.footerHtml }}
+          id="custom-footer-wrapper"
+          className="mt-auto w-full relative z-10"
+          dangerouslySetInnerHTML={{ __html: processCustomHtml(headerFooter?.footerHtml) }}
           onClick={handlePageLinkClick}
         />
-      )}
+      ) : (
+        <footer className="mt-auto border-t border-slate-800/80 bg-slate-950 py-10 text-xs text-slate-500">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col md:flex-row items-center justify-between gap-6">
+            <div className="flex items-center gap-3">
+              {seoConfig?.logoUrl ? (
+                <img
+                  src={seoConfig.logoUrl}
+                  alt="Logo"
+                  className="w-8 h-8 rounded-lg object-contain border border-amber-500/20 bg-slate-900"
+                />
+              ) : (
+                <div className="w-8 h-8 rounded-lg bg-amber-500/20 text-amber-400 flex items-center justify-center font-bold">
+                  <BookOpen className="w-4 h-4" />
+                </div>
+              )}
+              <div>
+                <p className="font-semibold text-slate-300">{seoConfig?.siteTitle || 'مترجم و ویراستار هوشمند کتاب'}</p>
+                <p className="text-[11px] text-slate-500">پلتفرم تجاری ترجمه کتاب و نشریات تخصصی</p>
+              </div>
+            </div>
 
-      {/* Footer */}
-      <footer className="mt-auto border-t border-slate-800/80 bg-slate-950 py-10 text-xs text-slate-500">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col md:flex-row items-center justify-between gap-6">
-          <div className="flex items-center gap-3">
-            {seoConfig?.logoUrl ? (
-              <img
-                src={seoConfig.logoUrl}
-                alt="Logo"
-                className="w-8 h-8 rounded-lg object-contain border border-amber-500/20 bg-slate-900"
-              />
-            ) : (
-              <div className="w-8 h-8 rounded-lg bg-amber-500/20 text-amber-400 flex items-center justify-center font-bold">
-                <BookOpen className="w-4 h-4" />
+            {/* Custom Pages specifically enabled for Footer */}
+            {customPages.filter((p) => p.showInFooter).length > 0 && (
+              <div className="flex flex-wrap items-center gap-4 text-xs">
+                {customPages.filter((p) => p.showInFooter).map((page) => (
+                  <button
+                    key={page.id}
+                    type="button"
+                    onClick={() => onOpenCustomPage ? onOpenCustomPage(page.slug) : window.location.assign(`/page/${page.slug}`)}
+                    className="text-slate-400 hover:text-amber-400 transition"
+                  >
+                    {page.title}
+                  </button>
+                ))}
               </div>
             )}
-            <div>
-              <p className="font-semibold text-slate-300">{seoConfig?.siteTitle || 'مترجم و ویراستار هوشمند کتاب'}</p>
-              <p className="text-[11px] text-slate-500">پلتفرم تجاری ترجمه کتاب و نشریات تخصصی</p>
+
+            <div className="flex flex-wrap items-center gap-6 text-slate-400">
+              {cmsConfig?.supportPhone && (
+                <span className="flex items-center gap-1.5">
+                  <PhoneCall className="w-3.5 h-3.5 text-amber-400" />
+                  پشتیبانی: {cmsConfig.supportPhone}
+                </span>
+              )}
+              {cmsConfig?.supportEmail && (
+                <span className="flex items-center gap-1.5">
+                  <Mail className="w-3.5 h-3.5 text-amber-400" />
+                  {cmsConfig.supportEmail}
+                </span>
+              )}
+              <span className="flex items-center gap-1.5 text-slate-500">
+                <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+                اتصال امن SSL و درگاه‌های معتبر بانکی
+              </span>
             </div>
           </div>
-
-          {/* Custom Pages specifically enabled for Footer */}
-          {customPages.filter((p) => p.showInFooter).length > 0 && (
-            <div className="flex flex-wrap items-center gap-4 text-xs">
-              {customPages.filter((p) => p.showInFooter).map((page) => (
-                <button
-                  key={page.id}
-                  type="button"
-                  onClick={() => onOpenCustomPage ? onOpenCustomPage(page.slug) : window.location.assign(`/page/${page.slug}`)}
-                  className="text-slate-400 hover:text-amber-400 transition"
-                >
-                  {page.title}
-                </button>
-              ))}
-            </div>
-          )}
-
-          <div className="flex flex-wrap items-center gap-6 text-slate-400">
-            {cmsConfig?.supportPhone && (
-              <span className="flex items-center gap-1.5">
-                <PhoneCall className="w-3.5 h-3.5 text-amber-400" />
-                پشتیبانی: {cmsConfig.supportPhone}
-              </span>
-            )}
-            {cmsConfig?.supportEmail && (
-              <span className="flex items-center gap-1.5">
-                <Mail className="w-3.5 h-3.5 text-amber-400" />
-                {cmsConfig.supportEmail}
-              </span>
-            )}
-            <span className="flex items-center gap-1.5 text-slate-500">
-              <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
-              اتصال امن SSL و درگاه‌های معتبر بانکی
-            </span>
-          </div>
-        </div>
-      </footer>
+        </footer>
+      )}
     </div>
   );
 }

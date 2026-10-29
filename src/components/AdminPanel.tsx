@@ -6040,6 +6040,15 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
                 {/* SUBTAB 1: HEADER HTML */}
                 {hfActiveSubTab === 'header' && (
                   <div className="space-y-3">
+                    <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-2xl flex items-center justify-between text-xs text-amber-300">
+                      <span>💡 <strong>جایگزینی هوشمند:</strong> با وارد کردن هدر سفارشی، این کد به صورت کامل جایگزین هدر، نوار اعلان و منوی پیش‌فرض بالای سایت می‌شود.</span>
+                      <div className="flex items-center gap-1.5 text-[11px] text-slate-400">
+                        <span>متغیرهای CMS:</span>
+                        <code className="bg-slate-900 px-1 py-0.5 rounded text-amber-400">{'{{siteTitle}}'}</code>
+                        <code className="bg-slate-900 px-1 py-0.5 rounded text-amber-400">{'{{customPagesHeader}}'}</code>
+                      </div>
+                    </div>
+
                     <div className="flex items-center justify-between text-xs text-slate-400">
                       <span>کد HTML سربرگ بالای سایت را وارد کنید:</span>
                       <div className="flex gap-2">
@@ -6053,22 +6062,22 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
     <div style="background: linear-gradient(135deg, #f59e0b, #d97706); color: #020617; font-weight: 900; font-size: 13px; padding: 6px 12px; border-radius: 10px; box-shadow: 0 2px 8px rgba(245,158,11,0.3);">
       ترجمه هوشمند
     </div>
-    <span style="font-weight: 800; font-size: 15px; color: #ffffff;">سامانه ابری و چندموتوره ترجمه کتاب</span>
+    <span style="font-weight: 800; font-size: 15px; color: #ffffff;">{{siteTitle}}</span>
   </div>
   <nav style="display: flex; align-items: center; gap: 20px; font-size: 13px;">
-    <a href="/page/guide" style="color: #cbd5e1; text-decoration: none; font-weight: 500;">راهنما و شرایط</a>
-    <a href="/page/about-us" style="color: #cbd5e1; text-decoration: none; font-weight: 500;">درباره سامانه</a>
-    <span style="color: #10b981; font-size: 12px; display: flex; align-items: center; gap: 6px;">
-      <span style="display: inline-block; width: 8px; height: 8px; background: #10b981; border-radius: 50%;"></span>
-      سرورهای ترجمه فعال
-    </span>
+    <a href="#features" style="color: #cbd5e1; text-decoration: none;">امکانات پلتفرم</a>
+    <a href="#calculator" style="color: #cbd5e1; text-decoration: none;">ماشین‌حساب هزینه</a>
+    {{customPagesHeader}}
+    <a href="#login" data-auth="login" style="background: linear-gradient(135deg, #f59e0b, #d97706); color: #020617; font-weight: 700; padding: 6px 14px; border-radius: 8px; text-decoration: none; box-shadow: 0 2px 8px rgba(245,158,11,0.25);">
+      ورود / ثبت‌نام
+    </a>
   </nav>
 </header>`,
                             })
                           }
                           className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-750 text-slate-300 text-[11px]"
                         >
-                          قالب آماده سازمانی
+                          قالب آماده کامل (با دکمه ورود و متغیرهای CMS)
                         </button>
 
                         <button
@@ -6077,8 +6086,11 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
                             setHeaderFooterConfig({
                               ...headerFooterConfig,
                               headerHtml: `<div style="background: #020617; border-bottom: 2px solid #f59e0b; padding: 10px 20px; display: flex; justify-content: space-between; align-items: center; color: #f8fafc; font-family: 'Vazirmatn', sans-serif; font-size: 12px;">
-  <span>📞 پشتیبانی ویژه: ۰۲۱-۸۸۸۸۹۹۹۹ | ساعت پاسخگویی: ۲۴/۷</span>
-  <span style="color: #f59e0b; font-weight: bold;">🎉 ۲۵,۰۰۰ تومان هدیه ثبت‌نام اولیه</span>
+  <span>📞 پشتیبانی ویژه: {{supportPhone}} | ساعت پاسخگویی: ۲۴/۷</span>
+  <div style="display: flex; gap: 12px; align-items: center;">
+    <span style="color: #f59e0b; font-weight: bold;">🎉 ۲۵,۰۰۰ تومان هدیه ثبت‌نام اولیه</span>
+    <a href="#login" data-auth="login" style="color: #f59e0b; font-weight: 800; text-decoration: underline;">ورود به حساب</a>
+  </div>
 </div>`,
                             })
                           }
@@ -6102,6 +6114,15 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
                 {/* SUBTAB 2: FOOTER HTML */}
                 {hfActiveSubTab === 'footer' && (
                   <div className="space-y-3">
+                    <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-2xl flex items-center justify-between text-xs text-amber-300">
+                      <span>💡 <strong>جایگزینی هوشمند:</strong> با وارد کردن فوتر سفارشی، این کد مستقیماً جایگزین فوتر پیش‌فرض انتهای سایت خواهد شد.</span>
+                      <div className="flex items-center gap-1.5 text-[11px] text-slate-400">
+                        <span>متغیرهای CMS:</span>
+                        <code className="bg-slate-900 px-1 py-0.5 rounded text-amber-400">{'{{customPagesFooter}}'}</code>
+                        <code className="bg-slate-900 px-1 py-0.5 rounded text-amber-400">{'{{supportPhone}}'}</code>
+                      </div>
+                    </div>
+
                     <div className="flex items-center justify-between text-xs text-slate-400">
                       <span>کد HTML پابرگ انتهای سایت را وارد کنید:</span>
                       <div className="flex gap-2">
@@ -6113,13 +6134,12 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
                               footerHtml: `<footer style="background: #020617; border-top: 1px solid #1e293b; padding: 28px 24px; color: #94a3b8; font-family: 'Vazirmatn', sans-serif;">
   <div style="max-width: 1200px; margin: 0 auto; display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 16px;">
     <div>
-      <div style="color: #ffffff; font-weight: 800; font-size: 14px; margin-bottom: 6px;">سامانه تجاری ترجمه کتاب و مقالات علمی</div>
-      <p style="margin: 0; font-size: 12px; color: #64748b;">طراحی و پیاده‌سازی شده با معماری توزیع موازی پردازش ابری هوش مصنوعی</p>
+      <div style="color: #ffffff; font-weight: 800; font-size: 14px; margin-bottom: 6px;">{{siteTitle}}</div>
+      <p style="margin: 0; font-size: 12px; color: #64748b;">سامانه تجاری و ابری ترجمه کتاب، مقالات و متون تخصصی</p>
     </div>
     <div style="display: flex; gap: 24px; font-size: 13px;">
-      <a href="/page/about-us" style="color: #f59e0b; text-decoration: none;">درباره ما</a>
-      <a href="/page/pricing" style="color: #f59e0b; text-decoration: none;">تعرفه‌ها و قوانین</a>
-      <a href="/page/guide" style="color: #f59e0b; text-decoration: none;">راهنمای خروجی Word و PDF</a>
+      {{customPagesFooter}}
+      <span style="color: #10b981;">🛡️ اتصال امن SSL و درگاه‌های رسمی شاپرک</span>
     </div>
   </div>
 </footer>`,
@@ -6127,7 +6147,7 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
                           }
                           className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-750 text-slate-300 text-[11px]"
                         >
-                          قالب چندستونه مدرن
+                          قالب چندستونه مدرن (متصل به CMS)
                         </button>
                       </div>
                     </div>

@@ -56,22 +56,53 @@ export function CustomPageView({
     };
   }, [slug]);
 
-  // Intercept in-page links to other custom pages (/page/xyz)
+  // Intercept in-page links to other custom pages (/page/xyz), auth triggers, or back to home
   const handleContainerClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    const target = (e.target as HTMLElement).closest('a');
-    if (target && target.getAttribute('href')) {
-      const href = target.getAttribute('href')!;
-      if (href.startsWith('/page/')) {
-        e.preventDefault();
-        const nextSlug = href.replace('/page/', '');
-        if (onNavigatePage) {
-          onNavigatePage(nextSlug);
-        } else {
-          window.location.href = href;
-        }
+    const target = (e.target as HTMLElement).closest('a, button');
+    if (!target) return;
+
+    const href = target.getAttribute('href') || '';
+    const dataAuth = target.getAttribute('data-auth');
+
+    // Auth Triggers
+    if (
+      dataAuth === 'login' ||
+      dataAuth === 'register' ||
+      href === '#login' ||
+      href === '/login' ||
+      href === '#register' ||
+      href === '/register' ||
+      href === '#auth' ||
+      target.classList.contains('auth-trigger')
+    ) {
+      e.preventDefault();
+      const tab = (dataAuth === 'register' || href.includes('register')) ? 'register' : 'login';
+      if (onOpenAuth) onOpenAuth(tab);
+      return;
+    }
+
+    // Home link
+    if (href === '/' || href === '#home') {
+      e.preventDefault();
+      onBack();
+      return;
+    }
+
+    // Custom Pages (/page/...)
+    if (href.startsWith('/page/')) {
+      e.preventDefault();
+      const nextSlug = href.replace('/page/', '');
+      if (onNavigatePage) {
+        onNavigatePage(nextSlug);
+      } else {
+        window.location.href = href;
       }
+      return;
     }
   };
+
+  const hasCustomHeader = Boolean(headerFooter?.enabled && headerFooter.headerHtml && headerFooter.headerHtml.trim() && headerFooter.applyToAllPages !== false);
+  const hasCustomFooter = Boolean(headerFooter?.enabled && headerFooter.footerHtml && headerFooter.footerHtml.trim() && headerFooter.applyToAllPages !== false);
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-['Vazirmatn'] selection:bg-amber-500/30">
@@ -80,58 +111,59 @@ export function CustomPageView({
         <style dangerouslySetInnerHTML={{ __html: headerFooter.customCss }} />
       )}
 
-      {/* Top Universal App Navigation Bar for Custom Pages */}
-      <nav className="bg-slate-900/90 backdrop-blur border-b border-slate-800 sticky top-0 z-50 px-4 py-2.5">
-        <div className="max-w-6xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <button
-              onClick={onBack}
-              className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold flex items-center gap-1.5 transition"
-            >
-              <ArrowRight className="w-4 h-4 text-amber-400" />
-              <span>بازگشت به سامانه</span>
-            </button>
-
-            <div className="hidden sm:flex items-center gap-1.5 text-xs text-slate-400 font-mono" dir="ltr">
-              <Globe className="w-3.5 h-3.5 text-emerald-400" />
-              <span className="text-slate-200">/page/{slug}</span>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2">
-            {currentUser ? (
-              <span className="text-xs text-emerald-400 bg-emerald-500/10 px-3 py-1 rounded-full font-medium">
-                وارد شده: {currentUser.name}
-              </span>
-            ) : (
-              onOpenAuth && (
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => onOpenAuth('login')}
-                    className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-white transition flex items-center gap-1"
-                  >
-                    <LogIn className="w-3.5 h-3.5 text-amber-400" />
-                    <span>ورود</span>
-                  </button>
-                  <button
-                    onClick={() => onOpenAuth('register')}
-                    className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-400 hover:from-amber-400 text-slate-950 font-bold text-xs shadow-sm transition"
-                  >
-                    ثبت‌نام سریع
-                  </button>
-                </div>
-              )
-            )}
-          </div>
-        </div>
-      </nav>
-
-      {/* Custom Designed Header (HTML) */}
-      {headerFooter?.enabled && headerFooter.headerHtml && (
+      {/* Header: Custom Designed Header (REPLACES top bar) OR Universal App Top Bar */}
+      {hasCustomHeader ? (
         <div
-          dangerouslySetInnerHTML={{ __html: headerFooter.headerHtml }}
+          id="custom-header-wrapper"
+          className="w-full relative z-40"
+          dangerouslySetInnerHTML={{ __html: headerFooter?.headerHtml || '' }}
           onClick={handleContainerClick}
         />
+      ) : (
+        <nav className="bg-slate-900/90 backdrop-blur border-b border-slate-800 sticky top-0 z-50 px-4 py-2.5">
+          <div className="max-w-6xl mx-auto flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <button
+                onClick={onBack}
+                className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold flex items-center gap-1.5 transition"
+              >
+                <ArrowRight className="w-4 h-4 text-amber-400" />
+                <span>بازگشت به سامانه</span>
+              </button>
+
+              <div className="hidden sm:flex items-center gap-1.5 text-xs text-slate-400 font-mono" dir="ltr">
+                <Globe className="w-3.5 h-3.5 text-emerald-400" />
+                <span className="text-slate-200">/page/{slug}</span>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              {currentUser ? (
+                <span className="text-xs text-emerald-400 bg-emerald-500/10 px-3 py-1 rounded-full font-medium">
+                  وارد شده: {currentUser.name}
+                </span>
+              ) : (
+                onOpenAuth && (
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => onOpenAuth('login')}
+                      className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-white transition flex items-center gap-1"
+                    >
+                      <LogIn className="w-3.5 h-3.5 text-amber-400" />
+                      <span>ورود</span>
+                    </button>
+                    <button
+                      onClick={() => onOpenAuth('register')}
+                      className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-400 hover:from-amber-400 text-slate-950 font-bold text-xs shadow-sm transition"
+                    >
+                      ثبت‌نام سریع
+                    </button>
+                  </div>
+                )
+              )}
+            </div>
+          </div>
+        </nav>
       )}
 
       {/* Main Body */}
