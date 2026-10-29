@@ -150,16 +150,17 @@ export function UserDashboard({
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-['Vazirmatn'] selection:bg-amber-500/30">
       {/* Top Bar */}
       <header className="sticky top-0 z-30 bg-slate-900/95 backdrop-blur-md border-b border-slate-800">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 sm:py-0 sm:h-20 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
-              <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-2xl bg-amber-500 flex items-center justify-center text-slate-950 font-bold shadow-md shadow-amber-500/20 shrink-0">
-                <BookOpen className="w-5 h-5" />
+        <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-2.5 sm:py-0 sm:h-20 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5 sm:gap-4">
+          {/* Top row on mobile: Brand, user overview and quick utility icons */}
+          <div className="flex items-center justify-between gap-2 min-w-0">
+            <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
+              <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl sm:rounded-2xl bg-amber-500 flex items-center justify-center text-slate-950 font-bold shadow-md shadow-amber-500/20 shrink-0">
+                <BookOpen className="w-4 h-4 sm:w-5 sm:h-5" />
               </div>
-              <div className="min-w-0">
-                <div className="flex items-center gap-2">
-                  <span className="font-bold text-white text-sm sm:text-base truncate">میز کاربری کتاب‌ها</span>
-                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 ${
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-1.5 sm:gap-2">
+                  <span className="font-bold text-white text-xs sm:text-base truncate">میز کاربری کتاب‌ها</span>
+                  <span className={`text-[9px] sm:text-[10px] font-bold px-1.5 sm:px-2 py-0.5 rounded-full shrink-0 ${
                     user.role === 'admin'
                       ? 'bg-amber-500/10 border border-amber-500/30 text-amber-400'
                       : user.role === 'staff'
@@ -168,92 +169,114 @@ export function UserDashboard({
                       ? 'bg-purple-500/10 border border-purple-500/30 text-purple-300'
                       : 'bg-emerald-500/10 border border-emerald-500/30 text-emerald-400'
                   }`}>
-                    {user.role === 'admin' ? '👑 مدیر ارشد' : user.role === 'staff' ? '🛡️ پرسنل سامانه' : user.role === 'publisher' ? '🏢 ناشر همکار' : '👤 کاربر سامانه'}
+                    {user.role === 'admin' ? '👑 مدیر ارشد' : user.role === 'staff' ? '🛡️ پرسنل' : user.role === 'publisher' ? '🏢 ناشر' : '👤 کاربر'}
                   </span>
                   {user.organizationName && (
-                    <span className="hidden md:inline text-[10px] font-semibold text-purple-300 bg-purple-500/10 px-2 py-0.5 rounded-full border border-purple-500/20">
+                    <span className="hidden md:inline text-[10px] font-semibold text-purple-300 bg-purple-500/10 px-2 py-0.5 rounded-full border border-purple-500/20 truncate">
                       {user.organizationName}
                     </span>
                   )}
                 </div>
-                <div className="flex items-center gap-2 text-[11px] sm:text-xs text-slate-400 truncate">
-                  <span>{user.name}</span>
-                  <span className="font-mono text-slate-500">({user.phone || user.email})</span>
-                  <span className="text-amber-400/90 font-mono text-[10px] bg-slate-800 px-1.5 py-0.2 rounded">
-                    تعرفه: {systemCostPerWord} ت/کلمه
+                <div className="flex items-center gap-1.5 text-[10px] sm:text-xs text-slate-400 truncate mt-0.5">
+                  <span className="font-medium text-slate-300 truncate max-w-[110px] sm:max-w-none">{user.name}</span>
+                  <span className="font-mono text-slate-500 hidden xs:inline truncate">({user.phone || user.email})</span>
+                  <span className="text-amber-400/90 font-mono text-[9px] sm:text-[10px] bg-slate-800 px-1.5 py-0.2 rounded shrink-0">
+                    {systemCostPerWord} ت/کلمه
                     {user.discountPercent ? ` (${user.discountPercent}٪ تخفیف)` : ''}
                   </span>
                 </div>
               </div>
             </div>
 
-            {/* Logout on mobile */}
-            <button
-              onClick={onLogout}
-              title="خروج از حساب"
-              className="sm:hidden p-2 rounded-xl bg-slate-800 hover:bg-rose-500/20 hover:text-rose-400 text-slate-400 border border-slate-700 transition-all shrink-0"
-            >
-              <LogOut className="w-4 h-4" />
-            </button>
+            {/* Mobile Top-Right Actions (Staff/Admin Shortcut + Logout) */}
+            <div className="flex items-center gap-1.5 sm:hidden shrink-0">
+              {(user.role === 'admin' || user.role === 'staff') && onOpenAdmin && (
+                <button
+                  onClick={onOpenAdmin}
+                  className={`p-2 rounded-xl text-xs font-semibold transition-all ${
+                    user.role === 'staff'
+                      ? 'bg-blue-500/10 hover:bg-blue-500/20 text-blue-300 border border-blue-500/30'
+                      : 'bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30'
+                  }`}
+                  title={user.role === 'staff' ? 'میز پرسنل و پشتیبانی' : 'پنل مدیریت'}
+                >
+                  <ShieldCheck className="w-4 h-4" />
+                </button>
+              )}
+              <button
+                onClick={onLogout}
+                title="خروج از حساب"
+                className="p-2 rounded-xl bg-slate-800 hover:bg-rose-500/20 hover:text-rose-400 text-slate-400 border border-slate-700 transition-all shrink-0"
+              >
+                <LogOut className="w-4 h-4" />
+              </button>
+            </div>
           </div>
 
+          {/* Action Row: Symmetrical & Balanced on Mobile, Right-aligned on Desktop */}
           <div className="flex items-center gap-2 sm:gap-3 justify-between sm:justify-end">
             {/* Wallet Quick Pill */}
             <button
               onClick={onOpenWallet}
-              className="flex-1 sm:flex-initial flex items-center justify-between sm:justify-start gap-2 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700/80 border border-slate-700 text-xs transition-all group"
+              className="flex-1 sm:flex-initial flex items-center justify-between sm:justify-start gap-2 px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-xl bg-slate-800/90 hover:bg-slate-700 border border-slate-700/80 text-xs transition-all group shrink-0"
+              title="شارژ و مشاهده تراکنش‌های کیف پول"
             >
-              <div className="flex items-center gap-1.5">
+              <div className="flex items-center gap-1.5 min-w-0">
                 <Wallet className="w-4 h-4 text-amber-400 group-hover:scale-110 transition-transform shrink-0" />
-                <div className="text-right">
-                  <span className="text-slate-400 text-[9px] sm:text-[10px] block leading-none">موجودی:</span>
-                  <span className="font-bold text-white text-xs">{user.walletBalance.toLocaleString('en-US')} <span className="text-[9px] sm:text-[10px] font-normal text-slate-400">تومان</span></span>
+                <div className="text-right truncate">
+                  <span className="text-slate-400 text-[9px] sm:text-[10px] block leading-none">کیف پول:</span>
+                  <span className="font-bold text-white text-xs">
+                    {user.walletBalance.toLocaleString('en-US')}{' '}
+                    <span className="text-[9px] sm:text-[10px] font-normal text-slate-400">تومان</span>
+                  </span>
                 </div>
               </div>
-              <Plus className="w-3.5 h-3.5 text-amber-400 mr-1" />
+              <span className="w-5 h-5 rounded-lg bg-amber-500/20 text-amber-300 flex items-center justify-center shrink-0">
+                <Plus className="w-3 h-3" />
+              </span>
             </button>
 
-            {/* Blog Quick Link */}
+            {/* Blog Quick Link (Desktop) */}
             <a
               href="/blog"
               target="_blank"
               rel="noopener noreferrer"
-              className="hidden md:inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700/80 border border-slate-700 text-xs text-slate-300 hover:text-amber-400 transition-all shrink-0"
+              className="hidden md:inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs text-slate-300 hover:text-amber-400 transition-all shrink-0"
               title="مشاهده وبلاگ و مقالات"
             >
               <FileText className="w-4 h-4 text-amber-400" />
               <span>وبلاگ</span>
             </a>
 
-            {/* Admin / Staff Switcher */}
+            {/* Admin / Staff Switcher (Desktop) */}
             {(user.role === 'admin' || user.role === 'staff') && onOpenAdmin && (
               <button
                 onClick={onOpenAdmin}
-                className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold transition-all shrink-0 ${
+                className={`hidden sm:inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold transition-all shrink-0 ${
                   user.role === 'staff'
                     ? 'bg-blue-500/10 hover:bg-blue-500/20 text-blue-300 border border-blue-500/30'
                     : 'bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30'
                 }`}
               >
                 <ShieldCheck className="w-4 h-4" />
-                <span className="hidden xs:inline">{user.role === 'staff' ? 'میز پرسنل و پشتیبانی' : 'پنل مدیریت'}</span>
+                <span>{user.role === 'staff' ? 'میز پرسنل' : 'پنل مدیریت'}</span>
               </button>
             )}
 
-            {/* New Book Action */}
+            {/* New Book Action Button */}
             <button
               onClick={onOpenNewBook}
-              className="flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 sm:gap-2 px-3.5 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-amber-400 hover:from-amber-400 hover:to-amber-300 text-slate-950 font-bold text-xs shadow-md shadow-amber-500/20 transition-all shrink-0"
+              className="flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-400 hover:from-amber-400 hover:to-amber-300 text-slate-950 font-bold text-xs shadow-md shadow-amber-500/20 transition-all shrink-0"
             >
-              <Plus className="w-4 h-4" />
-              <span>ثبت کتاب جدید</span>
+              <Plus className="w-4 h-4 shrink-0" />
+              <span className="whitespace-nowrap">ثبت کتاب جدید</span>
             </button>
 
-            {/* Logout */}
+            {/* Logout (Desktop Only - Avoids Mobile Duplicate) */}
             <button
               onClick={onLogout}
               title="خروج از حساب"
-              className="inline-flex p-2 rounded-xl bg-slate-800 hover:bg-rose-500/20 hover:text-rose-400 text-slate-400 border border-slate-700 transition-all shrink-0"
+              className="hidden sm:inline-flex p-2 rounded-xl bg-slate-800 hover:bg-rose-500/20 hover:text-rose-400 text-slate-400 border border-slate-700 transition-all shrink-0"
             >
               <LogOut className="w-4 h-4" />
             </button>

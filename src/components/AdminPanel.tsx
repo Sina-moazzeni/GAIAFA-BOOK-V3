@@ -2113,29 +2113,31 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-['Vazirmatn'] selection:bg-amber-500/30">
       {/* Top Admin Header */}
       <header className="sticky top-0 z-40 bg-slate-900/95 backdrop-blur-md border-b border-amber-500/30 shadow-lg">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className={`w-11 h-11 rounded-2xl flex items-center justify-center font-black shadow-lg ${
+        <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-2.5 sm:py-0 min-h-[60px] sm:h-20 flex items-center justify-between gap-2 sm:gap-4">
+          <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
+            <div className={`w-9 h-9 sm:w-11 sm:h-11 rounded-xl sm:rounded-2xl flex items-center justify-center font-black shadow-lg shrink-0 ${
               isStaff
                 ? 'bg-gradient-to-tr from-blue-600 to-indigo-500 text-white shadow-blue-500/20'
                 : 'bg-gradient-to-tr from-amber-500 to-amber-400 text-slate-950 shadow-amber-500/20'
             }`}>
-              {isStaff ? <Users className="w-6 h-6" /> : <ShieldCheck className="w-6 h-6" />}
+              {isStaff ? <Users className="w-5 h-5 sm:w-6 sm:h-6" /> : <ShieldCheck className="w-5 h-5 sm:w-6 sm:h-6" />}
             </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="font-extrabold text-white text-base">
-                  {isStaff ? 'میز کاربری پرسنل و پشتیبانی سامانه' : 'پنل مدیریت ارشد سامانه'}
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-1.5 sm:gap-2">
+                <span className="font-extrabold text-white text-xs sm:text-base truncate">
+                  <span className="sm:hidden">{isStaff ? 'میز پرسنل' : 'پنل مدیریت ارشد'}</span>
+                  <span className="hidden sm:inline">{isStaff ? 'میز کاربری پرسنل و پشتیبانی سامانه' : 'پنل مدیریت ارشد سامانه'}</span>
                 </span>
-                <span className={`text-[10px] px-2 py-0.5 rounded-full font-black ${
+                <span className={`text-[9px] sm:text-[10px] px-1.5 sm:px-2 py-0.5 rounded-full font-black shrink-0 ${
                   isStaff
                     ? 'bg-blue-500 text-white'
                     : 'bg-amber-500 text-slate-950'
                 }`}>
-                  {isStaff ? 'STAFF / پشتیبان سامانه' : 'SUPER ADMIN'}
+                  <span className="sm:hidden">{isStaff ? 'پشتیبان' : 'مدیر کل'}</span>
+                  <span className="hidden sm:inline">{isStaff ? 'STAFF / پشتیبان سامانه' : 'SUPER ADMIN'}</span>
                 </span>
               </div>
-              <p className="text-xs text-slate-400">
+              <p className="text-[11px] text-slate-400 hidden md:block truncate mt-0.5">
                 {isStaff
                   ? 'مدیریت کاربران، نرخ‌های اختصاصی، کدهای تخفیف، صف ترجمه و بررسی پروژه‌ها'
                   : 'نظارت بر کاربران، استخر موازی هوش مصنوعی، درآمدها و امنیت'}
@@ -2143,29 +2145,31 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
             </div>
           </div>
 
-          <div className="flex items-center gap-2 sm:gap-3">
+          <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
             <button
               onClick={() => setActiveTab('guides')}
-              className={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold border transition-all ${
+              className={`inline-flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3.5 py-1.5 sm:py-2 rounded-xl text-xs font-semibold border transition-all ${
                 activeTab === 'guides'
                   ? 'bg-amber-500 text-slate-950 font-bold border-amber-400 shadow-md shadow-amber-500/20'
                   : 'bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border-amber-500/30'
               }`}
               title="مشاهده تمام راهنماها و دستورالعمل‌های مدیریتی"
             >
-              <HelpCircle className="w-4 h-4 text-amber-400" />
-              <span>راهنمای جامع مدیریت</span>
+              <HelpCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-amber-400" />
+              <span className="hidden sm:inline">راهنمای جامع</span>
             </button>
             <button
               onClick={onBackToUserPanel}
-              className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 transition-all"
+              className="inline-flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3.5 py-1.5 sm:py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 transition-all"
+              title="بازگشت به پیشخوان کاربری"
             >
-              <ArrowLeft className="w-4 h-4 text-amber-400" />
-              <span>میز کاربری</span>
+              <ArrowLeft className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-amber-400" />
+              <span>پیشخوان</span>
             </button>
             <button
               onClick={onLogout}
-              className="px-3 py-2 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 text-xs font-semibold transition-all"
+              className="px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 text-xs font-semibold transition-all"
+              title="خروج از حساب"
             >
               خروج
             </button>
@@ -2174,12 +2178,12 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
       </header>
 
       {/* Tabs Navigation */}
-      <div className="bg-slate-900/90 border-b border-slate-800 backdrop-blur-sm sticky top-16 sm:top-20 z-30">
-        <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-2.5 sm:py-3">
-          <div className="flex overflow-x-auto pb-1 sm:pb-0 sm:grid sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2 text-xs font-semibold scrollbar-none">
+      <div className="bg-slate-900/90 border-b border-slate-800 backdrop-blur-sm sticky top-14 sm:top-20 z-30">
+        <div className="max-w-7xl mx-auto px-2 sm:px-6 lg:px-8 py-2 sm:py-3">
+          <div className="flex overflow-x-auto pb-1.5 sm:pb-0 sm:grid sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-1.5 sm:gap-2 text-xs font-semibold scrollbar-none items-center">
             <button
               onClick={() => setActiveTab('overview')}
-              className={`p-2.5 rounded-xl transition-all flex items-center justify-center gap-2 border shrink-0 min-w-[130px] sm:min-w-0 ${
+              className={`px-3 py-2 sm:p-2.5 rounded-xl transition-all flex items-center justify-center gap-1.5 sm:gap-2 border shrink-0 whitespace-nowrap min-w-max sm:min-w-0 ${
                 activeTab === 'overview'
                   ? 'bg-amber-500 text-slate-950 font-bold border-amber-400 shadow-md shadow-amber-500/20'
                   : 'bg-slate-950/60 text-slate-300 border-slate-800/80 hover:bg-slate-800 hover:text-white'
@@ -2192,7 +2196,7 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
             {!isStaff && (
               <button
                 onClick={() => { setActiveTab('monthly_analytics'); fetchMonthlyAnalytics(); }}
-                className={`p-2.5 rounded-xl transition-all flex items-center justify-center gap-2 border ${
+                className={`px-3 py-2 sm:p-2.5 rounded-xl transition-all flex items-center justify-center gap-1.5 sm:gap-2 border shrink-0 whitespace-nowrap min-w-max sm:min-w-0 ${
                   activeTab === 'monthly_analytics'
                     ? 'bg-amber-500 text-slate-950 font-bold border-amber-400 shadow-md shadow-amber-500/20'
                     : 'bg-slate-950/60 text-slate-300 border-slate-800/80 hover:bg-slate-800 hover:text-white'
@@ -2206,7 +2210,7 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
             {!isStaff && (
               <button
                 onClick={() => setActiveTab('daily_revenue')}
-                className={`p-2.5 rounded-xl transition-all flex items-center justify-center gap-2 border shrink-0 min-w-[150px] sm:min-w-0 ${
+                className={`px-3 py-2 sm:p-2.5 rounded-xl transition-all flex items-center justify-center gap-1.5 sm:gap-2 border shrink-0 whitespace-nowrap min-w-max sm:min-w-0 ${
                   activeTab === 'daily_revenue'
                     ? 'bg-amber-500 text-slate-950 font-bold border-amber-400 shadow-md shadow-amber-500/20'
                     : 'bg-slate-950/60 text-slate-300 border-slate-800/80 hover:bg-slate-800 hover:text-white'
@@ -2220,7 +2224,7 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
 
             <button
               onClick={() => { setActiveTab('completed_books'); fetchAllBooks(); }}
-              className={`p-2.5 rounded-xl transition-all flex items-center justify-center gap-2 border ${
+              className={`px-3 py-2 sm:p-2.5 rounded-xl transition-all flex items-center justify-center gap-1.5 sm:gap-2 border shrink-0 whitespace-nowrap min-w-max sm:min-w-0 ${
                 activeTab === 'completed_books'
                   ? 'bg-amber-500 text-slate-950 font-bold border-amber-400 shadow-md shadow-amber-500/20'
                   : 'bg-slate-950/60 text-slate-300 border-slate-800/80 hover:bg-slate-800 hover:text-white'
@@ -2235,7 +2239,7 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
 
             <button
               onClick={() => { setActiveTab('all_books'); fetchAllBooks(); }}
-              className={`p-2.5 rounded-xl transition-all flex items-center justify-center gap-2 border ${
+              className={`px-3 py-2 sm:p-2.5 rounded-xl transition-all flex items-center justify-center gap-1.5 sm:gap-2 border shrink-0 whitespace-nowrap min-w-max sm:min-w-0 ${
                 activeTab === 'all_books'
                   ? 'bg-amber-500 text-slate-950 font-bold border-amber-400 shadow-md shadow-amber-500/20'
                   : 'bg-slate-950/60 text-slate-300 border-slate-800/80 hover:bg-slate-800 hover:text-white'
@@ -2247,7 +2251,7 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
 
             <button
               onClick={() => setActiveTab('users')}
-              className={`p-2.5 rounded-xl transition-all flex items-center justify-center gap-2 border ${
+              className={`px-3 py-2 sm:p-2.5 rounded-xl transition-all flex items-center justify-center gap-1.5 sm:gap-2 border shrink-0 whitespace-nowrap min-w-max sm:min-w-0 ${
                 activeTab === 'users'
                   ? 'bg-amber-500 text-slate-950 font-bold border-amber-400 shadow-md shadow-amber-500/20'
                   : 'bg-slate-950/60 text-slate-300 border-slate-800/80 hover:bg-slate-800 hover:text-white'
@@ -2259,7 +2263,7 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
 
             <button
               onClick={() => { setActiveTab('coupons'); fetchCoupons(); }}
-              className={`p-2.5 rounded-xl transition-all flex items-center justify-center gap-2 border shrink-0 min-w-[130px] sm:min-w-0 ${
+              className={`px-3 py-2 sm:p-2.5 rounded-xl transition-all flex items-center justify-center gap-1.5 sm:gap-2 border shrink-0 whitespace-nowrap min-w-max sm:min-w-0 ${
                 activeTab === 'coupons'
                   ? 'bg-amber-500 text-slate-950 font-bold border-amber-400 shadow-md shadow-amber-500/20'
                   : 'bg-slate-950/60 text-slate-300 border-slate-800/80 hover:bg-slate-800 hover:text-white'
@@ -2272,7 +2276,7 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
             {!isStaff && (
               <button
                 onClick={() => setActiveTab('api_pool')}
-                className={`p-2.5 rounded-xl transition-all flex items-center justify-center gap-2 border ${
+                className={`px-3 py-2 sm:p-2.5 rounded-xl transition-all flex items-center justify-center gap-1.5 sm:gap-2 border shrink-0 whitespace-nowrap min-w-max sm:min-w-0 ${
                   activeTab === 'api_pool'
                     ? 'bg-amber-500 text-slate-950 font-bold border-amber-400 shadow-md shadow-amber-500/20'
                     : 'bg-slate-950/60 text-slate-300 border-slate-800/80 hover:bg-slate-800 hover:text-white'
@@ -2286,7 +2290,7 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
             {!isStaff && (
               <button
                 onClick={() => setActiveTab('finance')}
-                className={`p-2.5 rounded-xl transition-all flex items-center justify-center gap-2 border ${
+                className={`px-3 py-2 sm:p-2.5 rounded-xl transition-all flex items-center justify-center gap-1.5 sm:gap-2 border shrink-0 whitespace-nowrap min-w-max sm:min-w-0 ${
                   activeTab === 'finance'
                     ? 'bg-amber-500 text-slate-950 font-bold border-amber-400 shadow-md shadow-amber-500/20'
                     : 'bg-slate-950/60 text-slate-300 border-slate-800/80 hover:bg-slate-800 hover:text-white'
@@ -2299,7 +2303,7 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
 
             <button
               onClick={() => { setActiveTab('page_builder'); fetchCustomPages(); }}
-              className={`p-2.5 rounded-xl transition-all flex items-center justify-center gap-2 border ${
+              className={`px-3 py-2 sm:p-2.5 rounded-xl transition-all flex items-center justify-center gap-1.5 sm:gap-2 border shrink-0 whitespace-nowrap min-w-max sm:min-w-0 ${
                 activeTab === 'page_builder'
                   ? 'bg-amber-500 text-slate-950 font-bold border-amber-400 shadow-md shadow-amber-500/20'
                   : 'bg-slate-950/60 text-slate-300 border-slate-800/80 hover:bg-slate-800 hover:text-white'
@@ -2312,7 +2316,7 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
 
             <button
               onClick={() => { setActiveTab('header_footer'); fetchHeaderFooter(); }}
-              className={`p-2.5 rounded-xl transition-all flex items-center justify-center gap-2 border ${
+              className={`px-3 py-2 sm:p-2.5 rounded-xl transition-all flex items-center justify-center gap-1.5 sm:gap-2 border shrink-0 whitespace-nowrap min-w-max sm:min-w-0 ${
                 activeTab === 'header_footer'
                   ? 'bg-amber-500 text-slate-950 font-bold border-amber-400 shadow-md shadow-amber-500/20'
                   : 'bg-slate-950/60 text-slate-300 border-slate-800/80 hover:bg-slate-800 hover:text-white'
@@ -2324,7 +2328,7 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
 
             <button
               onClick={() => setActiveTab('cms')}
-              className={`p-2.5 rounded-xl transition-all flex items-center justify-center gap-2 border ${
+              className={`px-3 py-2 sm:p-2.5 rounded-xl transition-all flex items-center justify-center gap-1.5 sm:gap-2 border shrink-0 whitespace-nowrap min-w-max sm:min-w-0 ${
                 activeTab === 'cms'
                   ? 'bg-amber-500 text-slate-950 font-bold border-amber-400 shadow-md shadow-amber-500/20'
                   : 'bg-slate-950/60 text-slate-300 border-slate-800/80 hover:bg-slate-800 hover:text-white'
@@ -2336,7 +2340,7 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
 
             <button
               onClick={() => { setActiveTab('seo'); fetchSettings(); }}
-              className={`p-2.5 rounded-xl transition-all flex items-center justify-center gap-2 border ${
+              className={`px-3 py-2 sm:p-2.5 rounded-xl transition-all flex items-center justify-center gap-1.5 sm:gap-2 border shrink-0 whitespace-nowrap min-w-max sm:min-w-0 ${
                 activeTab === 'seo'
                   ? 'bg-amber-500 text-slate-950 font-bold border-amber-400 shadow-md shadow-amber-500/20'
                   : 'bg-slate-950/60 text-slate-300 border-slate-800/80 hover:bg-slate-800 hover:text-white'
@@ -2348,7 +2352,7 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
 
             <button
               onClick={() => { setActiveTab('blog_manager'); fetchBlogPosts(); fetchBlogCategories(); }}
-              className={`p-2.5 rounded-xl transition-all flex items-center justify-center gap-2 border ${
+              className={`px-3 py-2 sm:p-2.5 rounded-xl transition-all flex items-center justify-center gap-1.5 sm:gap-2 border shrink-0 whitespace-nowrap min-w-max sm:min-w-0 ${
                 activeTab === 'blog_manager'
                   ? 'bg-amber-500 text-slate-950 font-bold border-amber-400 shadow-md shadow-amber-500/20'
                   : 'bg-slate-950/60 text-slate-300 border-slate-800/80 hover:bg-slate-800 hover:text-white'
@@ -2362,7 +2366,7 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
             {!isStaff && (
               <button
                 onClick={() => { setActiveTab('scripts_analytics'); fetchScriptsConfig(); }}
-                className={`p-2.5 rounded-xl transition-all flex items-center justify-center gap-2 border ${
+                className={`px-3 py-2 sm:p-2.5 rounded-xl transition-all flex items-center justify-center gap-1.5 sm:gap-2 border shrink-0 whitespace-nowrap min-w-max sm:min-w-0 ${
                   activeTab === 'scripts_analytics'
                     ? 'bg-amber-500 text-slate-950 font-bold border-amber-400 shadow-md shadow-amber-500/20'
                     : 'bg-slate-950/60 text-slate-300 border-slate-800/80 hover:bg-slate-800 hover:text-white'
@@ -2376,7 +2380,7 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
             {!isStaff && (
               <button
                 onClick={() => setActiveTab('security')}
-                className={`p-2.5 rounded-xl transition-all flex items-center justify-center gap-2 border ${
+                className={`px-3 py-2 sm:p-2.5 rounded-xl transition-all flex items-center justify-center gap-1.5 sm:gap-2 border shrink-0 whitespace-nowrap min-w-max sm:min-w-0 ${
                   activeTab === 'security'
                     ? 'bg-amber-500 text-slate-950 font-bold border-amber-400 shadow-md shadow-amber-500/20'
                     : 'bg-slate-950/60 text-slate-300 border-slate-800/80 hover:bg-slate-800 hover:text-white'
@@ -2389,7 +2393,7 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
 
             <button
               onClick={() => setActiveTab('guides')}
-              className={`p-2.5 rounded-xl transition-all flex items-center justify-center gap-2 border ${
+              className={`px-3 py-2 sm:p-2.5 rounded-xl transition-all flex items-center justify-center gap-1.5 sm:gap-2 border shrink-0 whitespace-nowrap min-w-max sm:min-w-0 ${
                 activeTab === 'guides'
                   ? 'bg-amber-500 text-slate-950 font-bold border-amber-400 shadow-md shadow-amber-500/20'
                   : 'bg-slate-950/60 text-slate-300 border-slate-800/80 hover:bg-slate-800 hover:text-white'
