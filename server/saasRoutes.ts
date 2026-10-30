@@ -102,10 +102,16 @@ async function verifyCaptcha(
     return { success: true };
   }
 
-  // 1. Google reCAPTCHA
+  // 1. Google reCAPTCHA (v2 or v3)
   if (captchaConfig.provider === 'recaptcha') {
+    const version = captchaConfig.recaptchaVersion || 'v2';
     if (!captchaToken || typeof captchaToken !== 'string') {
-      return { success: false, error: 'لطفاً اعتبارسنجی «من ربات نیستم» (Google reCAPTCHA) را علامت بزنید.' };
+      return {
+        success: false,
+        error: version === 'v3'
+          ? 'اعتبارسنجی خودکار ضدربات گوگل (reCAPTCHA v3) انجام نشد.'
+          : 'لطفاً اعتبارسنجی «من ربات نیستم» (Google reCAPTCHA) را علامت بزنید.',
+      };
     }
     if (!captchaConfig.secretKey) {
       console.warn('[Captcha] reCAPTCHA secretKey is not configured in admin panel, allowing pass-through.');
@@ -123,7 +129,18 @@ async function verifyCaptcha(
       });
       const verifyData = await verifyRes.json();
       if (!verifyData.success) {
-        return { success: false, error: 'اعتبارسنجی کپچای گوگل تایید نشد. لطفاً مجدداً تیک من ربات نیستم را بزنید.' };
+        return {
+          success: false,
+          error: version === 'v3'
+            ? 'اعتبارسنجی امنیتی هوشمند گوگل تایید نشد. لطفاً صفحه را بارگذاری مجدد فرمایید.'
+            : 'اعتبارسنجی کپچای گوگل تایید نشد. لطفاً مجدداً تیک من ربات نیستم را بزنید.',
+        };
+      }
+      if (version === 'v3' && typeof verifyData.score === 'number' && verifyData.score < 0.3) {
+        return {
+          success: false,
+          error: 'درخواست شما توسط فیلتر هوشمند ضدربات گوگل مشکوک تشخیص داده شد.',
+        };
       }
       return { success: true };
     } catch (e: any) {
@@ -288,6 +305,7 @@ ${urls.map((u) => `  <url>
     return res.json({
       enabled: Boolean(captcha.enabled),
       provider: captcha.provider || 'math',
+      recaptchaVersion: captcha.recaptchaVersion || 'v2',
       siteKey: captcha.siteKey || '',
       requiredForLogin: Boolean(captcha.requiredForLogin),
       requiredForRegister: Boolean(captcha.requiredForRegister),
@@ -358,6 +376,7 @@ ${urls.map((u) => `  <url>
       captcha: {
         enabled: Boolean(settings.security?.captcha?.enabled),
         provider: settings.security?.captcha?.provider || 'math',
+        recaptchaVersion: settings.security?.captcha?.recaptchaVersion || 'v2',
         siteKey: settings.security?.captcha?.siteKey || '',
         requiredForLogin: Boolean(settings.security?.captcha?.requiredForLogin),
         requiredForRegister: Boolean(settings.security?.captcha?.requiredForRegister),
@@ -2729,6 +2748,180 @@ ${urls.map((u) => `  <url>
       message: smsResult.message,
       gatewayRaw: smsResult.gatewayRaw,
     });
+  });
+
+  // Admin Test Captcha Connection & Verification (Google reCAPTCHA v2/v3, Turnstile, Math)
+  app.post('/api/admin/captcha/test', requireAdmin, async (req, res) => {
+    try {
+      const currentSettings = db.getSettings();
+      const currentCaptcha = currentSettings.security?.captcha || {
+        provider: 'math',
+        recaptchaVersion: 'v2',
+        siteKey: '',
+        secretKey: '',
+      };
+
+      const provider = req.body.provider || currentCaptcha.provider || 'recaptcha';
+      const recaptchaVersion = req.body.recaptchaVersion || currentCaptcha.recaptchaVersion || 'v2';
+      const siteKey = (req.body.siteKey !== undefined ? req.body.siteKey : currentCaptcha.siteKey || '').trim();
+      const secretKey = (req.body.secretKey !== undefined ? req.body.secretKey : currentCaptcha.secretKey || '').trim();
+      const testToken = (req.body.testToken || '').trim();
+
+      if (provider === 'math') {
+        return res.json({
+          success: true,
+          provider: 'math',
+          message: 'کپچای ریاضی محلی سیستم فعال، سریع و کاملاً پایدار است (نیاز به اینترنت یا کلید خارجی ندارد).',
+          latencyMs: 0,
+        });
+      }
+
+      if (provider === 'recaptcha') {
+        if (!secretKey) {
+          return res.status(400).json({
+            success: false,
+            provider: 'recaptcha',
+            recaptchaVersion,
+            error: 'کلید محرمانه (Secret Key) گوگل وارد نشده است. لطفاً ابتدا کلید را وارد نمایید.',
+          });
+        }
+
+        const startTime = Date.now();
+        // If a real token was generated via frontend test, verify it. Otherwise, probe the Secret Key.
+        const tokenToVerify = testToken || 'PROBE_TEST_PING_KEY';
+        const verifyRes = await fetch('https://www.google.com/recaptcha/api/siteverify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: new URLSearchParams({
+            secret: secretKey,
+            response: tokenToVerify,
+          }).toString(),
+        });
+
+        const latencyMs = Date.now() - startTime;
+        const verifyData = await verifyRes.json();
+        const errorCodes: string[] = Array.isArray(verifyData['error-codes']) ? verifyData['error-codes'] : [];
+
+        // Analysis of Google's response:
+        // 'invalid-input-secret': The Secret Key is definitely rejected by Google.
+        if (errorCodes.includes('invalid-input-secret')) {
+          return res.json({
+            success: false,
+            provider: 'recaptcha',
+            recaptchaVersion,
+            latencyMs,
+            error: 'کلید محرمانه (Secret Key) نامعتبر است: سرور Google کلید شما را رد کرد (invalid-input-secret). لطفاً کلید را از کنسول Google reCAPTCHA بررسی فرمایید.',
+            googleResponse: verifyData,
+          });
+        }
+
+        // If real testToken was provided:
+        if (testToken) {
+          if (verifyData.success) {
+            return res.json({
+              success: true,
+              provider: 'recaptcha',
+              recaptchaVersion,
+              latencyMs,
+              score: verifyData.score,
+              message: recaptchaVersion === 'v3'
+                ? `اعتبارسنجی زنده گوگل reCAPTCHA v3 با موفقیت تایید شد! امتیاز ارزیابی هوشمند گوگل: ${verifyData.score ?? 'نامشخص'} (زمان پاسخ: ${latencyMs} میلی‌ثانیه)`
+                : `اعتبارسنجی زنده چک‌باکس گوگل reCAPTCHA v2 با موفقیت تایید شد! (زمان پاسخ: ${latencyMs} میلی‌ثانیه)`,
+              googleResponse: verifyData,
+            });
+          } else {
+            return res.json({
+              success: false,
+              provider: 'recaptcha',
+              recaptchaVersion,
+              latencyMs,
+              error: `اعتبارسنجی توکن توسط گوگل تایید نشد: ${errorCodes.join(', ') || 'توکن منقضی یا نامعتبر'}`,
+              googleResponse: verifyData,
+            });
+          }
+        }
+
+        // If probe test (no testToken provided):
+        // 'invalid-input-response' or 'missing-input-response' means the Secret Key is 100% VALID and AUTHENTICATED by Google!
+        if (errorCodes.includes('invalid-input-response') || errorCodes.includes('missing-input-response')) {
+          return res.json({
+            success: true,
+            provider: 'recaptcha',
+            recaptchaVersion,
+            latencyMs,
+            message: `اتصال به سرورهای رسمی Google reCAPTCHA با موفقیت تایید شد! کلید محرمانه (Secret Key) معتبر است (زمان پاسخ: ${latencyMs} میلی‌ثانیه).`,
+            probeVerified: true,
+            googleResponse: verifyData,
+          });
+        }
+
+        if (verifyData.success) {
+          return res.json({
+            success: true,
+            provider: 'recaptcha',
+            recaptchaVersion,
+            latencyMs,
+            message: `اتصال و کلید گوگل ری‌کپچا با موفقیت تایید شد (زمان پاسخ: ${latencyMs} میلی‌ثانیه).`,
+            googleResponse: verifyData,
+          });
+        }
+
+        return res.json({
+          success: false,
+          provider: 'recaptcha',
+          recaptchaVersion,
+          latencyMs,
+          error: `خطای ارزیابی سرور گوگل: ${errorCodes.join(', ')}`,
+          googleResponse: verifyData,
+        });
+      }
+
+      if (provider === 'turnstile') {
+        if (!secretKey) {
+          return res.status(400).json({
+            success: false,
+            provider: 'turnstile',
+            error: 'کلید محرمانه (Secret Key) کلادفلر ترنستایل وارد نشده است.',
+          });
+        }
+        const startTime = Date.now();
+        const probeRes = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: new URLSearchParams({
+            secret: secretKey,
+            response: testToken || 'PROBE_TEST',
+          }).toString(),
+        });
+        const latencyMs = Date.now() - startTime;
+        const probeData = await probeRes.json();
+        const errorCodes: string[] = Array.isArray(probeData['error-codes']) ? probeData['error-codes'] : [];
+
+        if (errorCodes.includes('invalid-input-secret')) {
+          return res.json({
+            success: false,
+            provider: 'turnstile',
+            latencyMs,
+            error: 'کلید محرمانه Cloudflare Turnstile نامعتبر است (invalid-input-secret).',
+          });
+        }
+
+        return res.json({
+          success: true,
+          provider: 'turnstile',
+          latencyMs,
+          message: `اتصال به کلادفلر ترنستایل برقرار شد و کلید محرمانه معتبر است (زمان پاسخ: ${latencyMs} میلی‌ثانیه).`,
+        });
+      }
+
+      return res.status(400).json({ error: 'نوع ارائه‌دهنده کپچا نامعتبر است.' });
+    } catch (err: any) {
+      console.error('[Admin Captcha Test Error]:', err);
+      return res.status(500).json({
+        success: false,
+        error: `خطا در برقراری ارتباط با سرویس کپچا: ${err?.message || 'خطای شبکه'}`,
+      });
+    }
   });
 
   // Admin Test Zarinpal Web-Service Connection

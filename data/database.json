@@ -541,12 +541,13 @@
       "ipBlacklist": [],
       "rateLimitRpm": 120,
       "captcha": {
-        "enabled": true,
+        "enabled": false,
         "provider": "recaptcha",
         "siteKey": "6LdiFgcuAAAAAJhcWDyjWFil4dDqdSEI-DMsWxq5",
         "secretKey": "6LdiFgcuAAAAAEmuykCaV94oGQNPaA3w-1JhHH5h",
         "requiredForLogin": true,
-        "requiredForRegister": true
+        "requiredForRegister": true,
+        "recaptchaVersion": "v2"
       },
       "googleOAuth": {
         "enabled": true,

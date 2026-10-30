@@ -201,6 +201,7 @@ export interface SystemSettings {
     captcha: {
       enabled: boolean;
       provider: 'math' | 'recaptcha' | 'turnstile';
+      recaptchaVersion?: 'v2' | 'v3';
       siteKey: string;
       secretKey: string;
       requiredForLogin: boolean;
@@ -629,8 +630,9 @@ const DEFAULT_SETTINGS: SystemSettings = {
     ipBlacklist: [],
     rateLimitRpm: 120,
     captcha: {
-      enabled: true,
+      enabled: false,
       provider: 'recaptcha',
+      recaptchaVersion: 'v2',
       siteKey: '6LdiFgcuAAAAAJhcWDyjWFil4dDqdSEI-DMsWxq5',
       secretKey: '6LdiFgcuAAAAAEmuykCaV94oGQNPaA3w-1JhHH5h',
       requiredForLogin: true,

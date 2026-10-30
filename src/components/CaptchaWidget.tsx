@@ -4,6 +4,7 @@ import { RefreshCw, ShieldAlert, ShieldCheck } from 'lucide-react';
 export interface CaptchaConfig {
   enabled: boolean;
   provider: 'math' | 'recaptcha' | 'turnstile';
+  recaptchaVersion?: 'v2' | 'v3';
   siteKey: string;
   requiredForLogin: boolean;
   requiredForRegister: boolean;
@@ -19,6 +20,8 @@ interface CaptchaWidgetProps {
 declare global {
   interface Window {
     grecaptcha?: {
+      ready?: (callback: () => void) => void;
+      execute?: (siteKey: string, options?: { action?: string }) => Promise<string>;
       render?: (
         container: HTMLElement | string,
         parameters: {
@@ -98,6 +101,31 @@ export function CaptchaWidget({ action, onTokenChange, onMathAnswerChange, class
     };
   }, []);
 
+  const [v3Ready, setV3Ready] = useState(false);
+  const [v3Executing, setV3Executing] = useState(false);
+
+  // Helper to execute reCAPTCHA v3
+  const executeV3 = (siteKeyToUse?: string) => {
+    const key = siteKeyToUse || config?.siteKey?.trim();
+    if (!key) return;
+    if (typeof window.grecaptcha?.ready === 'function' && typeof window.grecaptcha?.execute === 'function') {
+      setV3Executing(true);
+      window.grecaptcha.ready(() => {
+        window.grecaptcha!
+          .execute!(key, { action })
+          .then((token: string) => {
+            setV3Ready(true);
+            setV3Executing(false);
+            onTokenChange(token);
+          })
+          .catch((err) => {
+            console.warn('[reCAPTCHA v3] Execution error:', err);
+            setV3Executing(false);
+          });
+      });
+    }
+  };
+
   // When config is loaded, if it's recaptcha or turnstile, initialize widget
   useEffect(() => {
     if (!config || !config.enabled) return;
@@ -105,46 +133,30 @@ export function CaptchaWidget({ action, onTokenChange, onMathAnswerChange, class
     if (!isRequired) return;
 
     if (config.provider === 'recaptcha' && config.siteKey) {
-      const renderRecaptcha = () => {
-        if (!containerRef.current || !window.grecaptcha || typeof window.grecaptcha.render !== 'function') return;
-        // Clear previous children
-        containerRef.current.innerHTML = '';
-        try {
-          widgetIdRef.current = window.grecaptcha.render(containerRef.current, {
-            sitekey: config.siteKey.trim(),
-            theme: 'dark',
-            hl: 'fa',
-            callback: (token: string) => {
-              onTokenChange(token);
-            },
-            'expired-callback': () => {
-              onTokenChange('');
-            },
-            'error-callback': () => {
-              console.warn('[reCAPTCHA] Encountered error rendering');
-            },
-          });
-        } catch (err) {
-          console.warn('[reCAPTCHA] render error (might be already rendered):', err);
-        }
-      };
+      const isV3 = config.recaptchaVersion === 'v3';
 
-      if (typeof window.grecaptcha?.render === 'function') {
-        renderRecaptcha();
-      } else {
-        const scriptId = 'google-recaptcha-script';
-        if (!document.getElementById(scriptId)) {
+      if (isV3) {
+        // reCAPTCHA v3 initialization
+        const scriptId = 'google-recaptcha-v3-script';
+        const cleanKey = config.siteKey.trim();
+
+        const triggerV3 = () => {
+          executeV3(cleanKey);
+        };
+
+        if (typeof window.grecaptcha?.ready === 'function') {
+          triggerV3();
+        } else if (!document.getElementById(scriptId)) {
           const script = document.createElement('script');
           script.id = scriptId;
-          script.src = 'https://www.google.com/recaptcha/api.js?render=explicit&hl=fa';
+          script.src = `https://www.google.com/recaptcha/api.js?render=${encodeURIComponent(cleanKey)}&hl=fa`;
           script.async = true;
           script.defer = true;
           script.onload = () => {
-            // Check interval until grecaptcha is ready
             const timer = setInterval(() => {
-              if (typeof window.grecaptcha?.render === 'function') {
+              if (typeof window.grecaptcha?.ready === 'function') {
                 clearInterval(timer);
-                renderRecaptcha();
+                triggerV3();
               }
             }, 100);
             setTimeout(() => clearInterval(timer), 5000);
@@ -152,12 +164,68 @@ export function CaptchaWidget({ action, onTokenChange, onMathAnswerChange, class
           document.head.appendChild(script);
         } else {
           const timer = setInterval(() => {
-            if (typeof window.grecaptcha?.render === 'function') {
+            if (typeof window.grecaptcha?.ready === 'function') {
               clearInterval(timer);
-              renderRecaptcha();
+              triggerV3();
             }
           }, 150);
           setTimeout(() => clearInterval(timer), 5000);
+        }
+      } else {
+        // reCAPTCHA v2 Checkbox initialization
+        const renderRecaptcha = () => {
+          if (!containerRef.current || !window.grecaptcha || typeof window.grecaptcha.render !== 'function') return;
+          // Clear previous children
+          containerRef.current.innerHTML = '';
+          try {
+            widgetIdRef.current = window.grecaptcha.render(containerRef.current, {
+              sitekey: config.siteKey.trim(),
+              theme: 'dark',
+              hl: 'fa',
+              callback: (token: string) => {
+                onTokenChange(token);
+              },
+              'expired-callback': () => {
+                onTokenChange('');
+              },
+              'error-callback': () => {
+                console.warn('[reCAPTCHA] Encountered error rendering');
+              },
+            });
+          } catch (err) {
+            console.warn('[reCAPTCHA] render error (might be already rendered):', err);
+          }
+        };
+
+        if (typeof window.grecaptcha?.render === 'function') {
+          renderRecaptcha();
+        } else {
+          const scriptId = 'google-recaptcha-script';
+          if (!document.getElementById(scriptId)) {
+            const script = document.createElement('script');
+            script.id = scriptId;
+            script.src = 'https://www.google.com/recaptcha/api.js?render=explicit&hl=fa';
+            script.async = true;
+            script.defer = true;
+            script.onload = () => {
+              const timer = setInterval(() => {
+                if (typeof window.grecaptcha?.render === 'function') {
+                  clearInterval(timer);
+                  renderRecaptcha();
+                }
+              }, 100);
+              setTimeout(() => clearInterval(timer), 5000);
+            };
+            document.head.appendChild(script);
+          } else {
+            const timer = setInterval(() => {
+              if (typeof window.grecaptcha?.render === 'function') {
+                clearInterval(timer);
+                renderRecaptcha();
+              }
+            }, 150);
+            setTimeout(() => clearInterval(timer), 5000);
+          }
         }
       }
     } else if (config.provider === 'turnstile' && config.siteKey) {
@@ -260,12 +328,43 @@ export function CaptchaWidget({ action, onTokenChange, onMathAnswerChange, class
       );
     }
 
+    // reCAPTCHA v3 Display
+    if (config.recaptchaVersion === 'v3') {
+      return (
+        <div className={`flex items-center justify-between p-3 rounded-2xl bg-emerald-950/40 border border-emerald-500/30 text-xs ${className}`}>
+          <div className="flex items-center gap-2.5">
+            <div className="w-7 h-7 rounded-lg bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center text-emerald-400 shrink-0">
+              <ShieldCheck className="w-4 h-4" />
+            </div>
+            <div>
+              <span className="font-bold text-white block text-xs">
+                حفاظت هوشمند ضدربات گوگل (Google reCAPTCHA v3)
+              </span>
+              <span className="text-[10px] text-emerald-300/80">
+                {v3Executing ? 'در حال بررسی امنیتی...' : v3Ready ? 'اعتبارسنجی خودکار بدون نیاز به کلیک تایید شد' : 'اتصال امن برقرار شد'}
+              </span>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => executeV3()}
+            disabled={v3Executing}
+            className="p-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-emerald-300 border border-slate-800 transition"
+            title="به‌روزرسانی اعتبارسنجی گوگل"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${v3Executing ? 'animate-spin text-emerald-400' : ''}`} />
+          </button>
+        </div>
+      );
+    }
+
+    // reCAPTCHA v2 Checkbox Display
     return (
       <div className={`flex flex-col items-center justify-center p-2 rounded-2xl bg-slate-950/80 border border-slate-800 ${className}`}>
         <div ref={containerRef} className="my-1 overflow-hidden rounded-xl" />
         <div className="flex items-center gap-1.5 text-[10px] text-slate-400 mt-1">
           <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
-          <span>حفاظت امنیتی رسمی گوگل (Google reCAPTCHA v2)</span>
+          <span>حفاظت امنیتی رسمی گوگل (Google reCAPTCHA v2 - چک‌باکس من ربات نیستم)</span>
         </div>
       </div>
     );

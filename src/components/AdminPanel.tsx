@@ -74,6 +74,7 @@ import { DEFAULT_LANDING_SECTIONS } from '../constants/landingDefaults.ts';
 import { DailyRevenueView } from './DailyRevenueView.tsx';
 import { AdminBookEditorModal } from './AdminBookEditorModal.tsx';
 import { downloadDocx } from '../utils/exporter.ts';
+import { CaptchaWidget } from './CaptchaWidget.tsx';
 
 interface AdminPanelProps {
   currentUser: User;
@@ -418,6 +419,18 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout, onCostPer
   // Test SMS phone
   const [testSmsPhone, setTestSmsPhone] = useState('09121234567');
   const [smsResult, setSmsResult] = useState<string | null>(null);
+
+  // Test Captcha State
+  const [testingCaptcha, setTestingCaptcha] = useState(false);
+  const [captchaTestResult, setCaptchaTestResult] = useState<{
+    success: boolean;
+    message?: string;
+    error?: string;
+    latencyMs?: number;
+    score?: number;
+    provider?: string;
+    recaptchaVersion?: string;
+  } | null>(null);
 
   // Coupons
   const [coupons, setCoupons] = useState<any[]>([]);
@@ -1407,6 +1420,40 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout, onCostPer
       alert(`خطا: ${e.message}`);
     } finally {
       setTestingKeyId(null);
+    }
+  };
+
+  // Test Captcha Connection & Validity
+  const handleTestCaptcha = async (optionalToken?: string) => {
+    if (!settings?.security?.captcha) return;
+    setTestingCaptcha(true);
+    setCaptchaTestResult(null);
+    try {
+      const captchaState = settings.security.captcha;
+      const currentToken = localStorage.getItem('auth_token') || token;
+      const res = await fetch('/api/admin/captcha/test', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${currentToken}`,
+        },
+        body: JSON.stringify({
+          provider: captchaState.provider || 'math',
+          recaptchaVersion: captchaState.recaptchaVersion || 'v2',
+          siteKey: captchaState.siteKey || '',
+          secretKey: captchaState.secretKey || '',
+          testToken: typeof optionalToken === 'string' ? optionalToken : undefined,
+        }),
+      });
+      const data = await res.json();
+      setCaptchaTestResult(data);
+    } catch (err: any) {
+      setCaptchaTestResult({
+        success: false,
+        error: `خطا در برقراری ارتباط با سرور تست: ${err?.message || 'خطای ناشناخته'}`,
+      });
+    } finally {
+      setTestingCaptcha(false);
     }
   };
 
@@ -9216,7 +9263,7 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout, onCostPer
                   <ShieldCheck className="w-5 h-5 text-amber-400" />
                   <h3 className="font-bold text-base text-white">تنظیمات کپچا و ضد ربات (Bot Protection & Captcha)</h3>
                 </div>
-                <label className="flex items-center gap-2 cursor-pointer">
+                <label className="flex items-center gap-2 cursor-pointer bg-slate-950 px-3 py-1.5 rounded-xl border border-slate-800">
                   <input
                     type="checkbox"
                     checked={settings.security.captcha?.enabled || false}
@@ -9228,6 +9275,7 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout, onCostPer
                           captcha: {
                             ...(settings.security.captcha || {
                               provider: 'math',
+                              recaptchaVersion: 'v2',
                               siteKey: '',
                               secretKey: '',
                               requiredForLogin: false,
@@ -9244,6 +9292,21 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout, onCostPer
                 </label>
               </div>
 
+              {/* Default Disabled Status Banner */}
+              {!settings.security.captcha?.enabled ? (
+                <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/25 flex items-center gap-2.5 text-xs text-amber-200">
+                  <Info className="w-4 h-4 text-amber-400 shrink-0" />
+                  <span>
+                    سیستم کپچا در سراسر سامانه <strong>غیرفعال</strong> است (حالت پیش‌فرض). کاربران بدون هیچ مانع یا نیازی به حل کپچا وارد یا ثبت‌نام می‌شوند. برای فعال‌سازی در سایت، تیک بالا را فعال و ذخیره نمایید.
+                  </span>
+                </div>
+              ) : (
+                <div className="p-3 rounded-2xl bg-emerald-500/10 border border-emerald-500/25 flex items-center gap-2 text-xs text-emerald-200">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                  <span>سیستم کپچا هم‌اکنون در سایت فعال است و فرم‌های تعیین‌شده اعتبارسنجی می‌شوند.</span>
+                </div>
+              )}
+
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
                   <label className="block text-xs font-semibold text-slate-300 mb-1.5">نوع ارائه‌دهنده کپچا:</label>
@@ -9257,6 +9320,7 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout, onCostPer
                           captcha: {
                             ...(settings.security.captcha || {
                               enabled: false,
+                              recaptchaVersion: 'v2',
                               siteKey: '',
                               secretKey: '',
                               requiredForLogin: false,
@@ -9291,6 +9355,7 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout, onCostPer
                             ...(settings.security.captcha || {
                               enabled: false,
                               provider: 'math',
+                              recaptchaVersion: 'v2',
                               secretKey: '',
                               requiredForLogin: false,
                               requiredForRegister: true,
@@ -9320,6 +9385,7 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout, onCostPer
                             ...(settings.security.captcha || {
                               enabled: false,
                               provider: 'math',
+                              recaptchaVersion: 'v2',
                               siteKey: '',
                               requiredForLogin: false,
                               requiredForRegister: true,
@@ -9332,6 +9398,185 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout, onCostPer
                     className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-white font-mono text-xs focus:border-amber-500 focus:outline-none"
                   />
                 </div>
+              </div>
+
+              {/* Version Selector for Google reCAPTCHA (v2 vs v3) */}
+              {(settings.security.captcha?.provider === 'recaptcha' || !settings.security.captcha?.provider) && (
+                <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-semibold text-slate-200">
+                      انتخاب نسخه گوگل ری‌کپچا (reCAPTCHA Version):
+                    </label>
+                    <span className="text-[11px] text-amber-400 font-mono font-bold">
+                      {settings.security.captcha?.recaptchaVersion === 'v3' ? 'نسخه ۳ نامرئی (v3)' : 'نسخه ۲ تیک من ربات نیستم (v2)'}
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setSettings({
+                          ...settings,
+                          security: {
+                            ...settings.security,
+                            captcha: {
+                              ...(settings.security.captcha || {
+                                enabled: false,
+                                provider: 'recaptcha',
+                                siteKey: '',
+                                secretKey: '',
+                                requiredForLogin: false,
+                                requiredForRegister: true,
+                              }),
+                              recaptchaVersion: 'v2',
+                            },
+                          },
+                        })
+                      }
+                      className={`p-3.5 rounded-xl border text-right transition ${
+                        (settings.security.captcha?.recaptchaVersion || 'v2') === 'v2'
+                          ? 'bg-amber-500/15 border-amber-500/60 text-white shadow-sm'
+                          : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between mb-1.5">
+                        <span className="font-bold text-xs text-amber-300">نسخه ۲ - چک‌باکس من ربات نیستم (v2 Checkbox)</span>
+                        {(settings.security.captcha?.recaptchaVersion || 'v2') === 'v2' && (
+                          <CheckCircle2 className="w-4 h-4 text-amber-400" />
+                        )}
+                      </div>
+                      <p className="text-[11px] text-slate-300 leading-relaxed">
+                        کادر رسمی «من ربات نیستم» به کاربر نمایش داده می‌شود و با کلیک تیک سبز می‌خورد. (کلیدهای وارد شده باید در پنل گوگل از نوع reCAPTCHA v2 Checkbox باشند).
+                      </p>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setSettings({
+                          ...settings,
+                          security: {
+                            ...settings.security,
+                            captcha: {
+                              ...(settings.security.captcha || {
+                                enabled: false,
+                                provider: 'recaptcha',
+                                siteKey: '',
+                                secretKey: '',
+                                requiredForLogin: false,
+                                requiredForRegister: true,
+                              }),
+                              recaptchaVersion: 'v3',
+                            },
+                          },
+                        })
+                      }
+                      className={`p-3.5 rounded-xl border text-right transition ${
+                        settings.security.captcha?.recaptchaVersion === 'v3'
+                          ? 'bg-amber-500/15 border-amber-500/60 text-white shadow-sm'
+                          : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between mb-1.5">
+                        <span className="font-bold text-xs text-amber-300">نسخه ۳ - هوشمند و نامرئی (v3 Invisible)</span>
+                        {settings.security.captcha?.recaptchaVersion === 'v3' && (
+                          <CheckCircle2 className="w-4 h-4 text-amber-400" />
+                        )}
+                      </div>
+                      <p className="text-[11px] text-slate-300 leading-relaxed">
+                        هیچ کادر یا چک‌باکسی به کاربر نشان داده نمی‌شود؛ رفتار کاربر خودکار ارزیابی و امتیازدهی می‌شود. (کلیدها باید در پنل گوگل از نوع reCAPTCHA v3 باشند).
+                      </p>
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Captcha Connection Test Section */}
+              <div className="pt-2 border-t border-slate-800/80 space-y-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="text-xs text-slate-300">
+                    <span className="font-bold text-white block">تست اتصال و سلامت کلیدهای کپچا:</span>
+                    <span className="text-[11px] text-slate-400">
+                      اعتبارسنجی زنده برقراری ارتباط با سرور گوگل و صحت کلید محرمانه (Secret Key).
+                    </span>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => handleTestCaptcha()}
+                    disabled={testingCaptcha}
+                    className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-750 text-amber-400 border border-amber-500/30 hover:border-amber-500/60 font-semibold text-xs transition flex items-center justify-center gap-2 shrink-0 disabled:opacity-50 shadow-sm"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${testingCaptcha ? 'animate-spin' : ''}`} />
+                    <span>{testingCaptcha ? 'در حال تست ارتباط...' : 'تست اتصال کپچا'}</span>
+                  </button>
+                </div>
+
+                {captchaTestResult && (
+                  <div
+                    className={`p-3.5 rounded-2xl border text-xs animate-in fade-in ${
+                      captchaTestResult.success
+                        ? 'bg-emerald-950/40 border-emerald-500/40 text-emerald-300'
+                        : 'bg-rose-950/40 border-rose-500/40 text-rose-300'
+                    }`}
+                  >
+                    <div className="flex items-start gap-3">
+                      {captchaTestResult.success ? (
+                        <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" />
+                      ) : (
+                        <AlertCircle className="w-5 h-5 text-rose-400 shrink-0 mt-0.5" />
+                      )}
+                      <div className="flex-1 space-y-1">
+                        <div className="flex items-center justify-between font-bold text-xs">
+                          <span className={captchaTestResult.success ? 'text-emerald-300' : 'text-rose-300'}>
+                            {captchaTestResult.success ? 'نتیجه تست: ارتباط موفق و کلید معتبر است' : 'نتیجه تست: خطا در اعتبارسنجی'}
+                          </span>
+                          {typeof captchaTestResult.latencyMs === 'number' && (
+                            <span className="font-mono text-[10px] px-2 py-0.5 rounded-md bg-slate-900 border border-slate-800 text-slate-300">
+                              {captchaTestResult.latencyMs}ms
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-[11px] leading-relaxed text-slate-200">
+                          {captchaTestResult.message || captchaTestResult.error}
+                        </p>
+                        {captchaTestResult.score !== undefined && (
+                          <div className="text-[11px] text-emerald-400 font-mono pt-0.5">
+                            امتیاز امنیتی گوگل: {captchaTestResult.score} / 1.0
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Live Preview Box for Admin */}
+                {settings.security.captcha?.provider === 'recaptcha' && settings.security.captcha?.siteKey && (
+                  <div className="p-3 bg-slate-950/70 border border-slate-800 rounded-2xl space-y-2">
+                    <div className="flex items-center justify-between text-[11px] text-slate-300">
+                      <span className="font-semibold text-white">پیش‌نمایش زنده در پنل مدیریت:</span>
+                      <span className="text-[10px] text-amber-400 font-mono">
+                        {settings.security.captcha?.recaptchaVersion === 'v3' ? 'reCAPTCHA v3' : 'reCAPTCHA v2 Checkbox'}
+                      </span>
+                    </div>
+                    <p className="text-[10px] text-slate-400">
+                      {settings.security.captcha?.recaptchaVersion === 'v3'
+                        ? 'در نسخه ۳، اعتبارسنجی خودکار انجام می‌پذیرد. با کلیک بر دکمه تست، توکن واقعی به سرور ارسال و امتیاز ریسک سنجیده می‌شود.'
+                        : 'برای تست زنده، روی چک‌باکس من ربات نیستم کلیک فرمایید؛ با تیک سبز، توکن زنده در سرور گوگل ارزیابی خواهد شد.'}
+                    </p>
+                    <div className="flex justify-center p-3 bg-slate-900/60 rounded-xl border border-slate-800/80">
+                      <CaptchaWidget
+                        action="login"
+                        onTokenChange={(tok) => {
+                          if (tok && tok !== 'math_passed' && tok !== 'math_verified_ok') {
+                            handleTestCaptcha(tok);
+                          }
+                        }}
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div className="flex flex-wrap items-center gap-6 pt-2 border-t border-slate-800/80 text-xs text-slate-300">

@@ -139,6 +139,7 @@ export interface SystemSettings {
     captcha?: {
       enabled: boolean;
       provider: 'math' | 'recaptcha' | 'turnstile';
+      recaptchaVersion?: 'v2' | 'v3';
       siteKey: string;
       secretKey: string;
       requiredForLogin: boolean;
