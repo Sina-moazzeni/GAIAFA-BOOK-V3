@@ -301,35 +301,20 @@ export const Navbar: React.FC<NavbarProps> = ({
                   </div>
                 </button>
 
-                {/* Word DOCX */}
+                {/* Word DOCX (Standard Microsoft Word) */}
                 <button
                   onClick={handleDocxExport}
                   disabled={isExportingDocx}
-                  className="w-full text-right px-4 py-2 text-xs hover:bg-slate-700 text-slate-200 flex items-center justify-between transition"
+                  className="w-full text-right px-4 py-2.5 text-xs hover:bg-slate-700 text-slate-200 flex items-center justify-between transition"
                 >
                   <div className="flex items-center gap-2">
                     <FileText className="w-4 h-4 text-blue-400" />
                     <div>
-                      <div className="font-semibold text-white">فایل Word (.docx)</div>
-                      <div className="text-[10px] text-slate-400">صفحه‌بندی شده، فونت وزیرمتن و RTL</div>
+                      <div className="font-semibold text-white">فایل رسمی Word (.docx)</div>
+                      <div className="text-[10px] text-slate-400">قالب استاندارد چاپ، قلم وزیرمتن، راست‌چین و بدون کشیدگی</div>
                     </div>
                   </div>
-                  {isExportingDocx && <span className="text-[10px] text-blue-400">در حال ساخت...</span>}
-                </button>
-
-                {/* Word DOC (Legacy HTML) */}
-                <button
-                  onClick={() => {
-                    downloadWordHtml(currentProject);
-                    setShowExportMenu(false);
-                  }}
-                  className="w-full text-right px-4 py-2 text-xs hover:bg-slate-700 text-slate-200 flex items-center gap-2 transition"
-                >
-                  <FileText className="w-4 h-4 text-cyan-400" />
-                  <div>
-                    <div className="font-semibold text-white">سند مایکروسافت ورد (.doc)</div>
-                    <div className="text-[10px] text-slate-400">سازگار با تمام نسخه‌های Word</div>
-                  </div>
+                  {isExportingDocx && <span className="text-[10px] text-blue-400 font-mono">در حال آماده‌سازی...</span>}
                 </button>
 
                 {/* PDF Print */}

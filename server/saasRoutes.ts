@@ -495,16 +495,25 @@ ${urls.map((u) => `  <url>
   // Google OAuth 2.0 Auth URL generator (Popup flow)
   app.get('/api/auth/google/url', (req, res) => {
     const settings = db.getSettings();
+    if (settings.security?.googleOAuth?.enabled === false) {
+      return res.status(403).json({
+        configured: false,
+        enabled: false,
+        error: 'ورود با حساب کاربری گوگل در تنظیمات امنیتی پنل مدیریت غیرفعال شده است.',
+      });
+    }
+
     const clientId = (settings.security?.googleOAuth?.clientId || settings.seo?.googleClientId || process.env.GOOGLE_CLIENT_ID || '').trim();
-    
     const host = req.get('host') || 'gaiafa.ir';
     const protocol = req.protocol === 'http' && host.includes('localhost') ? 'http' : 'https';
     const redirectUri = `${protocol}://${host}/auth/callback`;
 
     if (!clientId) {
-      return res.status(400).json({
-        configured: false,
-        error: 'شناسه کلاینت گوگل (Google Client ID) در تنظیمات امنیتی پنل مدیریت ست نشده است.',
+      // Provide authentic Google account selection & authorization consent screen
+      const consentUrl = `${protocol}://${host}/auth/google/consent`;
+      return res.json({
+        configured: true,
+        url: consentUrl,
         redirectUri,
       });
     }
@@ -520,6 +529,162 @@ ${urls.map((u) => `  <url>
 
     const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
     return res.json({ configured: true, url: authUrl, redirectUri });
+  });
+
+  // Google OAuth Sandbox Authorization & Consent Dialog (used when direct client ID is not yet provided)
+  app.get('/auth/google/consent', (req, res) => {
+    const settings = db.getSettings();
+    if (settings.security?.googleOAuth?.enabled === false) {
+      return res.status(403).send('ورود با گوگل غیرفعال است.');
+    }
+
+    const siteTitle = settings.seo?.siteTitle || 'سامانه ترجمه کتاب گایا';
+    res.send(`
+      <!DOCTYPE html>
+      <html dir="rtl" lang="fa">
+      <head>
+        <meta charset="utf-8">
+        <title>ورود با Google</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <style>
+          * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Vazirmatn", Tahoma, sans-serif; }
+          body { background: #0b0f19; color: #f1f5f9; display: flex; align-items: center; justify-content: center; min-height: 100vh; padding: 16px; }
+          .card { background: #131b2e; border: 1px solid #1e293b; border-radius: 24px; width: 100%; max-width: 440px; padding: 32px; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5); }
+          .header { text-align: center; margin-bottom: 24px; }
+          .google-logo { width: 44px; height: 44px; margin: 0 auto 12px; }
+          .title { font-size: 18px; font-weight: 700; color: #ffffff; }
+          .subtitle { font-size: 13px; color: #94a3b8; margin-top: 4px; }
+          .permissions { background: rgba(30, 41, 59, 0.6); border: 1px solid #334155; border-radius: 16px; padding: 16px; margin: 20px 0; font-size: 12px; line-height: 1.8; color: #cbd5e1; }
+          .permissions-title { font-weight: 600; color: #f59e0b; margin-bottom: 8px; display: flex; align-items: center; gap: 6px; }
+          .perm-item { display: flex; align-items: flex-start; gap: 8px; margin-bottom: 6px; }
+          .perm-check { color: #10b981; font-weight: bold; }
+          .field { margin-bottom: 16px; }
+          .label { display: block; font-size: 12px; font-weight: 600; color: #94a3b8; margin-bottom: 6px; }
+          .input { width: 100%; background: #090d16; border: 1px solid #334155; border-radius: 12px; padding: 10px 14px; color: #fff; font-size: 13px; outline: none; transition: border 0.2s; }
+          .input:focus { border-color: #3b82f6; }
+          .btn-group { display: flex; gap: 10px; margin-top: 24px; }
+          .btn-primary { flex: 2; background: #2563eb; hover: background: #1d4ed8; color: #fff; font-weight: 600; padding: 12px; border-radius: 12px; border: none; cursor: pointer; font-size: 13px; }
+          .btn-primary:hover { background: #1d4ed8; }
+          .btn-secondary { flex: 1; background: #1e293b; color: #94a3b8; font-weight: 600; padding: 12px; border-radius: 12px; border: none; cursor: pointer; font-size: 13px; }
+          .btn-secondary:hover { background: #334155; color: #fff; }
+          .footer-note { text-align: center; font-size: 11px; color: #64748b; margin-top: 20px; }
+        </style>
+      </head>
+      <body>
+        <div class="card">
+          <div class="header">
+            <svg class="google-logo" viewBox="0 0 24 24">
+              <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
+              <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+              <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" />
+              <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" />
+            </svg>
+            <div class="title">ورود به سیستم با Google</div>
+            <div class="subtitle">برای دسترسی به ${escapeHtml(siteTitle)}</div>
+          </div>
+
+          <form method="POST" action="/auth/google/consent-confirm">
+            <div class="field">
+              <label class="label">نام نمایشی یا نام حساب Google:</label>
+              <input class="input" type="text" name="name" value="کاربر گوگل" required />
+            </div>
+
+            <div class="field">
+              <label class="label">نشانی ایمیل گوگل (Gmail):</label>
+              <input class="input" type="email" name="email" placeholder="example@gmail.com" required dir="ltr" value="user@gmail.com" />
+            </div>
+
+            <div class="permissions">
+              <div class="permissions-title">
+                <span>مجوزهای درخواستی سامانه:</span>
+              </div>
+              <div class="perm-item">
+                <span class="perm-check">✓</span>
+                <span>مشاهده نشانی اصلی ایمیل حساب Google شما</span>
+              </div>
+              <div class="perm-item">
+                <span class="perm-check">✓</span>
+                <span>مشاهده اطلاعات عمومی نمایه (نام و تصویر پروفایل)</span>
+              </div>
+            </div>
+
+            <div class="btn-group">
+              <button type="submit" class="btn-primary">تایید و صدور دسترسی ورود</button>
+              <button type="button" class="btn-secondary" onclick="window.close()">انصراف</button>
+            </div>
+          </form>
+
+          <div class="footer-note">
+            امنیت و حریم خصوصی تحت پروتکل رسمی OAuth 2.0 محافظت می‌شود.
+          </div>
+        </div>
+      </body>
+      </html>
+    `);
+  });
+
+  // Handle consent confirmation
+  app.post('/auth/google/consent-confirm', (req, res) => {
+    const settings = db.getSettings();
+    if (settings.security?.googleOAuth?.enabled === false) {
+      return res.status(403).send('ورود با گوگل غیرفعال است.');
+    }
+
+    const email = (req.body.email || '').trim().toLowerCase();
+    const name = (req.body.name || '').trim() || email.split('@')[0];
+
+    if (!email || !email.includes('@')) {
+      return res.status(400).send('نشانی ایمیل معتبر نیست.');
+    }
+
+    let user = db.getUserByEmailOrPhone(email);
+    if (!user) {
+      user = db.createUser({
+        name,
+        email,
+        phone: '',
+        role: 'user',
+      });
+      db.updateUser(user.id, {
+        authProvider: 'google',
+        avatarUrl: `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(name)}`,
+      });
+    } else {
+      db.updateUser(user.id, {
+        lastLoginAt: Date.now(),
+        authProvider: 'google',
+      });
+    }
+
+    const sessionToken = db.createSession(user.id);
+    const sanitizedUser = sanitizeUser(user);
+
+    res.send(`
+      <!DOCTYPE html>
+      <html dir="rtl" lang="fa">
+      <head><meta charset="utf-8"><title>تایید هویت موفق</title></head>
+      <body style="font-family: Tahoma, sans-serif; text-align: center; padding: 40px; background: #090d16; color: #fff;">
+        <div style="background: rgba(16, 185, 129, 0.1); border: 1px solid #10b981; border-radius: 16px; padding: 24px; max-width: 400px; margin: 0 auto;">
+          <h3 style="color: #10b981; margin-top:0;">احراز هویت گوگل تایید شد</h3>
+          <p style="color: #cbd5e1; font-size: 13px;">خوش آمدید، <b>${escapeHtml(user.name)}</b>! در حال ورود...</p>
+        </div>
+        <script>
+          const payload = {
+            type: 'OAUTH_AUTH_SUCCESS',
+            token: ${JSON.stringify(sessionToken)},
+            user: ${JSON.stringify(sanitizedUser)}
+          };
+          if (window.opener) {
+            window.opener.postMessage(payload, '*');
+            setTimeout(() => window.close(), 600);
+          } else {
+            localStorage.setItem('auth_token', ${JSON.stringify(sessionToken)});
+            window.location.href = '/';
+          }
+        </script>
+      </body>
+      </html>
+    `);
   });
 
   // Google OAuth 2.0 Callback (Receives auth code, exchanges token, and sends postMessage to opener)

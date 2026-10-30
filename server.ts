@@ -2175,10 +2175,11 @@ app.post('/api/export/docx', async (req, res) => {
               })
             );
           } else {
-            // Standard paragraph with preserved color highlights and generous paragraph spacing
+            // Standard paragraph with natural RTL alignment (prevents stretched words in Word)
+            const paraAlignment = designConfig?.textAlignment === 'both' ? AlignmentType.BOTH : AlignmentType.RIGHT;
             docChildren.push(
               new Paragraph({
-                alignment: AlignmentType.BOTH, // Justified
+                alignment: paraAlignment,
                 spacing: { line: 400, before: 120, after: pSpacingAfter },
                 bidirectional: true,
                 children: parseHtmlToTextRuns(innerHtml, fontFamily),
@@ -2190,10 +2191,11 @@ app.post('/api/export/docx', async (req, res) => {
         // If no HTML tags were matched, output clean text lines
         if (!foundAny) {
           const lines = html.replace(/<[^>]+>/g, '').split('\n').map(l => l.trim()).filter(Boolean);
+          const paraAlignment = designConfig?.textAlignment === 'both' ? AlignmentType.BOTH : AlignmentType.RIGHT;
           lines.forEach(line => {
             docChildren.push(
               new Paragraph({
-                alignment: AlignmentType.BOTH,
+                alignment: paraAlignment,
                 spacing: { line: 360, after: 200 },
                 bidirectional: true,
                 children: [

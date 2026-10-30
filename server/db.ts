@@ -607,11 +607,11 @@ const DEFAULT_SETTINGS: SystemSettings = {
     ipBlacklist: [],
     rateLimitRpm: 120,
     captcha: {
-      enabled: false,
-      provider: 'math',
-      siteKey: '',
-      secretKey: '',
-      requiredForLogin: false,
+      enabled: true,
+      provider: 'recaptcha',
+      siteKey: '6LdiFgcuAAAAAJhcWDyjWFil4dDqdSEI-DMsWxq5',
+      secretKey: '6LdiFgcuAAAAAEmuykCaV94oGQNPaA3w-1JhHH5h',
+      requiredForLogin: true,
       requiredForRegister: true,
     },
     googleOAuth: {

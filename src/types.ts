@@ -485,6 +485,7 @@ export interface BookDesignConfig {
   customColors?: CustomColorPalette;
   continuousFlow?: boolean; // چیدمان پیوسته روان زیر هم و بدون صفحه خالی اجباری بین فصول
   excludedChunkIds?: string[]; // شناسه‌های صفحات/بخش‌های انتخابی برای حذف از خروجی PDF و Word
+  textAlignment?: 'right' | 'both'; // تراز متن (راست‌چین تمیز بدون کشیدگی نامنظم در ورد یا تراز دوطرفه)
 }
 
 export interface BookProject {

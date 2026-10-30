@@ -89,6 +89,7 @@ export const ExportDesignModal: React.FC<ExportDesignModalProps> = ({
   const [pageMargin, setPageMargin] = useState<'compact' | 'normal' | 'generous'>(initialConfig.pageMargin || 'normal');
   const [topMargin, setTopMargin] = useState<BookDesignConfig['topMargin']>(initialConfig.topMargin || 'normal');
   const [trimSize, setTrimSize] = useState<'ruqai' | 'vaziri' | 'rahli' | 'pocket'>(initialConfig.trimSize || 'ruqai');
+  const [textAlignment, setTextAlignment] = useState<'right' | 'both'>(initialConfig.textAlignment || 'right');
   const [customColors, setCustomColors] = useState<CustomColorPalette>(initialConfig.customColors || {});
 
   // Excluded pages from export (combining config.excludedChunkIds and individual chunk isExcludedFromBook)
@@ -133,6 +134,7 @@ export const ExportDesignModal: React.FC<ExportDesignModalProps> = ({
     pageMargin,
     topMargin,
     trimSize,
+    textAlignment,
     customColors,
     continuousFlow,
     excludedChunkIds,
@@ -1234,6 +1236,21 @@ export const ExportDesignModal: React.FC<ExportDesignModalProps> = ({
                         <option value="generous">عریض و لوکس (42px)</option>
                       </select>
                     </div>
+
+                    <div>
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="text-slate-300 font-semibold">تراز پاراگراف‌ها در Word و کتاب:</label>
+                        <span className="text-[10px] text-amber-400">تنظیم چاپ</span>
+                      </div>
+                      <select
+                        value={textAlignment}
+                        onChange={e => setTextAlignment(e.target.value as any)}
+                        className="w-full bg-slate-900 border border-slate-700 rounded-xl px-2.5 py-1.5 text-white focus:outline-none focus:border-purple-500 font-medium text-xs"
+                      >
+                        <option value="right">راست‌چین تمیز (توصیه شده برای Word - بدون کشیدگی و فاصله نازیبا)</option>
+                        <option value="both">تراز دوطرفه (Justified - خط‌کشی شده دوطرف)</option>
+                      </select>
+                    </div>
                   </div>
                 </div>
 
@@ -1797,25 +1814,15 @@ export const ExportDesignModal: React.FC<ExportDesignModalProps> = ({
           </div>
 
           <div className="flex flex-wrap items-center gap-2.5">
-            {/* Word .doc with full design */}
-            <button
-              onClick={handleDownloadHtml}
-              className="px-3.5 py-2 rounded-xl text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition flex items-center gap-1.5"
-              title="خروجی Word با پشتیبانی کامل از رنگ پس‌زمینه، کادرها و تصاویر (فرمت استاندارد .doc)"
-            >
-              <FileText className="w-3.5 h-3.5 text-amber-400" />
-              <span>فایل Word با طراحی کامل (.doc)</span>
-            </button>
-
-            {/* Word DOCX Button with Vazirmatn Medium */}
+            {/* Standard Word DOCX Button */}
             <button
               onClick={handleDownloadDocx}
               disabled={isExportingDocx}
-              className="px-4 py-2 rounded-xl text-xs font-bold bg-blue-600 hover:bg-blue-500 text-white transition flex items-center gap-1.5 shadow-md shadow-blue-600/20 disabled:opacity-50"
-              title="دانلود فایل رسمی DOCX با هدر و فوتر و فونت وزیرمتن"
+              className="px-5 py-2.5 rounded-xl text-xs font-bold bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white transition flex items-center gap-2 shadow-lg shadow-blue-600/25 disabled:opacity-50"
+              title="دانلود فایل رسمی استاندارد مایکروسافت ورد (.docx) آماده چاپ"
             >
-              <FileText className="w-3.5 h-3.5" />
-              <span>{isExportingDocx ? 'درحال ساخت سند ورد...' : 'دانلود فایل Word (.docx)'}</span>
+              <FileText className="w-4 h-4" />
+              <span>{isExportingDocx ? 'درحال ساخت سند رسمی ورد...' : 'دانلود فایل استاندارد Word (.docx)'}</span>
             </button>
 
             {/* Print & Save PDF Button */}

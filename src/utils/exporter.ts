@@ -738,10 +738,11 @@ export async function buildClientDocxDocument(project: BookProject): Promise<Doc
           })
         );
       } else {
-        // Standard Persian Paragraph with distinct spacing for high readability
+        // Standard Persian Paragraph with natural RTL alignment (prevents ugly word gaps from justified in Word)
+        const paraAlignment = design.textAlignment === 'both' ? AlignmentType.BOTH : AlignmentType.RIGHT;
         docChildren.push(
           new Paragraph({
-            alignment: AlignmentType.BOTH, // Justified
+            alignment: paraAlignment,
             spacing: { line: pLineSpacing, before: pSpacingBefore, after: pSpacingAfter },
             bidirectional: true,
             children: parseHtmlToTextRuns(innerHtml, fontFamily, TextRun),
@@ -752,10 +753,11 @@ export async function buildClientDocxDocument(project: BookProject): Promise<Doc
 
     if (!foundAny) {
       const lines = html.replace(/<[^>]+>/g, '').split('\n').map(l => l.trim()).filter(Boolean);
+      const paraAlignment = design.textAlignment === 'both' ? AlignmentType.BOTH : AlignmentType.RIGHT;
       lines.forEach(line => {
         docChildren.push(
           new Paragraph({
-            alignment: AlignmentType.BOTH,
+            alignment: paraAlignment,
             spacing: { line: 360, after: 200 },
             bidirectional: true,
             children: [
@@ -774,6 +776,7 @@ export async function buildClientDocxDocument(project: BookProject): Promise<Doc
 
   const themeKey = (design.themeId || 'spiritual') as keyof typeof BOOK_THEMES;
   const theme = BOOK_THEMES[themeKey] || BOOK_THEMES.spiritual;
+  const defaultDocAlignment = design.textAlignment === 'both' ? AlignmentType.BOTH : AlignmentType.RIGHT;
 
   return new Document({
     styles: {
@@ -786,7 +789,7 @@ export async function buildClientDocxDocument(project: BookProject): Promise<Doc
             color: textColor,
           },
           paragraph: {
-            alignment: AlignmentType.BOTH,
+            alignment: defaultDocAlignment,
             spacing: { line: pLineSpacing, after: pSpacingAfter },
           },
         },

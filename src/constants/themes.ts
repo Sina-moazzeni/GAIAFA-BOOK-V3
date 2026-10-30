@@ -235,4 +235,5 @@ export const DEFAULT_DESIGN_CONFIG: BookDesignConfig = {
   trimSize: 'ruqai',
   continuousFlow: true,
   excludedChunkIds: [],
+  textAlignment: 'right', // استاندارد راست‌چین جهت جلوگیری از کشیدگی بد جاستیفای در ورد
 };
