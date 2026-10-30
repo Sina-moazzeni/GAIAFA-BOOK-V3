@@ -72,6 +72,8 @@ import {
 } from '../types.ts';
 import { DEFAULT_LANDING_SECTIONS } from '../constants/landingDefaults.ts';
 import { DailyRevenueView } from './DailyRevenueView.tsx';
+import { AdminBookEditorModal } from './AdminBookEditorModal.tsx';
+import { downloadDocx } from '../utils/exporter.ts';
 
 interface AdminPanelProps {
   currentUser: User;
@@ -231,6 +233,7 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout, onCostPer
   // Dedicated Completed Books State
   const [completedBookSearch, setCompletedBookSearch] = useState('');
   const [readingBookModal, setReadingBookModal] = useState<any | null>(null);
+  const [adminEditingBook, setAdminEditingBook] = useState<any | null>(null);
   const [readingFontSize, setReadingFontSize] = useState<number>(16);
   const [loadingFullBook, setLoadingFullBook] = useState(false);
 
@@ -843,15 +846,64 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout, onCostPer
     }
   };
 
+  // Download standard DOCX format (supports admin private copy when present)
+  const handleDownloadWordDocx = async (book: any) => {
+    const fullBook = await fetchBookDetailsIfNeeded(book);
+    const sourceData = (fullBook.hasAdminCopy && fullBook.adminCopy) ? fullBook.adminCopy : fullBook;
+    const title = sourceData.title || fullBook.title || 'کتاب ترجمه شده';
+    const chunks = sourceData.chunks || fullBook.chunks || [];
+
+    const projectForExport = {
+      id: fullBook.id,
+      title,
+      originalTitle: sourceData.originalTitle || fullBook.originalTitle || '',
+      author: sourceData.author || fullBook.author || '',
+      translator: sourceData.translator || fullBook.translator || 'سامانه هوشمند ترجمه کتاب',
+      chunks: chunks.map((c: any) => ({
+        id: c.id,
+        chapterNumber: c.chapterNumber,
+        chapterTitle: c.chapterTitle || c.title || `بخش ${c.chunkNumber || 1}`,
+        chunkNumber: c.chunkNumber || 1,
+        englishText: c.englishText || '',
+        translatedHtml: c.translatedHtml || c.translatedText || '',
+        status: 'completed' as const,
+        wordCount: c.wordCount || 0,
+        estimatedTokens: 0,
+      })),
+      glossary: fullBook.glossary || [],
+      model: 'standard',
+      tone: 'formal' as any,
+      createdAt: fullBook.createdAt || Date.now(),
+      updatedAt: Date.now(),
+      designConfig: {
+        textAlignment: 'right' as const,
+        fontFamily: 'Vazirmatn Medium',
+        themeId: 'spiritual' as any,
+        showHeader: true,
+        showFooter: true,
+        headerText: title,
+        footerText: fullBook.hasAdminCopy ? 'نسخه اختصاصی ویرایش مدیریت' : 'سامانه هوشمند ترجمه کتاب',
+      },
+    };
+
+    try {
+      await downloadDocx(projectForExport as any);
+    } catch (err: any) {
+      alert(`خطا در دانلود فایل Word (.docx): ${err.message}`);
+    }
+  };
+
   const handleDownloadWordDoc = async (book: any) => {
     const fullBook = await fetchBookDetailsIfNeeded(book);
-    const title = fullBook.title || 'کتاب ترجمه شده';
+    const sourceData = (fullBook.hasAdminCopy && fullBook.adminCopy) ? fullBook.adminCopy : fullBook;
+    const title = sourceData.title || fullBook.title || 'کتاب ترجمه شده';
     let chaptersHtml = '';
-    if (fullBook.chunks && fullBook.chunks.length > 0) {
-      chaptersHtml = fullBook.chunks.map((ch: any, idx: number) => `
+    const chunks = sourceData.chunks || fullBook.chunks || [];
+    if (chunks && chunks.length > 0) {
+      chaptersHtml = chunks.map((ch: any, idx: number) => `
         <div style="page-break-before: always; margin-top: 32px; padding-top: 20px;">
-          <h2 style="color: #1e3a8a; font-size: 18pt; border-bottom: 2px solid #3b82f6; padding-bottom: 8px;">بخش ${idx + 1}: ${ch.title || `فصل ${idx + 1}`}</h2>
-          <div style="font-size: 13pt; line-height: 2.2; text-align: justify; margin-top: 16px;">
+          <h2 style="color: #1e3a8a; font-size: 17pt; font-weight: bold; text-align: right; border-bottom: 2px solid #3b82f6; padding-bottom: 8px;">بخش ${idx + 1}: ${ch.chapterTitle || ch.title || `فصل ${idx + 1}`}</h2>
+          <div style="font-size: 12.5pt; line-height: 2.1; text-align: right; text-justify: none; margin-top: 16px;">
             ${ch.translatedHtml || ch.translatedText?.replace(/\n/g, '<br/>') || '<p>متن ترجمه شده‌ای ثبت نشده است.</p>'}
           </div>
         </div>
@@ -867,17 +919,20 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout, onCostPer
         <title>${title}</title>
         <style>
           @page { size: A4; margin: 2.5cm; }
-          body { font-family: 'B Nazanin', 'Vazirmatn', 'Tahoma', Arial, sans-serif; direction: rtl; text-align: right; line-height: 2.2; font-size: 13pt; color: #111; }
-          h1 { color: #0f172a; font-size: 24pt; text-align: center; margin-bottom: 8px; }
+          body { font-family: 'Vazirmatn', 'B Nazanin', 'Tahoma', Arial, sans-serif; direction: rtl; text-align: right; line-height: 2.1; font-size: 12.5pt; color: #111; }
+          h1 { color: #0f172a; font-size: 22pt; font-weight: bold; text-align: right; margin-bottom: 12px; }
+          h2 { color: #1e3a8a; font-size: 17pt; font-weight: bold; text-align: right; }
+          p, div { text-align: right; text-justify: none; }
           .meta { text-align: center; color: #64748b; font-size: 11pt; margin-bottom: 30px; }
         </style>
       </head>
       <body dir="rtl">
         <h1>${title}</h1>
         <div class="meta">
-          ${fullBook.originalTitle ? `<p>عنوان زبان اصلی: ${fullBook.originalTitle}</p>` : ''}
-          ${fullBook.author ? `<p>نویسنده: ${fullBook.author}</p>` : ''}
+          ${sourceData.originalTitle || fullBook.originalTitle ? `<p>عنوان زبان اصلی: ${sourceData.originalTitle || fullBook.originalTitle}</p>` : ''}
+          ${sourceData.author || fullBook.author ? `<p>نویسنده: ${sourceData.author || fullBook.author}</p>` : ''}
           <p>خروجی رسمی مترجم هوش مصنوعی | تاریخ: ${new Date().toLocaleDateString('fa-IR-u-nu-latn')}</p>
+          ${fullBook.hasAdminCopy ? '<p style="color:#7c3aed; font-weight:bold;">نسخه اختصاصی ویرایش مدیریت</p>' : ''}
         </div>
         <hr/>
         ${chaptersHtml}
@@ -3073,6 +3128,14 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout, onCostPer
                             {b.author && (
                               <div className="text-[10px] text-amber-400/80 mt-0.5">نویسنده: {b.author}</div>
                             )}
+                            {b.hasAdminCopy && (
+                              <div className="mt-1">
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-purple-500/20 text-purple-300 border border-purple-500/30 text-[10px] font-bold" title="این کتاب دارای نسخه اختصاصی ویرایش شده توسط مدیریت است">
+                                  <Sparkles className="w-3 h-3 text-purple-400" />
+                                  <span>دارای نسخه مدیریت</span>
+                                </span>
+                              </div>
+                            )}
                           </td>
                           <td className="py-4 px-4">
                             <div className="text-slate-200 font-medium">{b.user?.name || 'کاربر عمومی'}</div>
@@ -3100,14 +3163,23 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout, onCostPer
                           </td>
                           <td className="py-4 px-4">
                             <div className="flex flex-wrap items-center justify-center gap-1.5">
-                              {/* Word Download */}
+                              {/* Word DOCX Download */}
                               <button
-                                onClick={() => handleDownloadWordDoc(b)}
-                                className="px-2.5 py-1.5 rounded-xl bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 border border-blue-500/30 text-[11px] font-semibold flex items-center gap-1 transition shadow-sm"
-                                title="دانلود فایل ورد (.doc)"
+                                onClick={() => handleDownloadWordDocx(b)}
+                                className="px-2.5 py-1.5 rounded-xl bg-blue-500/15 hover:bg-blue-500/25 text-blue-300 border border-blue-500/30 text-[11px] font-semibold flex items-center gap-1 transition shadow-sm"
+                                title="دانلود فایل استاندارد Word (.docx) راست‌چین بدون کشیدگی متن"
                               >
                                 <FileText className="w-3.5 h-3.5" />
-                                <span>Word</span>
+                                <span>Word (.docx)</span>
+                              </button>
+
+                              {/* Word .doc Legacy Download */}
+                              <button
+                                onClick={() => handleDownloadWordDoc(b)}
+                                className="px-2 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] font-semibold flex items-center gap-1 transition"
+                                title="دانلود فایل ورد نسخه (.doc)"
+                              >
+                                <span>.doc</span>
                               </button>
 
                               {/* PDF Print */}
@@ -3152,13 +3224,25 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout, onCostPer
                             </div>
                           </td>
                           <td className="py-4 px-4 text-left">
-                            <button
-                              onClick={() => handleDeleteBookAdmin(b.id)}
-                              className="p-1.5 rounded-lg text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 transition"
-                              title="حذف کتاب"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
+                            <div className="flex items-center justify-end gap-1.5">
+                              {/* Admin Private Edit Button */}
+                              <button
+                                onClick={() => setAdminEditingBook(b)}
+                                className="px-2.5 py-1.5 rounded-xl bg-purple-600/20 hover:bg-purple-600/30 text-purple-300 border border-purple-500/30 text-[11px] font-bold flex items-center gap-1 transition shadow-sm"
+                                title="ویرایش نسخه اختصاصی مدیریت (بدون تغییر روی پنل کاربر)"
+                              >
+                                <Edit3 className="w-3.5 h-3.5 text-purple-400" />
+                                <span>ویرایش مدیریت</span>
+                              </button>
+
+                              <button
+                                onClick={() => handleDeleteBookAdmin(b.id)}
+                                className="p-1.5 rounded-lg text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 transition"
+                                title="حذف کتاب"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       ))
@@ -3261,6 +3345,19 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout, onCostPer
                 </div>
               </div>
             )}
+
+            {/* Admin Private Book Editor Modal */}
+            {adminEditingBook && (
+              <AdminBookEditorModal
+                book={adminEditingBook}
+                token={token}
+                isOpen={Boolean(adminEditingBook)}
+                onClose={() => setAdminEditingBook(null)}
+                onSaveSuccess={() => {
+                  fetchAllBooks();
+                }}
+              />
+            )}
           </div>
         )}
 
@@ -3356,14 +3453,24 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout, onCostPer
                             </span>
                           </td>
                           <td className="py-3.5 px-4 text-center">
-                            <button
-                              onClick={() => handleDeleteBookAdmin(b.id)}
-                              className="px-3 py-1.5 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 text-[11px] font-bold flex items-center gap-1 mx-auto transition"
-                              title="حذف کامل کتاب از سیستم"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                              <span>حذف کتاب</span>
-                            </button>
+                            <div className="flex items-center justify-center gap-1.5">
+                              <button
+                                onClick={() => setAdminEditingBook(b)}
+                                className="px-2.5 py-1.5 rounded-xl bg-purple-600/20 hover:bg-purple-600/30 text-purple-300 border border-purple-500/30 text-[11px] font-bold flex items-center gap-1 transition shadow-sm"
+                                title="ویرایش نسخه اختصاصی مدیریت (بدون تغییر روی پنل کاربر)"
+                              >
+                                <Edit3 className="w-3.5 h-3.5 text-purple-400" />
+                                <span>ویرایش مدیریت</span>
+                              </button>
+                              <button
+                                onClick={() => handleDeleteBookAdmin(b.id)}
+                                className="px-2.5 py-1.5 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 text-[11px] font-bold flex items-center gap-1 transition"
+                                title="حذف کامل کتاب از سیستم"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                                <span>حذف</span>
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       ))

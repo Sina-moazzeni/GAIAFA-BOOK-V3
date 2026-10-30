@@ -47,6 +47,27 @@ export interface BookChunkRecord {
   imageCount?: number;
 }
 
+export interface AdminBookChunkCopy {
+  id: string;
+  chapterNumber: number;
+  chapterTitle: string;
+  chunkNumber: number;
+  englishText?: string;
+  translatedHtml?: string;
+  wordCount?: number;
+}
+
+export interface AdminBookCopy {
+  editedAt: number;
+  editedByAdminId?: string;
+  title: string;
+  originalTitle?: string;
+  author?: string;
+  translator?: string;
+  designConfig?: any;
+  chunks: AdminBookChunkCopy[];
+}
+
 export interface BookRecord {
   id: string;
   userId: string;
@@ -64,6 +85,7 @@ export interface BookRecord {
   glossary?: Array<{ id?: string; en: string; fa: string; note?: string }>;
   contextCache?: any;
   totalImagesCount?: number;
+  adminCopy?: AdminBookCopy;
   createdAt: number;
   updatedAt: number;
 }
@@ -1770,6 +1792,65 @@ class Database {
       return true;
     }
     return false;
+  }
+
+  // --- Admin Private Book Copy Management ---
+  public getAdminBookCopy(bookId: string): AdminBookCopy | null {
+    const book = this.getBookById(bookId);
+    if (!book) return null;
+    return book.adminCopy || null;
+  }
+
+  public saveAdminBookCopy(
+    bookId: string,
+    copyData: {
+      title?: string;
+      originalTitle?: string;
+      author?: string;
+      translator?: string;
+      designConfig?: any;
+      chunks?: AdminBookChunkCopy[];
+    },
+    adminId?: string
+  ): AdminBookCopy | null {
+    const book = this.getBookById(bookId);
+    if (!book) return null;
+
+    const baseChunks: AdminBookChunkCopy[] = copyData.chunks && Array.isArray(copyData.chunks)
+      ? copyData.chunks
+      : (book.chunks || []).map(c => ({
+          id: c.id,
+          chapterNumber: c.chapterNumber,
+          chapterTitle: c.chapterTitle,
+          chunkNumber: c.chunkNumber,
+          englishText: c.englishText,
+          translatedHtml: c.translatedHtml || '',
+          wordCount: c.wordCount || 0,
+        }));
+
+    book.adminCopy = {
+      editedAt: Date.now(),
+      editedByAdminId: adminId,
+      title: (copyData.title || book.title || 'کتاب ترجمه شده').trim(),
+      originalTitle: (copyData.originalTitle ?? book.originalTitle ?? '').trim(),
+      author: (copyData.author ?? book.author ?? '').trim(),
+      translator: (copyData.translator ?? book.translator ?? '').trim(),
+      designConfig: copyData.designConfig || (book as any).designConfig || {},
+      chunks: baseChunks,
+    };
+
+    book.updatedAt = Date.now();
+    this.saveData(this.data);
+    return book.adminCopy;
+  }
+
+  public deleteAdminBookCopy(bookId: string): boolean {
+    const book = this.getBookById(bookId);
+    if (!book || !book.adminCopy) return false;
+    delete book.adminCopy;
+    book.updatedAt = Date.now();
+    this.saveData(this.data);
+    return true;
   }
 
   // --- Jobs Management ---

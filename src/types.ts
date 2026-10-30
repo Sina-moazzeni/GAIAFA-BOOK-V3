@@ -512,6 +512,28 @@ export interface BookProject {
   status?: 'draft' | 'translating' | 'completed' | 'error';
   wordCount?: number;
   estimatedCost?: number;
+  adminCopy?: AdminBookCopy;
+}
+
+export interface AdminBookChunkCopy {
+  id: string;
+  chapterNumber: number;
+  chapterTitle: string;
+  chunkNumber: number;
+  englishText?: string;
+  translatedHtml?: string;
+  wordCount?: number;
+}
+
+export interface AdminBookCopy {
+  editedAt: number;
+  editedByAdminId?: string;
+  title: string;
+  originalTitle?: string;
+  author?: string;
+  translator?: string;
+  designConfig?: BookDesignConfig;
+  chunks: AdminBookChunkCopy[];
 }
 
 export interface ServerKeyStatus {

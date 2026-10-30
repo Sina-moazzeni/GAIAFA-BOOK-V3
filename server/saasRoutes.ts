@@ -2928,6 +2928,9 @@ ${urls.map((u) => `  <url>
         chunks: b.chunks || [],
         glossary: b.glossary || [],
         user: owner ? { id: owner.id, name: owner.name, email: owner.email, phone: owner.phone } : null,
+        hasAdminCopy: Boolean(b.adminCopy),
+        adminCopyEditedAt: b.adminCopy?.editedAt || null,
+        adminCopy: b.adminCopy || null,
         createdAt: b.createdAt,
         updatedAt: b.updatedAt,
       };
@@ -2938,7 +2941,93 @@ ${urls.map((u) => `  <url>
   app.get('/api/admin/books/:id', requireStaffOrAdmin, (req, res) => {
     const book = db.getBookById(req.params.id);
     if (!book) return res.status(404).json({ error: 'کتاب یافت نشد.' });
-    return res.json({ book });
+    return res.json({
+      book,
+      hasAdminCopy: Boolean(book.adminCopy),
+      adminCopy: book.adminCopy || null,
+    });
+  });
+
+  // Get Admin Private Copy (or initialize draft from original user book)
+  app.get('/api/admin/books/:id/admin-copy', requireStaffOrAdmin, (req, res) => {
+    const book = db.getBookById(req.params.id);
+    if (!book) return res.status(404).json({ error: 'کتاب مورد نظر یافت نشد.' });
+
+    if (book.adminCopy) {
+      return res.json({
+        exists: true,
+        adminCopy: book.adminCopy,
+        originalBook: {
+          id: book.id,
+          title: book.title,
+          author: book.author,
+          translator: book.translator,
+          originalTitle: book.originalTitle,
+        },
+      });
+    }
+
+    // Return fresh clone template without modifying database until admin clicks save
+    const initialCopy = {
+      editedAt: Date.now(),
+      title: book.title || 'کتاب ترجمه شده',
+      originalTitle: book.originalTitle || '',
+      author: book.author || '',
+      translator: book.translator || '',
+      designConfig: (book as any).designConfig || {},
+      chunks: (book.chunks || []).map((c) => ({
+        id: c.id,
+        chapterNumber: c.chapterNumber,
+        chapterTitle: c.chapterTitle,
+        chunkNumber: c.chunkNumber,
+        englishText: c.englishText,
+        translatedHtml: c.translatedHtml || '',
+        wordCount: c.wordCount || 0,
+      })),
+    };
+
+    return res.json({
+      exists: false,
+      adminCopy: initialCopy,
+      originalBook: {
+        id: book.id,
+        title: book.title,
+        author: book.author,
+        translator: book.translator,
+        originalTitle: book.originalTitle,
+      },
+    });
+  });
+
+  // Save/Update Admin Private Copy (leaves user's original book 100% untouched)
+  app.put('/api/admin/books/:id/admin-copy', requireStaffOrAdmin, (req, res) => {
+    const book = db.getBookById(req.params.id);
+    if (!book) return res.status(404).json({ error: 'کتاب مورد نظر یافت نشد.' });
+
+    const adminUser = (req as any).user;
+    const adminCopy = db.saveAdminBookCopy(req.params.id, req.body, adminUser?.id);
+    if (!adminCopy) {
+      return res.status(500).json({ error: 'خطا در ذخیره‌سازی نسخه مدیریت.' });
+    }
+
+    return res.json({
+      success: true,
+      message: 'نسخه اختصاصی مدیریت با موفقیت ذخیره شد. نسخه کاربر بدون تغییر باقی ماند.',
+      adminCopy,
+    });
+  });
+
+  // Delete Admin Private Copy (resets to original user book)
+  app.delete('/api/admin/books/:id/admin-copy', requireStaffOrAdmin, (req, res) => {
+    const ok = db.deleteAdminBookCopy(req.params.id);
+    if (!ok) {
+      return res.status(404).json({ error: 'نسخه مدیریتی برای این کتاب ثبت نشده بود.' });
+    }
+
+    return res.json({
+      success: true,
+      message: 'نسخه مدیریت حذف شد و این کتاب به نسخه اصلی کاربر بازنشانی گردید.',
+    });
   });
 
   app.delete('/api/admin/books/:id', requireStaffOrAdmin, (req, res) => {

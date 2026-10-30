@@ -2088,14 +2088,14 @@ app.post('/api/export/docx', async (req, res) => {
             docChildren.push(
               new Paragraph({
                 heading: HeadingLevel.HEADING_1,
-                alignment: AlignmentType.CENTER,
+                alignment: AlignmentType.RIGHT,
                 spacing: { before: 500, after: 300 },
                 bidirectional: true,
                 children: [
                   new TextRun({
                     text: plainText,
                     font: fontDef,
-                    size: 36,
+                    size: 34,
                     bold: true,
                     color: h1Color,
                     rightToLeft: true,
@@ -2114,7 +2114,7 @@ app.post('/api/export/docx', async (req, res) => {
                   new TextRun({
                     text: plainText,
                     font: fontDef,
-                    size: 30,
+                    size: 28,
                     bold: true,
                     color: h2Color,
                     rightToLeft: true,
@@ -2133,7 +2133,7 @@ app.post('/api/export/docx', async (req, res) => {
                   new TextRun({
                     text: plainText,
                     font: fontDef,
-                    size: 26,
+                    size: 24,
                     bold: true,
                     color: h3Color,
                     rightToLeft: true,
@@ -2180,7 +2180,7 @@ app.post('/api/export/docx', async (req, res) => {
             docChildren.push(
               new Paragraph({
                 alignment: paraAlignment,
-                spacing: { line: 400, before: 120, after: pSpacingAfter },
+                spacing: { line: 380, before: 120, after: pSpacingAfter },
                 bidirectional: true,
                 children: parseHtmlToTextRuns(innerHtml, fontFamily),
               })
@@ -2224,8 +2224,8 @@ app.post('/api/export/docx', async (req, res) => {
               color: textColor,
             },
             paragraph: {
-              alignment: AlignmentType.BOTH,
-              spacing: { line: 400, after: pSpacingAfter },
+              alignment: AlignmentType.RIGHT,
+              spacing: { line: 380, after: pSpacingAfter },
             },
           },
         },

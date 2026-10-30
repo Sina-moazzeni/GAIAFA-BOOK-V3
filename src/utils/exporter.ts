@@ -650,14 +650,14 @@ export async function buildClientDocxDocument(project: BookProject): Promise<Doc
         docChildren.push(
           new Paragraph({
             heading: HeadingLevel.HEADING_1,
-            alignment: AlignmentType.CENTER,
+            alignment: AlignmentType.RIGHT,
             spacing: { before: 500, after: 300 },
             bidirectional: true,
             children: [
               new TextRun({
                 text: plainText,
                 font: fontDef,
-                size: 36,
+                size: 34,
                 bold: true,
                 color: h1Color,
                 rightToLeft: true,
@@ -776,7 +776,6 @@ export async function buildClientDocxDocument(project: BookProject): Promise<Doc
 
   const themeKey = (design.themeId || 'spiritual') as keyof typeof BOOK_THEMES;
   const theme = BOOK_THEMES[themeKey] || BOOK_THEMES.spiritual;
-  const defaultDocAlignment = design.textAlignment === 'both' ? AlignmentType.BOTH : AlignmentType.RIGHT;
 
   return new Document({
     styles: {
@@ -789,7 +788,7 @@ export async function buildClientDocxDocument(project: BookProject): Promise<Doc
             color: textColor,
           },
           paragraph: {
-            alignment: defaultDocAlignment,
+            alignment: AlignmentType.RIGHT,
             spacing: { line: pLineSpacing, after: pSpacingAfter },
           },
         },
@@ -1031,10 +1030,10 @@ export function downloadWordHtml(project: BookProject) {
         mso-bidi-font-family: '${fontFamily}';
         mso-ascii-font-family: '${fontFamily}';
       }
-      h1 { color: ${headingColor}; font-size: 24pt; margin-bottom: 22px; text-align: center; }
-      h2 { color: ${h2Color}; font-size: 18pt; margin-top: 28px; margin-bottom: 14px; }
-      h3 { color: ${h3Color}; font-size: 14pt; margin-top: 18px; margin-bottom: 10px; }
-      p { line-height: 2.2; font-size: 12.5pt; text-align: justify; margin-bottom: ${pMarginBottom}; }
+      h1 { color: ${headingColor}; font-size: 22pt; margin-bottom: 20px; text-align: right; font-weight: bold; }
+      h2 { color: ${h2Color}; font-size: 17pt; margin-top: 24px; margin-bottom: 12px; text-align: right; font-weight: bold; }
+      h3 { color: ${h3Color}; font-size: 14pt; margin-top: 18px; margin-bottom: 10px; text-align: right; font-weight: bold; }
+      p { line-height: 2.0; font-size: 12.5pt; text-align: right; margin-bottom: ${pMarginBottom}; text-justify: none; }
       blockquote { border-right: 4px solid ${h2Color}; padding: 12px 18px; margin: 18px 0; background: #f7fafc; color: #4a5568; font-style: italic; }
       span.highlight { color: inherit; font-weight: 600; }
       img, .book-embedded-image { max-width: 85%; height: auto; display: block; margin: 18px auto; border-radius: 8px; }
