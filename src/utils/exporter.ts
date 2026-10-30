@@ -1033,7 +1033,7 @@ export function downloadWordHtml(project: BookProject) {
       h3 { color: ${h3Color}; font-size: 14pt; margin-top: 18px; margin-bottom: 10px; }
       p { line-height: 2.2; font-size: 12.5pt; text-align: justify; margin-bottom: ${pMarginBottom}; }
       blockquote { border-right: 4px solid ${h2Color}; padding: 12px 18px; margin: 18px 0; background: #f7fafc; color: #4a5568; font-style: italic; }
-      span.highlight { color: #9b2c2c; font-weight: bold; }
+      span.highlight { color: inherit; font-weight: 600; }
       img, .book-embedded-image { max-width: 85%; height: auto; display: block; margin: 18px auto; border-radius: 8px; }
       .book-illustration-wrap { text-align: center; margin: 20px 0; }
     </style>

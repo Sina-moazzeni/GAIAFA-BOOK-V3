@@ -34,7 +34,8 @@ import {
   Type,
   Replace,
   EyeOff,
-  ChevronDown
+  ChevronDown,
+  Plus
 } from 'lucide-react';
 import { BookChunk, BookProject, APIServerEndpoint } from '../types.ts';
 import { cleanChapterTitle, groupChunksIntoChapters, htmlToPlainText, plainTextToHtml, formatToDistinctParagraphs } from '../utils/exporter.ts';
@@ -66,6 +67,7 @@ interface TranslationWorkspaceProps {
   isAdmin?: boolean;
   onOpenMobileChunks?: () => void;
   onOpenFindReplaceModal?: () => void;
+  onOpenAddPageModal?: (targetChunkId?: string, defaultPosition?: 'after' | 'before' | 'start' | 'end') => void;
 }
 
 export const TranslationWorkspace: React.FC<TranslationWorkspaceProps> = ({
@@ -95,6 +97,7 @@ export const TranslationWorkspace: React.FC<TranslationWorkspaceProps> = ({
   isAdmin = false,
   onOpenMobileChunks,
   onOpenFindReplaceModal,
+  onOpenAddPageModal,
 }) => {
   // View Modes: 'preview' (Rendered Book Page), 'plain' (Simple Plain Text Manual Editor), 'html' (Raw HTML Code)
   const [viewMode, setViewMode] = useState<'preview' | 'plain' | 'html'>('preview');
@@ -520,6 +523,20 @@ export const TranslationWorkspace: React.FC<TranslationWorkspaceProps> = ({
               >
                 <Replace className="w-3.5 h-3.5 text-emerald-400" />
                 <span className="hidden sm:inline">جایگزینی سراسری</span>
+              </button>
+            )}
+
+            {/* Add Custom Page / Image */}
+            {onOpenAddPageModal && (
+              <button
+                type="button"
+                onClick={() => onOpenAddPageModal(currentChunk?.id, 'after')}
+                className="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 hover:text-white border border-indigo-500/30 hover:border-indigo-500/60 transition flex items-center gap-1.5 shadow-sm"
+                title="افزودن صفحه یا بخش جدید با متن و تصویر به کتاب"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">افزودن صفحه / تصویر</span>
+                <span className="sm:hidden">صفحه جدید</span>
               </button>
             )}
 

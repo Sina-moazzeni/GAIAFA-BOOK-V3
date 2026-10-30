@@ -63,6 +63,7 @@ export interface BookRecord {
   chunks: BookChunkRecord[];
   glossary?: Array<{ id?: string; en: string; fa: string; note?: string }>;
   contextCache?: any;
+  totalImagesCount?: number;
   createdAt: number;
   updatedAt: number;
 }
@@ -1392,7 +1393,7 @@ class Database {
               chapterTitle: 'فصل نخست: شما ذهن خود نیستید',
               chunkNumber: 1,
               englishText: 'You are not your mind. The greatest obstacle to experiencing this reality of connectedness is identification with your mind, which causes thought to become compulsive.',
-              translatedHtml: '<h1 style="color: #1a365d; font-size: 24pt; margin-bottom: 20px; text-align: center;">شما ذهن خود نیستید</h1>\n<p style="line-height: 1.9; font-size: 12pt; text-align: justify; margin-bottom: 14px;">بزرگ‌ترین مانع در تجربه پیوند بنیادین با هستی، <span style="color: #9b2c2c; font-weight: bold;">همانندپنداری با ذهن</span> است؛ امری که باعث می‌شود اندیشیدن به یک اجبار ناخودآگاه تبدیل گردد. ناتوانی در متوقف ساختن جریان افکار، رنجی جانکاه است که کمتر کسی به آن واقف است.</p>',
+              translatedHtml: '<h1 style="color: #1a365d; font-size: 24pt; margin-bottom: 20px; text-align: center;">شما ذهن خود نیستید</h1>\n<p style="line-height: 1.9; font-size: 12pt; text-align: justify; margin-bottom: 14px;">بزرگ‌ترین مانع در تجربه پیوند بنیادین با هستی، <span style="font-weight: bold;">همانندپنداری با ذهن</span> است؛ امری که باعث می‌شود اندیشیدن به یک اجبار ناخودآگاه تبدیل گردد. ناتوانی در متوقف ساختن جریان افکار، رنجی جانکاه است که کمتر کسی به آن واقف است.</p>',
               status: 'completed',
               wordCount: 35,
               estimatedTokens: 48,

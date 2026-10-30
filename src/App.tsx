@@ -27,6 +27,8 @@ const BooksLibraryModal = React.lazy(() => import('./components/BooksLibraryModa
 const ExportDesignModal = React.lazy(() => import('./components/ExportDesignModal.tsx').then(m => ({ default: m.ExportDesignModal })));
 const TokenEstimatorModal = React.lazy(() => import('./components/TokenEstimatorModal.tsx').then(m => ({ default: m.TokenEstimatorModal })));
 const PrintDocument = React.lazy(() => import('./components/PrintDocument.tsx').then(m => ({ default: m.PrintDocument })));
+const AddPageModal = React.lazy(() => import('./components/AddPageModal.tsx').then(m => ({ default: m.AddPageModal })));
+import type { AddPagePayload } from './components/AddPageModal.tsx';
 
 import {
   BookProject,
@@ -138,6 +140,9 @@ export default function App() {
   const [isProvidersModalOpen, setIsProvidersModalOpen] = useState(false);
   const [isLibraryModalOpen, setIsLibraryModalOpen] = useState(false);
   const [isDesignModalOpen, setIsDesignModalOpen] = useState(false);
+  const [isAddPageModalOpen, setIsAddPageModalOpen] = useState(false);
+  const [addPageDefaultTargetChunkId, setAddPageDefaultTargetChunkId] = useState<string | undefined>(undefined);
+  const [addPageDefaultPosition, setAddPageDefaultPosition] = useState<'start' | 'end' | 'before' | 'after'>('after');
 
   // Active translation chunk in workspace
   const [activeChunkId, setActiveChunkId] = useState<string>('');
@@ -269,6 +274,17 @@ export default function App() {
     } else {
       setIsAuthLoading(false);
     }
+
+    const handlePricingEvent = (e: any) => {
+      if (e.detail?.costPerWord) {
+        setCostPerWord(Number(e.detail.costPerWord));
+      }
+    };
+    window.addEventListener('pricing-updated', handlePricingEvent);
+
+    return () => {
+      window.removeEventListener('pricing-updated', handlePricingEvent);
+    };
   }, []);
 
   // Inject Google Search Console, Google Analytics, GTM, and custom scripts
@@ -706,6 +722,34 @@ export default function App() {
     }
   };
 
+  // Online Add New Page / Chunk anywhere in the active book
+  const handleAddChunk = async (payload: AddPagePayload) => {
+    if (!authToken || !activeBookId) return;
+    try {
+      const res = await fetch(`/api/books/${activeBookId}/chunks`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${authToken}`,
+        },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        alert(data.error || 'خطا در افزودن صفحه به کتاب');
+        return;
+      }
+
+      setBooks((prev) => prev.map((b) => (b.id === activeBookId ? data.book : b)));
+      if (data.newChunk?.id) {
+        setActiveChunkId(data.newChunk.id);
+        activeChunkIdRef.current = data.newChunk.id;
+      }
+    } catch (err: any) {
+      alert(`خطا در ایجاد صفحه: ${err.message}`);
+    }
+  };
+
   // Save changes to active project
   const handleUpdateProject = async (updatedProject: BookProject) => {
     setBooks((prev) => prev.map((b) => (b.id === updatedProject.id ? updatedProject : b)));
@@ -1032,6 +1076,7 @@ export default function App() {
           currentUser={currentUser}
           onBackToUserPanel={() => setCurrentView('dashboard')}
           onLogout={handleLogout}
+          onCostPerWordUpdated={(newRate) => setCostPerWord(newRate)}
         />
       </Suspense>
     );
@@ -1212,6 +1257,11 @@ export default function App() {
               isBatchTranslating={isBatchTranslating}
               onDeleteChunk={handleDeleteChunk}
               onToggleExcludeChunk={handleToggleExcludeChunk}
+              onOpenAddPageModal={(targetChunkId, pos) => {
+                setAddPageDefaultTargetChunkId(targetChunkId || activeChunkId);
+                setAddPageDefaultPosition(pos || 'after');
+                setIsAddPageModalOpen(true);
+              }}
             />
           </div>
 
@@ -1250,6 +1300,11 @@ export default function App() {
               isAdmin={isUserAdmin}
               onOpenMobileChunks={() => setMobileWorkspaceTab('chunks')}
               onOpenFindReplaceModal={() => setIsFindReplaceModalOpen(true)}
+              onOpenAddPageModal={(targetChunkId, pos) => {
+                setAddPageDefaultTargetChunkId(targetChunkId || currentChunk?.id || activeChunkId);
+                setAddPageDefaultPosition(pos || 'after');
+                setIsAddPageModalOpen(true);
+              }}
             />
           </div>
         </div>
@@ -1341,6 +1396,19 @@ export default function App() {
         onOpenNewBookModal={() => setIsNewBookModalOpen(true)}
         onExportPdf={(book) => handleExportPdf(book)}
       />
+
+      {isAddPageModalOpen && (
+        <Suspense fallback={null}>
+          <AddPageModal
+            isOpen={isAddPageModalOpen}
+            onClose={() => setIsAddPageModalOpen(false)}
+            onSubmit={handleAddChunk}
+            chunks={project?.chunks || []}
+            activeChunkId={addPageDefaultTargetChunkId || activeChunkId}
+            defaultPosition={addPageDefaultPosition}
+          />
+        </Suspense>
+      )}
     </div>
     </Suspense>
   );

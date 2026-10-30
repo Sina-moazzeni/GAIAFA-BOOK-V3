@@ -187,11 +187,11 @@
 
 .book-render-content span[style*="color: #9b2c2c"],
 .book-render-content .glossary-term {
-  color: #9b2c2c !important;
-  font-weight: 700;
-  background-color: #fff5f5;
-  padding: 1px 4px;
-  border-radius: 4px;
+  color: inherit !important;
+  font-weight: 600;
+  background-color: transparent !important;
+  padding: 0 !important;
+  border-radius: 0 !important;
 }
 
 /* Embedded illustrations & images styling */

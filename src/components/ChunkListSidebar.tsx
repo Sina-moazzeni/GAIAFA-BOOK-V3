@@ -13,7 +13,8 @@ import {
   Trash2,
   Edit2,
   Eye,
-  EyeOff
+  EyeOff,
+  Plus
 } from 'lucide-react';
 import { BookChunk } from '../types.ts';
 import { cleanChapterTitle } from '../utils/exporter.ts';
@@ -26,6 +27,7 @@ interface ChunkListSidebarProps {
   isBatchTranslating: boolean;
   onDeleteChunk?: (id: string) => void;
   onToggleExcludeChunk?: (id: string) => void;
+  onOpenAddPageModal?: (targetChunkId?: string, defaultPosition?: 'after' | 'before' | 'start' | 'end') => void;
 }
 
 export const ChunkListSidebar: React.FC<ChunkListSidebarProps> = ({
@@ -36,6 +38,7 @@ export const ChunkListSidebar: React.FC<ChunkListSidebarProps> = ({
   isBatchTranslating,
   onDeleteChunk,
   onToggleExcludeChunk,
+  onOpenAddPageModal,
 }) => {
   const [filter, setFilter] = useState<'all' | 'completed' | 'pending'>('all');
   const [search, setSearch] = useState('');
@@ -67,6 +70,18 @@ export const ChunkListSidebar: React.FC<ChunkListSidebarProps> = ({
             {filteredChunks.length} بخش
           </span>
         </div>
+
+        {/* Add Page Button */}
+        {onOpenAddPageModal && (
+          <button
+            type="button"
+            onClick={() => onOpenAddPageModal(activeChunkId || undefined, 'after')}
+            className="w-full py-2 px-3 rounded-xl bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-500 hover:to-indigo-400 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-md shadow-indigo-600/20 transition"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            <span>+ افزودن صفحه یا تصویر به کتاب</span>
+          </button>
+        )}
 
         {/* Search */}
         <div className="relative">
@@ -210,6 +225,7 @@ export const ChunkListSidebar: React.FC<ChunkListSidebarProps> = ({
                     )}
                     {onToggleExcludeChunk && (
                       <button
+                        type="button"
                         onClick={(e) => {
                           e.stopPropagation();
                           onToggleExcludeChunk(chunk.id);
@@ -218,6 +234,19 @@ export const ChunkListSidebar: React.FC<ChunkListSidebarProps> = ({
                         title={chunk.isExcludedFromBook ? 'این صفحه از کتاب و PDF حذف شده است (کلیک برای بازگرداندن)' : 'حذف این صفحه از خروجی کتاب و PDF'}
                       >
                         {chunk.isExcludedFromBook ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+                      </button>
+                    )}
+                    {onOpenAddPageModal && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onOpenAddPageModal(chunk.id, 'after');
+                        }}
+                        className="p-1 rounded text-slate-500 hover:text-indigo-400 hover:bg-indigo-500/10 transition"
+                        title="افزودن صفحه جدید بعد از این بخش"
+                      >
+                        <Plus className="w-3 h-3" />
                       </button>
                     )}
                     <span className="text-[10px] text-slate-500 truncate max-w-[120px]">

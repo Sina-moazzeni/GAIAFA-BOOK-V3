@@ -1,6 +1,6 @@
 import express from 'express';
 import crypto from 'crypto';
-import { db, User, BookRecord, TranslationJob, TransactionRecord, ApiKeyConfig, DEFAULT_ROBOTS_TXT, DEFAULT_LLMS_TXT } from './db.ts';
+import { db, User, BookRecord, BookChunkRecord, TranslationJob, TransactionRecord, ApiKeyConfig, DEFAULT_ROBOTS_TXT, DEFAULT_LLMS_TXT } from './db.ts';
 import { queueManager } from './queue.ts';
 import { GoogleGenAI } from '@google/genai';
 import { sendRealOtpSms } from './smsService.ts';
@@ -1267,6 +1267,118 @@ ${urls.map((u) => `  <url>
     });
   });
 
+  // Add new page/chunk anywhere in the book (start, end, before or after any existing page)
+  app.post('/api/books/:id/chunks', requireAuth, (req, res) => {
+    const user = (req as any).user as User;
+    const book = db.getBookById(req.params.id);
+
+    if (!book) return res.status(404).json({ error: 'کتاب یافت نشد.' });
+    if (book.userId !== user.id && user.role !== 'admin' && user.role !== 'staff') {
+      return res.status(403).json({ error: 'دسترسی غیرمجاز.' });
+    }
+
+    const {
+      chapterTitle = 'صفحه جدید',
+      englishText = '',
+      translatedHtml = '',
+      insertPosition = 'end', // 'end' | 'start' | 'after' | 'before'
+      targetChunkId,
+      imageUrl,
+      imageCaption,
+      imagePlacement = 'top', // 'top' | 'bottom' | 'standalone'
+    } = req.body;
+
+    const rawEn = (englishText || '').trim();
+    let rawFa = (translatedHtml || '').trim();
+
+    // If an image URL / base64 is provided, format it into HTML
+    if (imageUrl && imageUrl.trim()) {
+      const cleanImg = imageUrl.trim();
+      const captionHtml = imageCaption && imageCaption.trim()
+        ? `<figcaption style="text-align: center; font-size: 10pt; color: #64748b; margin-top: 6px; font-style: italic;">${escapeHtml(imageCaption.trim())}</figcaption>`
+        : '';
+      const imgBlock = `<figure class="book-illustration-wrap" style="text-align: center; margin: 18px 0; break-inside: avoid;"><img src="${cleanImg}" alt="${escapeHtml(imageCaption || chapterTitle)}" class="book-embedded-image" style="max-width: 85%; height: auto; margin: 0 auto; border-radius: 12px; display: block; box-shadow: 0 4px 16px rgba(0,0,0,0.12);" />${captionHtml}</figure>`;
+
+      if (imagePlacement === 'top') {
+        rawFa = rawFa ? `${imgBlock}\n${rawFa}` : imgBlock;
+      } else if (imagePlacement === 'bottom') {
+        rawFa = rawFa ? `${rawFa}\n${imgBlock}` : imgBlock;
+      } else {
+        rawFa = imgBlock;
+      }
+    }
+
+    // Wrap plain text in clean paragraphs if not already HTML
+    if (rawFa && !rawFa.startsWith('<') && !rawFa.includes('<p') && !rawFa.includes('<h')) {
+      const paragraphs = rawFa.split(/\n\s*\n/).filter(Boolean);
+      rawFa = paragraphs.map((p: string) => `<p style="line-height: 1.9; font-size: 12pt; text-align: justify; margin-bottom: 14px;">${escapeHtml(p.trim())}</p>`).join('\n');
+    }
+
+    // Add chapter title heading if not already present in HTML
+    if (rawFa && !rawFa.includes('<h1') && !rawFa.includes('<h2') && chapterTitle.trim()) {
+      rawFa = `<h2 style="color: #2b6cb0; font-size: 18pt; margin-top: 15px; margin-bottom: 12px; font-weight: bold;">${escapeHtml(chapterTitle.trim())}</h2>\n${rawFa}`;
+    }
+
+    const wordsFromEn = rawEn ? rawEn.replace(/<[^>]+>/g, ' ').split(/\s+/).filter(Boolean).length : 0;
+    const wordsFromFa = rawFa ? rawFa.replace(/<[^>]+>/g, ' ').split(/\s+/).filter(Boolean).length : 0;
+    const wordCount = Math.max(1, wordsFromEn || wordsFromFa || 40);
+
+    const hasImages = Boolean(imageUrl || rawFa.includes('<img') || rawEn.includes('<img') || rawFa.includes('data:image'));
+    const imgCount = (rawFa.match(/<img/gi) || []).length;
+
+    const newChunkId = `chunk_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    const newChunk: BookChunkRecord = {
+      id: newChunkId,
+      chapterNumber: 1,
+      chapterTitle: (chapterTitle || 'صفحه جدید').trim(),
+      chunkNumber: 1,
+      englishText: rawEn || (rawFa ? '' : 'New Page Content'),
+      translatedHtml: rawFa || undefined,
+      status: rawFa ? 'completed' : 'idle',
+      wordCount,
+      estimatedTokens: Math.ceil(wordCount * 1.35),
+      hasImages,
+      imageCount: hasImages ? Math.max(1, imgCount) : undefined,
+    };
+
+    if (!Array.isArray(book.chunks)) {
+      book.chunks = [];
+    }
+
+    let insertIndex = book.chunks.length;
+    if (insertPosition === 'start') {
+      insertIndex = 0;
+    } else if (insertPosition === 'before' && targetChunkId) {
+      const idx = book.chunks.findIndex(c => c.id === targetChunkId);
+      insertIndex = idx >= 0 ? idx : 0;
+    } else if (insertPosition === 'after' && targetChunkId) {
+      const idx = book.chunks.findIndex(c => c.id === targetChunkId);
+      insertIndex = idx >= 0 ? idx + 1 : book.chunks.length;
+    }
+
+    book.chunks.splice(insertIndex, 0, newChunk);
+
+    // Re-index all chunks strictly continuous
+    book.chunks.forEach((c, idx) => {
+      c.chunkNumber = idx + 1;
+    });
+
+    book.wordCount = book.chunks.reduce((sum, c) => sum + (c.wordCount || 0), 0);
+    book.totalImagesCount = book.chunks.reduce((sum, c) => sum + (c.imageCount || (c.hasImages ? 1 : 0)), 0);
+    const rateInfo = db.getUserEffectiveCostPerWord(user, book.tone);
+    book.estimatedCost = Math.round(book.wordCount * rateInfo.effectiveCostPerWord);
+    book.updatedAt = Date.now();
+
+    db.saveBook(book);
+
+    return res.json({
+      success: true,
+      message: 'صفحه جدید با موفقیت به کتاب اضافه گردید.',
+      newChunk,
+      book,
+    });
+  });
+
   // Apply Coupon / Promo Code
   app.post('/api/coupons/apply', requireAuth, (req, res) => {
     const user = (req as any).user as User;
@@ -2374,10 +2486,19 @@ ${urls.map((u) => `  <url>
   app.put('/api/admin/settings', requireAdmin, (req, res) => {
     const updated = db.updateSettings(req.body);
 
-    // Apply new pricePerWord across all books in the database
+    // Apply new pricePerWord across all books in the database and sync announcement banner
     if (req.body?.pricing?.costPerWord !== undefined) {
       const newRate = Number(req.body.pricing.costPerWord);
       const specMult = Number(req.body.pricing.specializedMultiplier || updated.pricing.specializedMultiplier || 1.25);
+      
+      // Sync banner text if it contains the rate template
+      if (updated.announcementBar?.text && /هزینه ترجمه هر کلمه فقط \d+ تومان/.test(updated.announcementBar.text)) {
+        updated.announcementBar.text = updated.announcementBar.text.replace(/هزینه ترجمه هر کلمه فقط \d+ تومان/, `هزینه ترجمه هر کلمه فقط ${newRate} تومان`);
+      }
+      if (updated.seo?.announcementText && /هزینه ترجمه هر کلمه فقط \d+ تومان/.test(updated.seo.announcementText)) {
+        updated.seo.announcementText = updated.seo.announcementText.replace(/هزینه ترجمه هر کلمه فقط \d+ تومان/, `هزینه ترجمه هر کلمه فقط ${newRate} تومان`);
+      }
+
       const books = db.getBooks();
       let updatedCount = 0;
       books.forEach(b => {
@@ -2389,13 +2510,46 @@ ${urls.map((u) => `  <url>
           updatedCount++;
         }
       });
-      if (updatedCount > 0) {
-        db.saveDatabase();
-        console.log(`[Pricing Update] Recalculated cost for ${updatedCount} books using new rate: ${newRate} Tomans/word`);
-      }
+      db.saveDatabase();
+      console.log(`[Pricing Update] Recalculated cost for ${updatedCount} books using new rate: ${newRate} Tomans/word`);
     }
 
     return res.json({ success: true, settings: updated });
+  });
+
+  // Dedicated instant Admin Pricing Update
+  app.put('/api/admin/pricing', requireAdmin, (req, res) => {
+    const { costPerWord, publisherCostPerWord, specializedMultiplier, minDepositAmount, freeWelcomeGift } = req.body;
+    const current = db.getSettings();
+    const newPricing = {
+      ...current.pricing,
+      ...(costPerWord !== undefined ? { costPerWord: Number(costPerWord) } : {}),
+      ...(publisherCostPerWord !== undefined ? { publisherCostPerWord: Number(publisherCostPerWord) } : {}),
+      ...(specializedMultiplier !== undefined ? { specializedMultiplier: Number(specializedMultiplier) } : {}),
+      ...(minDepositAmount !== undefined ? { minDepositAmount: Number(minDepositAmount) } : {}),
+      ...(freeWelcomeGift !== undefined ? { freeWelcomeGift: Number(freeWelcomeGift) } : {}),
+    };
+
+    const updated = db.updateSettings({ pricing: newPricing });
+
+    if (costPerWord !== undefined) {
+      const newRate = Number(costPerWord);
+      if (updated.announcementBar?.text && /هزینه ترجمه هر کلمه فقط \d+ تومان/.test(updated.announcementBar.text)) {
+        updated.announcementBar.text = updated.announcementBar.text.replace(/هزینه ترجمه هر کلمه فقط \d+ تومان/, `هزینه ترجمه هر کلمه فقط ${newRate} تومان`);
+      }
+      const books = db.getBooks();
+      books.forEach(b => {
+        if (b.status === 'draft' || b.status === 'error') {
+          const isSpec = b.tone === 'academic' || b.tone === 'aerospace' || b.tone === 'mathematics';
+          const unit = Math.round(newRate * (isSpec ? (newPricing.specializedMultiplier || 1.25) : 1.0));
+          b.estimatedCost = Math.round((b.wordCount || 0) * unit);
+          b.updatedAt = Date.now();
+        }
+      });
+      db.saveDatabase();
+    }
+
+    return res.json({ success: true, pricing: updated.pricing, settings: updated });
   });
 
   // Admin Test SMS

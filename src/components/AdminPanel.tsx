@@ -77,6 +77,7 @@ interface AdminPanelProps {
   currentUser: User;
   onBackToUserPanel: () => void;
   onLogout: () => void;
+  onCostPerWordUpdated?: (newRate: number) => void;
 }
 
 export type AdminTab =
@@ -210,7 +211,7 @@ export function AdminSectionGuide({
   );
 }
 
-export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPanelProps) {
+export function AdminPanel({ currentUser, onBackToUserPanel, onLogout, onCostPerWordUpdated }: AdminPanelProps) {
   const isStaff = currentUser.role === 'staff';
   const [activeTab, setActiveTab] = useState<AdminTab>(isStaff ? 'overview' : 'overview');
 
@@ -1373,6 +1374,15 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
       if (res.ok && data.success) {
         if (data.settings) {
           setSettings(data.settings);
+          if (data.settings.pricing?.costPerWord) {
+            const newRate = Number(data.settings.pricing.costPerWord);
+            if (onCostPerWordUpdated) onCostPerWordUpdated(newRate);
+            window.dispatchEvent(
+              new CustomEvent('pricing-updated', {
+                detail: { costPerWord: newRate, pricing: data.settings.pricing },
+              })
+            );
+          }
         }
         setSaveSettingsSuccess(true);
         setSettingsToast({
