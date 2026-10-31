@@ -64,7 +64,7 @@
 /* Book Preview Styling matching system instructions & custom color overrides */
 .book-render-content h1 {
   color: var(--theme-h1-color, #1a365d);
-  font-size: 22pt;
+  font-size: var(--theme-h1-size, 22pt);
   font-weight: 800;
   margin-bottom: 22px;
   margin-top: 18px;
@@ -74,7 +74,7 @@
 
 .book-render-content h2 {
   color: var(--theme-h2-color, #2b6cb0);
-  font-size: 16.5pt;
+  font-size: var(--theme-h2-size, 16.5pt);
   font-weight: 700;
   margin-top: 28px;
   margin-bottom: 14px;
@@ -85,7 +85,7 @@
 
 .book-render-content h3 {
   color: var(--theme-h3-color, #2c5282);
-  font-size: 13.5pt;
+  font-size: var(--theme-h3-size, 13.5pt);
   font-weight: 600;
   margin-top: 20px;
   margin-bottom: 12px;

@@ -2396,7 +2396,51 @@ ${urls.map((u) => `  <url>
   // Admin API Keys Pool
   app.get('/api/admin/api-keys', requireAdmin, (req, res) => {
     const keys = db.getApiKeys();
-    return res.json({ keys });
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const usdToTomanRate = 95000;
+
+    const enrichedKeys = keys.map(k => {
+      const isToday = k.todayDate === todayStr;
+      const todayTokens = isToday ? (k.todayTokensUsed || 0) : 0;
+
+      // Determine cost per million tokens based on provider and model
+      let costPerMillionUsd = 0.15; // default
+      const m = (k.model || '').toLowerCase();
+      if (m.includes('pro')) {
+        costPerMillionUsd = 1.25;
+      } else if (m.includes('deepseek-r1') || m.includes('r1')) {
+        costPerMillionUsd = 0.55;
+      } else if (m.includes('deepseek')) {
+        costPerMillionUsd = 0.14;
+      } else if (m.includes('gpt-4o-mini') || m.includes('mini')) {
+        costPerMillionUsd = 0.15;
+      } else if (m.includes('gpt-4o')) {
+        costPerMillionUsd = 2.50;
+      } else if (m.includes('claude-3-5-sonnet') || m.includes('sonnet')) {
+        costPerMillionUsd = 3.00;
+      } else if (m.includes('claude-3-5-haiku') || m.includes('haiku')) {
+        costPerMillionUsd = 0.80;
+      } else if (m.includes('lite') || m.includes('flash')) {
+        costPerMillionUsd = 0.075;
+      }
+
+      const todayCostUsd = Number(((todayTokens / 1000000) * costPerMillionUsd).toFixed(4));
+      const todayCostTomans = Math.round(todayCostUsd * usdToTomanRate);
+      const totalCostUsd = Number((((k.totalTokensUsed || 0) / 1000000) * costPerMillionUsd).toFixed(4));
+      const totalCostTomans = Math.round(totalCostUsd * usdToTomanRate);
+
+      return {
+        ...k,
+        todayTokensUsed: todayTokens,
+        todayDate: todayStr,
+        costPerMillionTokens: costPerMillionUsd,
+        todayCostUsd,
+        todayCostTomans,
+        totalCostUsd,
+        totalCostTomans,
+      };
+    });
+    return res.json({ keys: enrichedKeys });
   });
 
   // Admin Save / Update API Key (Create or Update)
@@ -2556,6 +2600,7 @@ ${urls.map((u) => `  <url>
     const key = db.getApiKeys().find(k => k.id === req.params.id);
     if (!key) return res.status(404).json({ error: 'کلید یافت نشد.' });
     key.totalTokensUsed = 0;
+    key.todayTokensUsed = 0;
     key.totalRequests = 0;
     key.successfulRequests = 0;
     key.failedRequests = 0;
@@ -2570,6 +2615,7 @@ ${urls.map((u) => `  <url>
     const keys = db.getApiKeys();
     keys.forEach(k => {
       k.totalTokensUsed = 0;
+      k.todayTokensUsed = 0;
       k.totalRequests = 0;
       k.successfulRequests = 0;
       k.failedRequests = 0;

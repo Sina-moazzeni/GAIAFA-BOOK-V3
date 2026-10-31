@@ -4891,11 +4891,12 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout, onCostPer
                     <tr>
                       <th className="py-3.5 px-4">عنوان کلید / سرور</th>
                       <th className="py-3.5 px-4">ارائه‌دهنده و مدل</th>
-                      <th className="py-3.5 px-4">کلید ماسک شده</th>
                       <th className="py-3.5 px-4">وضعیت</th>
-                      <th className="py-3.5 px-4">تعداد درخواست‌ها</th>
-                      <th className="py-3.5 px-4">توکن‌های مصرفی</th>
-                      <th className="py-3.5 px-4">تاخیر پاسخ</th>
+                      <th className="py-3.5 px-4">توکن‌های سوخته امروز</th>
+                      <th className="py-3.5 px-4">هزینه امروز (دلار / تومان)</th>
+                      <th className="py-3.5 px-4">مجموع کل توکن‌ها و هزینه</th>
+                      <th className="py-3.5 px-4">درخواست‌ها</th>
+                      <th className="py-3.5 px-4">تاخیر</th>
                       <th className="py-3.5 px-4 text-left">عملیات</th>
                     </tr>
                   </thead>
@@ -4903,7 +4904,12 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout, onCostPer
                     {apiKeys.map((k) => {
                       const isCooldown = k.cooldownUntil > Date.now();
                       const secondsLeft = Math.max(0, Math.ceil((k.cooldownUntil - Date.now()) / 1000));
-                      const masked = k.apiKey ? `${k.apiKey.slice(0, 4)}...${k.apiKey.slice(-4)}` : 'کلید سرور';
+                      const todayTokens = k.todayTokensUsed || 0;
+                      const todayCostUsd = k.todayCostUsd ?? Number(((todayTokens / 1000000) * 0.15).toFixed(4));
+                      const todayCostTomans = k.todayCostTomans ?? Math.round(todayCostUsd * 95000);
+                      const totalTokens = k.totalTokensUsed || 0;
+                      const totalCostUsd = k.totalCostUsd ?? Number(((totalTokens / 1000000) * 0.15).toFixed(4));
+                      const totalCostTomans = k.totalCostTomans ?? Math.round(totalCostUsd * 95000);
 
                       return (
                         <tr key={k.id} className="hover:bg-slate-800/40 transition-colors">
@@ -4917,9 +4923,6 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout, onCostPer
                             <span className="px-2 py-0.5 rounded bg-slate-800 text-amber-300 font-mono text-[11px]">
                               {k.provider} / {k.model}
                             </span>
-                          </td>
-                          <td className="py-3.5 px-4 font-mono text-slate-400" dir="ltr">
-                            {masked}
                           </td>
                           <td className="py-3.5 px-4">
                             <div className="flex items-center gap-1.5">
@@ -4950,10 +4953,29 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout, onCostPer
                             </div>
                           </td>
                           <td className="py-3.5 px-4 font-mono">
-                            <span className="text-white font-bold">{k.successfulRequests || 0}</span> موفق / <span className="text-rose-400">{k.failedRequests || 0}</span> خطا
+                            <div className="text-amber-400 font-bold text-sm">
+                              {todayTokens.toLocaleString('en-US')}
+                            </div>
+                            <span className="text-[10px] text-slate-500">توکن امروز</span>
                           </td>
-                          <td className="py-3.5 px-4 font-mono text-amber-400 font-bold">
-                            {(k.totalTokensUsed || 0).toLocaleString('en-US')}
+                          <td className="py-3.5 px-4 font-mono">
+                            <div className="text-emerald-400 font-bold">
+                              ${todayCostUsd.toFixed(4)}
+                            </div>
+                            <div className="text-[10.5px] text-slate-400 font-sans">
+                              {todayCostTomans.toLocaleString('fa-IR')} تومان
+                            </div>
+                          </td>
+                          <td className="py-3.5 px-4 font-mono">
+                            <div className="text-white font-bold">
+                              {totalTokens.toLocaleString('en-US')}
+                            </div>
+                            <div className="text-[10px] text-slate-400">
+                              ${totalCostUsd.toFixed(4)} • {totalCostTomans.toLocaleString('fa-IR')} ت
+                            </div>
+                          </td>
+                          <td className="py-3.5 px-4 font-mono text-[11px]">
+                            <span className="text-emerald-400 font-bold">{k.successfulRequests || 0}</span> / <span className="text-rose-400">{k.failedRequests || 0}</span>
                           </td>
                           <td className="py-3.5 px-4 font-mono text-slate-300">
                             {k.lastLatencyMs ? `${k.lastLatencyMs} ms` : '-'}
@@ -5004,10 +5026,11 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout, onCostPer
             {/* Token Cost Transparency & Live Financial Calculator Card */}
             {(() => {
               const totalTokensUsedAll = apiKeys.reduce((acc, k) => acc + (k.totalTokensUsed || 0), 0);
-              // Standard cost: $0.15 per 1,000,000 tokens on Flash/gpt-4o-mini
-              const estimatedCostUsd = ((totalTokensUsedAll / 1000000) * 0.15);
-              const usdToTomanRate = 92000;
-              const estimatedCostToman = Math.round(estimatedCostUsd * usdToTomanRate);
+              const totalTokensTodayAll = apiKeys.reduce((acc, k) => acc + (k.todayTokensUsed || 0), 0);
+              const todayCostUsdAll = apiKeys.reduce((acc, k) => acc + (k.todayCostUsd || 0), 0);
+              const todayCostTomansAll = apiKeys.reduce((acc, k) => acc + (k.todayCostTomans || 0), 0);
+              const totalCostUsdAll = apiKeys.reduce((acc, k) => acc + (k.totalCostUsd || 0), 0);
+              const totalCostTomansAll = apiKeys.reduce((acc, k) => acc + (k.totalCostTomans || 0), 0);
 
               return (
                 <div className="p-5 rounded-3xl bg-slate-900 border border-slate-800 shadow-xl space-y-4">
@@ -5015,38 +5038,50 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout, onCostPer
                     <div className="flex items-center gap-2">
                       <Calculator className="w-5 h-5 text-emerald-400" />
                       <div>
-                        <h3 className="font-bold text-sm text-white">محاسبه‌گر شفاف هزینه واقعی توکن‌های مصرفی سرور</h3>
+                        <h3 className="font-bold text-sm text-white">محاسبه‌گر شفاف هزینه توکن‌های سوخته‌شده امروز و کل سرور</h3>
                         <p className="text-[11px] text-slate-400">شفافیت ۱۰۰٪ تجاری: برآورد ریالی و دلاری هزینه‌های پردازش هوش مصنوعی</p>
                       </div>
                     </div>
                     <span className="text-[10px] bg-emerald-500/10 text-emerald-400 px-2.5 py-1 rounded-full font-bold border border-emerald-500/20">
-                      نرخ میانگین: ۰.۱۵$ به ازای هر ۱ میلیون توکن
+                      نرخ میانگین: ۰.۱۵$ به ازای هر ۱ میلیون توکن (دلار ۹۵,۰۰۰ تومان)
                     </span>
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
+                    <div className="bg-slate-950 p-3.5 rounded-2xl border border-amber-500/20 bg-amber-500/5">
+                      <span className="text-amber-400 font-semibold text-[11px] block mb-1">🔥 توکن‌های سوخته‌شده امروز:</span>
+                      <div className="text-xl font-black text-amber-300 font-mono">
+                        {totalTokensTodayAll.toLocaleString('en-US')} <span className="text-xs font-normal text-slate-400">توکن</span>
+                      </div>
+                      <span className="text-[10px] text-slate-400 mt-1 block">مصرف تمام کلیدهای سرور در امروز</span>
+                    </div>
+
+                    <div className="bg-slate-950 p-3.5 rounded-2xl border border-emerald-500/20 bg-emerald-500/5">
+                      <span className="text-emerald-400 font-semibold text-[11px] block mb-1">💵 هزینه توکن‌های امروز:</span>
+                      <div className="text-lg font-black text-emerald-300 font-mono">
+                        ${todayCostUsdAll.toFixed(4)} <span className="text-xs font-normal text-emerald-400">USD</span>
+                      </div>
+                      <div className="text-xs font-bold text-emerald-400 mt-0.5">
+                        {todayCostTomansAll.toLocaleString('fa-IR')} تومان
+                      </div>
+                    </div>
+
                     <div className="bg-slate-950 p-3.5 rounded-2xl border border-slate-800">
                       <span className="text-slate-400 text-[11px] block mb-1">مجموع کل توکن‌های مصرف‌شده:</span>
-                      <div className="text-lg font-black text-amber-400 font-mono">
+                      <div className="text-lg font-black text-white font-mono">
                         {totalTokensUsedAll.toLocaleString('en-US')} <span className="text-xs font-normal text-slate-400">توکن</span>
                       </div>
-                      <span className="text-[10px] text-slate-500 mt-1 block">شامل درخواست‌های ترجمه و واژه‌نامه</span>
+                      <span className="text-[10px] text-slate-500 mt-1 block">از زمان آغاز به کار سرور</span>
                     </div>
 
                     <div className="bg-slate-950 p-3.5 rounded-2xl border border-slate-800">
-                      <span className="text-slate-400 text-[11px] block mb-1">هزینه معادل دلاری (USD):</span>
-                      <div className="text-lg font-black text-emerald-400 font-mono">
-                        ${estimatedCostUsd.toFixed(4)} <span className="text-xs font-normal text-slate-400">USD</span>
-                      </div>
-                      <span className="text-[10px] text-slate-500 mt-1 block">بر مبنای تعرفه رسمی Google & OpenAI</span>
-                    </div>
-
-                    <div className="bg-slate-950 p-3.5 rounded-2xl border border-slate-800">
-                      <span className="text-slate-400 text-[11px] block mb-1">معادل هزینه به تومان ایران:</span>
+                      <span className="text-slate-400 text-[11px] block mb-1">مجموع کل هزینه پردازش:</span>
                       <div className="text-lg font-black text-blue-400 font-mono">
-                        {estimatedCostToman.toLocaleString('fa-IR')} <span className="text-xs font-normal text-slate-400">تومان</span>
+                        ${totalCostUsdAll.toFixed(4)}
                       </div>
-                      <span className="text-[10px] text-slate-500 mt-1 block">با احتساب دلار ۹۲,۰۰۰ تومانی</span>
+                      <div className="text-xs font-bold text-slate-300 mt-0.5">
+                        {totalCostTomansAll.toLocaleString('fa-IR')} تومان
+                      </div>
                     </div>
                   </div>
                 </div>

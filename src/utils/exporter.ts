@@ -473,36 +473,108 @@ export async function buildClientDocxDocument(project: BookProject): Promise<Doc
 
   const docChildren: ParagraphType[] = [];
 
-  // Title Page
+  // Title Page (Cover / First Page)
+  const cover = design.coverPage;
+  const coverTitle = cover?.title?.trim() || project.title || project.originalTitle || 'کتاب ترجمه شده';
+  const coverTitleSize = Math.round((cover?.titleSize || 28) * 2);
+  const coverTitleColor = cover?.titleColor ? cover.titleColor.replace(/^#/, '') : h1Color;
+  const coverSubtitle = cover?.subtitle?.trim() || '';
+  const coverSubtitleSize = Math.round((cover?.subtitleSize || 14) * 2);
+  const coverAuthor = cover?.author?.trim() || project.author || '';
+  const coverAuthorSize = Math.round((cover?.authorSize || 14) * 2);
+  const coverTranslator = cover?.translator?.trim() || project.translator || '';
+  const coverPublisher = cover?.publisher?.trim() || '';
+  const coverNote = cover?.note?.trim() || '';
+  const coverShowMotif = cover?.showMotif !== false;
+  const coverShowDivider = cover?.showDivider !== false;
+  const coverAlign = (cover?.layout === 'right_aligned' || cover?.layout === 'right') ? AlignmentType.RIGHT : AlignmentType.CENTER;
+
+  if (coverShowMotif) {
+    docChildren.push(
+      new Paragraph({
+        alignment: coverAlign,
+        spacing: { before: 1400, after: 200 },
+        bidirectional: true,
+        children: [
+          new TextRun({
+            text: '✤ ───── ❦ ───── ✤',
+            font: fontDef,
+            size: 24,
+            color: 'B45309',
+            rightToLeft: true,
+          }),
+        ],
+      })
+    );
+  }
+
   docChildren.push(
     new Paragraph({
-      alignment: AlignmentType.CENTER,
-      spacing: { before: 2000, after: 400 },
+      alignment: coverAlign,
+      spacing: { before: coverShowMotif ? 300 : 2000, after: 300 },
       bidirectional: true,
       children: [
         new TextRun({
-          text: project.title || project.originalTitle || 'کتاب ترجمه شده',
+          text: coverTitle,
           font: fontDef,
-          size: 48, // 24pt
+          size: coverTitleSize,
           bold: true,
-          color: h1Color,
+          color: coverTitleColor,
           rightToLeft: true,
         }),
       ],
     })
   );
 
-  if (project.author) {
+  if (coverSubtitle) {
     docChildren.push(
       new Paragraph({
-        alignment: AlignmentType.CENTER,
+        alignment: coverAlign,
+        spacing: { after: 300 },
+        bidirectional: true,
+        children: [
+          new TextRun({
+            text: coverSubtitle,
+            font: fontDef,
+            size: coverSubtitleSize,
+            color: '64748B',
+            rightToLeft: true,
+          }),
+        ],
+      })
+    );
+  }
+
+  if (coverShowDivider) {
+    docChildren.push(
+      new Paragraph({
+        alignment: coverAlign,
+        spacing: { before: 200, after: 400 },
+        bidirectional: true,
+        children: [
+          new TextRun({
+            text: '❖',
+            font: fontDef,
+            size: 20,
+            color: 'D97706',
+            rightToLeft: true,
+          }),
+        ],
+      })
+    );
+  }
+
+  if (coverAuthor) {
+    docChildren.push(
+      new Paragraph({
+        alignment: coverAlign,
         spacing: { after: 200 },
         bidirectional: true,
         children: [
           new TextRun({
-            text: `نویسنده: ${project.author}`,
+            text: `نویسنده: ${coverAuthor}`,
             font: fontDef,
-            size: 26, // 13pt
+            size: coverAuthorSize,
             color: '4A5568',
             rightToLeft: true,
           }),
@@ -511,19 +583,58 @@ export async function buildClientDocxDocument(project: BookProject): Promise<Doc
     );
   }
 
-  if (project.translator) {
+  if (coverTranslator) {
     docChildren.push(
       new Paragraph({
-        alignment: AlignmentType.CENTER,
-        spacing: { after: 1200 },
+        alignment: coverAlign,
+        spacing: { after: 300 },
         bidirectional: true,
         children: [
           new TextRun({
-            text: `ترجمه و ویرایش: ${project.translator}`,
+            text: `ترجمه و ویرایش: ${coverTranslator}`,
             font: fontDef,
             size: 24, // 12pt
             italics: true,
             color: '718096',
+            rightToLeft: true,
+          }),
+        ],
+      })
+    );
+  }
+
+  if (coverPublisher) {
+    docChildren.push(
+      new Paragraph({
+        alignment: coverAlign,
+        spacing: { after: 200 },
+        bidirectional: true,
+        children: [
+          new TextRun({
+            text: `ناشر: ${coverPublisher}`,
+            font: fontDef,
+            size: 22, // 11pt
+            color: '64748B',
+            rightToLeft: true,
+          }),
+        ],
+      })
+    );
+  }
+
+  if (coverNote) {
+    docChildren.push(
+      new Paragraph({
+        alignment: coverAlign,
+        spacing: { after: 600 },
+        bidirectional: true,
+        children: [
+          new TextRun({
+            text: coverNote,
+            font: fontDef,
+            size: 20, // 10pt
+            color: '94A3B8',
+            italics: true,
             rightToLeft: true,
           }),
         ],
@@ -646,6 +757,10 @@ export async function buildClientDocxDocument(project: BookProject): Promise<Doc
       const plainText = cleanHtmlNoImg.replace(/<[^>]+>/g, '').trim();
       if (!plainText) continue;
 
+      const h1DocxSize = Math.round((design.heading1Size || 22) * 2);
+      const h2DocxSize = Math.round((design.heading2Size || 17) * 2);
+      const h3DocxSize = Math.round((design.heading3Size || 14) * 2);
+
       if (tag === 'h1') {
         docChildren.push(
           new Paragraph({
@@ -657,7 +772,7 @@ export async function buildClientDocxDocument(project: BookProject): Promise<Doc
               new TextRun({
                 text: plainText,
                 font: fontDef,
-                size: 34,
+                size: h1DocxSize,
                 bold: true,
                 color: h1Color,
                 rightToLeft: true,
@@ -677,7 +792,7 @@ export async function buildClientDocxDocument(project: BookProject): Promise<Doc
               new TextRun({
                 text: plainText,
                 font: fontDef,
-                size: 30,
+                size: h2DocxSize,
                 bold: true,
                 color: h2Color,
                 rightToLeft: true,
@@ -696,7 +811,7 @@ export async function buildClientDocxDocument(project: BookProject): Promise<Doc
               new TextRun({
                 text: plainText,
                 font: fontDef,
-                size: 26,
+                size: h3DocxSize,
                 bold: true,
                 color: h3Color,
                 rightToLeft: true,

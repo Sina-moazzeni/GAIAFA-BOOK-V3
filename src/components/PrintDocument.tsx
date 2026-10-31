@@ -93,6 +93,9 @@ export const PrintDocument: React.FC<PrintDocumentProps> = ({ project }) => {
         ['--theme-h1-color' as any]: heading1Color,
         ['--theme-h2-color' as any]: heading2Color,
         ['--theme-h3-color' as any]: heading3Color,
+        ['--theme-h1-size' as any]: `${design.heading1Size || 22}pt`,
+        ['--theme-h2-size' as any]: `${design.heading2Size || 16.5}pt`,
+        ['--theme-h3-size' as any]: `${design.heading3Size || 13.5}pt`,
         ['--theme-text-color' as any]: textColor,
       }}
     >
@@ -213,70 +216,123 @@ export const PrintDocument: React.FC<PrintDocumentProps> = ({ project }) => {
         <tbody className="print-table-body">
           <tr>
             <td className={`p-0 ${marginPadding} py-2`}>
-              {/* Cover Page */}
-        {design.showCoverPage && (
-          <div className="book-chapter-break min-h-[85vh] flex flex-col items-center justify-center text-center py-20 my-auto">
-            {/* Top Ornamental Frame */}
-            <div
-              className="text-3xl font-serif mb-6 opacity-85"
-              style={{ color: theme.accentColor }}
-            >
-              {theme.dividerSymbol}
-            </div>
+              {/* Cover Page / Title Page (Fully customizable by user) */}
+              {design.showCoverPage && (() => {
+                const cover = design.coverPage || {};
+                const coverLayout = cover.layout || 'center';
+                const isRightAlign = coverLayout === 'right';
+                const isFramed = coverLayout === 'frame';
 
-            {/* Book Title with Theme Heading Color */}
-            <h1
-              className="text-4xl font-extrabold mb-4 tracking-tight leading-snug max-w-2xl"
-              style={{ color: theme.headingColor }}
-            >
-              {project.title || project.originalTitle}
-            </h1>
+                const coverTitle = cover.title || project.title || project.originalTitle || 'کتاب بدون عنوان';
+                const coverSubtitle = cover.subtitle !== undefined ? cover.subtitle : project.originalTitle;
+                const coverAuthor = cover.author !== undefined ? cover.author : project.author;
+                const coverTranslator = cover.translator !== undefined ? cover.translator : project.translator;
+                const coverPublisher = cover.publisher !== undefined ? cover.publisher : design.brandName;
+                const coverNote = cover.note || cover.editionYear;
 
-            {project.originalTitle && (
-              <h2 className="text-xl font-normal opacity-75 mb-6 font-serif" dir="ltr">
-                {project.originalTitle}
-              </h2>
-            )}
+                const titleSizePt = cover.titleSize || 32;
+                const subtitleSizePt = cover.subtitleSize || 16;
+                const authorSizePt = cover.authorSize || 13;
 
-            {/* Decorative Divider */}
-            <div
-              className="w-36 h-1.5 rounded-full my-6 opacity-80"
-              style={{ backgroundColor: theme.accentColor }}
-            />
+                const titleColor = cover.titleColor || heading1Color || theme.headingColor;
+                const subtitleColor = cover.subtitleColor || theme.accentColor || '#b45309';
+                const authorColor = cover.authorColor || textColor;
+                const showMotif = cover.showMotif ?? true;
+                const showDivider = cover.showDivider ?? true;
 
-            <div className="space-y-2.5 text-base font-medium opacity-90 my-8">
-              {project.author && (
-                <p>
-                  نویسنده: <strong style={{ color: theme.headingColor }}>{project.author}</strong>
-                </p>
-              )}
-              {project.translator && (
-                <p>
-                  ترجمه و ویرایش: <strong>{project.translator}</strong>
-                </p>
-              )}
-              {design.brandName && (
-                <p className="text-sm font-semibold opacity-80 pt-1">
-                  انتشارات / ناشر: {design.brandName}
-                </p>
-              )}
-              {design.websiteUrl && (
-                <p className="text-sm opacity-80 font-mono tracking-wider pt-1" dir="ltr">
-                  {design.websiteUrl}
-                </p>
-              )}
-            </div>
+                return (
+                  <div
+                    className={`book-chapter-break min-h-[85vh] flex flex-col py-16 my-auto ${
+                      isRightAlign ? 'items-start text-right' : 'items-center justify-center text-center'
+                    } ${isFramed ? 'p-10 border-4 border-double rounded-3xl m-4' : ''}`}
+                    style={{
+                      backgroundColor: cover.bgColor || undefined,
+                      borderColor: cover.borderColor || borderColor,
+                    }}
+                  >
+                    {/* Top Ornamental Frame / Motif */}
+                    {showMotif && (
+                      <div
+                        className="text-3xl font-serif mb-6 opacity-85 select-none"
+                        style={{ color: accentColor }}
+                      >
+                        {theme.dividerSymbol || '❦ ✤ ❦'}
+                      </div>
+                    )}
 
-            {/* Bottom Theme Tagline & Font Info */}
-            <div
-              className="mt-auto pt-8 border-t w-full max-w-sm text-xs opacity-70 flex items-center justify-between"
-              style={{ borderColor: theme.borderColor }}
-            >
-              <span>طرح دیزاین: {theme.name}</span>
-              <span>قلم: {fontFamily}</span>
-            </div>
-          </div>
-        )}
+                    {/* Book Main Title */}
+                    <h1
+                      className="font-extrabold mb-3 tracking-tight leading-snug max-w-3xl"
+                      style={{
+                        fontSize: `${titleSizePt}pt`,
+                        color: titleColor,
+                        textAlign: isRightAlign ? 'right' : 'center',
+                      }}
+                    >
+                      {coverTitle}
+                    </h1>
+
+                    {/* Book Subtitle / Original Title */}
+                    {coverSubtitle && (
+                      <h2
+                        className="font-normal opacity-80 mb-5 font-serif"
+                        dir="auto"
+                        style={{
+                          fontSize: `${subtitleSizePt}pt`,
+                          color: subtitleColor,
+                          textAlign: isRightAlign ? 'right' : 'center',
+                        }}
+                      >
+                        {coverSubtitle}
+                      </h2>
+                    )}
+
+                    {/* Decorative Divider */}
+                    {showDivider && (
+                      <div
+                        className={`h-1.5 rounded-full my-6 opacity-80 ${isRightAlign ? 'w-48 ml-auto mr-0' : 'w-36 mx-auto'}`}
+                        style={{ backgroundColor: accentColor }}
+                      />
+                    )}
+
+                    {/* Metadata: Author, Translator, Publisher, Edition */}
+                    <div
+                      className="space-y-3 font-medium opacity-90 my-8 leading-relaxed"
+                      style={{
+                        fontSize: `${authorSizePt}pt`,
+                        color: authorColor,
+                        textAlign: isRightAlign ? 'right' : 'center',
+                      }}
+                    >
+                      {coverAuthor && (
+                        <p>
+                          نویسنده: <strong style={{ color: titleColor }}>{coverAuthor}</strong>
+                        </p>
+                      )}
+                      {coverTranslator && (
+                        <p>
+                          ترجمه و ویرایش: <strong>{coverTranslator}</strong>
+                        </p>
+                      )}
+                      {coverPublisher && (
+                        <p className="opacity-85 pt-1">
+                          انتشارات / ناشر: <strong>{coverPublisher}</strong>
+                        </p>
+                      )}
+                      {design.websiteUrl && (
+                        <p className="opacity-80 font-mono tracking-wider pt-0.5 text-[10pt]" dir="ltr">
+                          {design.websiteUrl}
+                        </p>
+                      )}
+                      {coverNote && (
+                        <p className="text-[10pt] opacity-75 pt-2 border-t border-slate-300/40 max-w-md mx-auto">
+                          {coverNote}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                );
+              })()}
 
         {/* Chapters Content */}
         <div className="space-y-12">

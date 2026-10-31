@@ -92,6 +92,70 @@ export const ExportDesignModal: React.FC<ExportDesignModalProps> = ({
   const [textAlignment, setTextAlignment] = useState<'right' | 'both'>(initialConfig.textAlignment || 'right');
   const [customColors, setCustomColors] = useState<CustomColorPalette>(initialConfig.customColors || {});
 
+  // Dynamic Heading Sizes across the whole book (سرتیترها و تیترها)
+  const [heading1Size, setHeading1Size] = useState<number>(initialConfig.heading1Size || 22);
+  const [heading2Size, setHeading2Size] = useState<number>(initialConfig.heading2Size || 17);
+  const [heading3Size, setHeading3Size] = useState<number>(initialConfig.heading3Size || 14);
+
+  const normalizeCoverLayout = (layout?: string): 'classic_centered' | 'modern_minimal' | 'framed_spiritual' | 'right_aligned' => {
+    if (layout === 'frame') return 'framed_spiritual';
+    if (layout === 'center') return 'classic_centered';
+    if (layout === 'right') return 'right_aligned';
+    if (layout === 'modern_minimal' || layout === 'framed_spiritual' || layout === 'right_aligned' || layout === 'classic_centered') {
+      return layout;
+    }
+    return 'framed_spiritual';
+  };
+
+  const [coverLayout, setCoverLayout] = useState<'classic_centered' | 'modern_minimal' | 'framed_spiritual' | 'right_aligned'>(
+    normalizeCoverLayout(initialConfig.coverPage?.layout)
+  );
+  const [coverTitle, setCoverTitle] = useState(
+    initialConfig.coverPage?.title ?? (project.title || project.originalTitle || '')
+  );
+  const [coverTitleSize, setCoverTitleSize] = useState<number>(
+    initialConfig.coverPage?.titleSize || 28
+  );
+  const [coverTitleColor, setCoverTitleColor] = useState(
+    initialConfig.coverPage?.titleColor || ''
+  );
+  const [coverSubtitle, setCoverSubtitle] = useState(
+    initialConfig.coverPage?.subtitle ?? (project.originalTitle && project.title ? project.originalTitle : '')
+  );
+  const [coverSubtitleSize, setCoverSubtitleSize] = useState<number>(
+    initialConfig.coverPage?.subtitleSize || 14
+  );
+  const [coverSubtitleColor, setCoverSubtitleColor] = useState(
+    initialConfig.coverPage?.subtitleColor || ''
+  );
+  const [coverAuthor, setCoverAuthor] = useState(
+    initialConfig.coverPage?.author ?? (project.author || '')
+  );
+  const [coverAuthorSize, setCoverAuthorSize] = useState<number>(
+    initialConfig.coverPage?.authorSize || 14
+  );
+  const [coverAuthorColor, setCoverAuthorColor] = useState(
+    initialConfig.coverPage?.authorColor || ''
+  );
+  const [coverTranslator, setCoverTranslator] = useState(
+    initialConfig.coverPage?.translator ?? (project.translator || '')
+  );
+  const [coverPublisher, setCoverPublisher] = useState(
+    initialConfig.coverPage?.publisher ?? ''
+  );
+  const [coverNote, setCoverNote] = useState(
+    initialConfig.coverPage?.note ?? ''
+  );
+  const [coverShowMotif, setCoverShowMotif] = useState(
+    initialConfig.coverPage?.showMotif ?? true
+  );
+  const [coverShowDivider, setCoverShowDivider] = useState(
+    initialConfig.coverPage?.showDivider ?? true
+  );
+
+  // Preview Mode Switcher ('body' = pages of the book, 'cover' = page 1 title/cover)
+  const [previewMode, setPreviewMode] = useState<'body' | 'cover'>('body');
+
   // Excluded pages from export (combining config.excludedChunkIds and individual chunk isExcludedFromBook)
   const [excludedChunkIds, setExcludedChunkIds] = useState<string[]>(() => {
     const list = [...(initialConfig.excludedChunkIds || [])];
@@ -105,7 +169,7 @@ export const ExportDesignModal: React.FC<ExportDesignModalProps> = ({
   const [pageNumberInput, setPageNumberInput] = useState('');
   const [pageExcludeFeedback, setPageExcludeFeedback] = useState<string | null>(null);
 
-  const [activeTab, setActiveTab] = useState<'themes' | 'colors' | 'headers' | 'typography' | 'pages'>('themes');
+  const [activeTab, setActiveTab] = useState<'themes' | 'cover' | 'colors' | 'headers' | 'typography' | 'pages'>('themes');
   const [isExportingDocx, setIsExportingDocx] = useState(false);
   const [savedBanner, setSavedBanner] = useState<string | null>(null);
   const [isFullScreenPreview, setIsFullScreenPreview] = useState(false);
@@ -138,6 +202,26 @@ export const ExportDesignModal: React.FC<ExportDesignModalProps> = ({
     customColors,
     continuousFlow,
     excludedChunkIds,
+    heading1Size,
+    heading2Size,
+    heading3Size,
+    coverPage: {
+      layout: coverLayout,
+      title: coverTitle,
+      titleSize: coverTitleSize,
+      titleColor: coverTitleColor || undefined,
+      subtitle: coverSubtitle,
+      subtitleSize: coverSubtitleSize,
+      subtitleColor: coverSubtitleColor || undefined,
+      author: coverAuthor,
+      authorSize: coverAuthorSize,
+      authorColor: coverAuthorColor || undefined,
+      translator: coverTranslator,
+      publisher: coverPublisher,
+      note: coverNote,
+      showMotif: coverShowMotif,
+      showDivider: coverShowDivider,
+    },
   };
 
   const handleToggleChunkExcluded = (chunkId: string) => {
@@ -360,6 +444,21 @@ export const ExportDesignModal: React.FC<ExportDesignModalProps> = ({
             </button>
 
             <button
+              onClick={() => {
+                setActiveTab('cover');
+                setPreviewMode('cover');
+              }}
+              className={`px-3 py-1.5 rounded-xl font-semibold transition flex items-center gap-1.5 ${
+                activeTab === 'cover'
+                  ? 'bg-amber-500 text-slate-950 shadow-sm'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-800'
+              }`}
+            >
+              <BookOpen className="w-3.5 h-3.5" />
+              <span>صفحه اول و جلد کتاب</span>
+            </button>
+
+            <button
               onClick={() => setActiveTab('colors')}
               className={`px-3 py-1.5 rounded-xl font-semibold transition flex items-center gap-1.5 ${
                 activeTab === 'colors'
@@ -564,6 +663,190 @@ export const ExportDesignModal: React.FC<ExportDesignModalProps> = ({
                         <div>{p.name}</div>
                       </button>
                     ))}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* TAB: Title & Cover Page Designer (طراحی و ویرایش صفحه اول و جلد کتاب) */}
+            {activeTab === 'cover' && (
+              <div className="space-y-4">
+                {/* 1. Cover Page Layout Options */}
+                <div className="bg-slate-850 p-4 rounded-2xl border border-slate-750 space-y-3 text-xs">
+                  <div className="flex items-center justify-between border-b border-slate-750 pb-2">
+                    <h3 className="font-bold text-white flex items-center gap-1.5">
+                      <Layout className="w-3.5 h-3.5 text-amber-400" />
+                      <span>سبک چیدمان صفحه عنوان (برگه اول کتاب):</span>
+                    </h3>
+                    <span className="text-[10px] text-amber-300 bg-amber-500/20 px-2 py-0.5 rounded-full font-bold">
+                      صفحه رسمی آغازین کتاب
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                    {[
+                      { id: 'framed_spiritual', name: 'کادر اسلیمی معنوی', desc: 'قاب و شمسه فاخر تذهیب' },
+                      { id: 'classic_centered', name: 'وسط‌چین کلاسیک', desc: 'چیدمان سنتی ناشران' },
+                      { id: 'modern_minimal', name: 'مدرن مینیمال', desc: 'ساده، شیک و بدون کادر' },
+                      { id: 'right_aligned', name: 'راست‌چین شرکتی', desc: 'رسمی و اداری' },
+                    ].map(l => (
+                      <button
+                        key={l.id}
+                        type="button"
+                        onClick={() => setCoverLayout(l.id as any)}
+                        className={`p-2.5 rounded-xl border text-right transition flex flex-col justify-between ${
+                          coverLayout === l.id
+                            ? 'bg-amber-500/15 border-amber-500 text-amber-300 font-bold ring-2 ring-amber-500/30'
+                            : 'bg-slate-900 border-slate-750 text-slate-300 hover:bg-slate-800'
+                        }`}
+                      >
+                        <div className="text-xs">{l.name}</div>
+                        <div className="text-[10px] text-slate-400 font-normal mt-1">{l.desc}</div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* 2. Book Title Customization (متن، سایز و رنگ) */}
+                <div className="bg-slate-850 p-4 rounded-2xl border border-slate-750 space-y-3 text-xs">
+                  <div className="flex items-center justify-between border-b border-slate-750 pb-2">
+                    <h3 className="font-bold text-white flex items-center gap-1.5">
+                      <Type className="w-3.5 h-3.5 text-amber-400" />
+                      <span>عنوان اصلی کتاب در صفحه اول:</span>
+                    </h3>
+                    <span className="text-[10px] text-slate-400 font-mono">سایز فعلی: {coverTitleSize} pt</span>
+                  </div>
+
+                  <div>
+                    <label className="block text-slate-300 font-semibold mb-1">متن عنوان کتاب:</label>
+                    <input
+                      type="text"
+                      value={coverTitle}
+                      onChange={e => setCoverTitle(e.target.value)}
+                      placeholder="عنوان اصلی کتاب"
+                      className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-400 font-bold"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                    <div>
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="text-slate-400 text-[11px]">سایز قلم عنوان:</label>
+                        <span className="font-mono text-amber-400 font-bold">{coverTitleSize} pt</span>
+                      </div>
+                      <input
+                        type="range"
+                        min="18"
+                        max="46"
+                        step="1"
+                        value={coverTitleSize}
+                        onChange={e => setCoverTitleSize(Number(e.target.value))}
+                        className="w-full accent-amber-500 cursor-pointer h-2 bg-slate-900 rounded-lg"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-slate-400 mb-1 text-[11px]">رنگ عنوان کتاب (اختیاری):</label>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="color"
+                          value={coverTitleColor || '#1a365d'}
+                          onChange={e => setCoverTitleColor(e.target.value)}
+                          className="w-8 h-8 rounded-lg cursor-pointer bg-slate-900 border border-slate-700 p-0.5"
+                        />
+                        <input
+                          type="text"
+                          value={coverTitleColor}
+                          onChange={e => setCoverTitleColor(e.target.value)}
+                          placeholder="پیش‌فرض تم"
+                          className="flex-1 bg-slate-900 border border-slate-700 rounded-xl px-2.5 py-1.5 text-xs text-white font-mono"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 3. Subtitle & Author */}
+                <div className="bg-slate-850 p-4 rounded-2xl border border-slate-750 space-y-3 text-xs">
+                  <h3 className="font-bold text-white border-b border-slate-750 pb-2">
+                    عنوان فرعی، نویسنده و مترجم:
+                  </h3>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-slate-300 font-semibold mb-1">عنوان فرعی یا زبان اصلی:</label>
+                      <input
+                        type="text"
+                        value={coverSubtitle}
+                        onChange={e => setCoverSubtitle(e.target.value)}
+                        placeholder="مثلاً: The Power of Now"
+                        className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-400"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-slate-300 font-semibold mb-1">نام نویسنده اصلی:</label>
+                      <input
+                        type="text"
+                        value={coverAuthor}
+                        onChange={e => setCoverAuthor(e.target.value)}
+                        placeholder="مثلاً: اکهارت تله"
+                        className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-400"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                    <div>
+                      <label className="block text-slate-300 font-semibold mb-1">نام مترجم و ویراستار:</label>
+                      <input
+                        type="text"
+                        value={coverTranslator}
+                        onChange={e => setCoverTranslator(e.target.value)}
+                        placeholder="مثلاً: سامانه هوشمند ترجمه"
+                        className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-400"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-slate-300 font-semibold mb-1">نام انتشارات یا نشان سایت:</label>
+                      <input
+                        type="text"
+                        value={coverPublisher}
+                        onChange={e => setCoverPublisher(e.target.value)}
+                        placeholder="مثلاً: انتشارات نگاه نوین یا www.mywebsite.com"
+                        className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-400"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-slate-300 font-semibold mb-1">یادداشت، سال نشر یا توضیحات صفحه اول:</label>
+                    <input
+                      type="text"
+                      value={coverNote}
+                      onChange={e => setCoverNote(e.target.value)}
+                      placeholder="مثلاً: چاپ نخست — ۱۴۰۳ | کلیه حقوق نشر و ترجمه محفوظ است"
+                      className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-400"
+                    />
+                  </div>
+
+                  {/* Toggles */}
+                  <div className="pt-2 flex flex-wrap items-center gap-5 border-t border-slate-750">
+                    <label className="flex items-center gap-2 cursor-pointer text-slate-300">
+                      <input
+                        type="checkbox"
+                        checked={coverShowMotif}
+                        onChange={e => setCoverShowMotif(e.target.checked)}
+                        className="w-4 h-4 rounded border-slate-700 bg-slate-900 text-amber-500 focus:ring-0"
+                      />
+                      <span>نمایش نگاره و شمسه اسلیمی تذهیب در بالای صفحه اول</span>
+                    </label>
+                    <label className="flex items-center gap-2 cursor-pointer text-slate-300">
+                      <input
+                        type="checkbox"
+                        checked={coverShowDivider}
+                        onChange={e => setCoverShowDivider(e.target.checked)}
+                        className="w-4 h-4 rounded border-slate-700 bg-slate-900 text-amber-500 focus:ring-0"
+                      />
+                      <span>نمایش نشان و خط جداکننده زیر عنوان</span>
+                    </label>
                   </div>
                 </div>
               </div>
@@ -1254,7 +1537,100 @@ export const ExportDesignModal: React.FC<ExportDesignModalProps> = ({
                   </div>
                 </div>
 
-                {/* 2. Iranian Book Trim Sizes (قطع استاندارد چاپ کتاب) */}
+                {/* 2. Dynamic Headings Sizing across the Book (سرتیترها و تیترها) */}
+                <div className="bg-slate-850 p-4 rounded-2xl border border-slate-750 space-y-3 text-xs">
+                  <div className="flex items-center justify-between border-b border-slate-750 pb-2">
+                    <h3 className="font-bold text-white flex items-center gap-1.5">
+                      <Sliders className="w-3.5 h-3.5 text-amber-400" />
+                      <span>سایز سرتیترها و تیترها در کل کتاب (H1, H2, H3):</span>
+                    </h3>
+                    <span className="text-[10px] bg-amber-500/20 text-amber-300 px-2 py-0.5 rounded-full font-bold">
+                      اعمال سراسری روی تمامی فصول و صفحات
+                    </span>
+                  </div>
+
+                  <div className="space-y-4 pt-1">
+                    {/* H1 */}
+                    <div>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <label className="text-slate-200 font-semibold flex items-center gap-2">
+                          <span className="px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-300 font-mono text-[11px] font-bold">H1</span>
+                          <span>سرتیتر فصل‌ها و تیتر اصلی کتاب:</span>
+                        </label>
+                        <span className="font-mono font-bold text-amber-400 bg-slate-900 px-2 py-0.5 rounded border border-slate-700 text-xs">
+                          {heading1Size} pt
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <span className="text-[10px] text-slate-500 font-mono">16pt</span>
+                        <input
+                          type="range"
+                          min="16"
+                          max="36"
+                          step="1"
+                          value={heading1Size}
+                          onChange={e => setHeading1Size(Number(e.target.value))}
+                          className="flex-1 accent-amber-500 cursor-pointer h-2 bg-slate-900 rounded-lg"
+                        />
+                        <span className="text-[10px] text-slate-500 font-mono">36pt</span>
+                      </div>
+                    </div>
+
+                    {/* H2 */}
+                    <div>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <label className="text-slate-200 font-semibold flex items-center gap-2">
+                          <span className="px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-300 font-mono text-[11px] font-bold">H2</span>
+                          <span>زیرعنوان و تیترهای درجه ۲:</span>
+                        </label>
+                        <span className="font-mono font-bold text-amber-400 bg-slate-900 px-2 py-0.5 rounded border border-slate-700 text-xs">
+                          {heading2Size} pt
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <span className="text-[10px] text-slate-500 font-mono">13pt</span>
+                        <input
+                          type="range"
+                          min="13"
+                          max="28"
+                          step="1"
+                          value={heading2Size}
+                          onChange={e => setHeading2Size(Number(e.target.value))}
+                          className="flex-1 accent-amber-500 cursor-pointer h-2 bg-slate-900 rounded-lg"
+                        />
+                        <span className="text-[10px] text-slate-500 font-mono">28pt</span>
+                      </div>
+                    </div>
+
+                    {/* H3 */}
+                    <div>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <label className="text-slate-200 font-semibold flex items-center gap-2">
+                          <span className="px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-mono text-[11px] font-bold">H3</span>
+                          <span>تیتر فرعی و بخش‌های کوچک:</span>
+                        </label>
+                        <span className="font-mono font-bold text-amber-400 bg-slate-900 px-2 py-0.5 rounded border border-slate-700 text-xs">
+                          {heading3Size} pt
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <span className="text-[10px] text-slate-500 font-mono">11pt</span>
+                        <input
+                          type="range"
+                          min="11"
+                          max="22"
+                          step="1"
+                          value={heading3Size}
+                          onChange={e => setHeading3Size(Number(e.target.value))}
+                          className="flex-1 accent-amber-500 cursor-pointer h-2 bg-slate-900 rounded-lg"
+                        />
+                        <span className="text-[10px] text-slate-500 font-mono">22pt</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 3. Iranian Book Trim Sizes (قطع استاندارد چاپ کتاب) */}
                 <div className="bg-slate-850 p-4 rounded-2xl border border-slate-750 space-y-3 text-xs">
                   <div className="flex items-center justify-between border-b border-slate-750 pb-2">
                     <span className="font-bold text-white flex items-center gap-1.5">
@@ -1625,10 +2001,33 @@ export const ExportDesignModal: React.FC<ExportDesignModalProps> = ({
           {/* Live Page Mockup Column (6 or 5 cols) */}
           <div className="lg:col-span-6 xl:col-span-5 flex flex-col">
             <div className="flex items-center justify-between mb-2">
-              <label className="text-xs font-bold text-slate-200 flex items-center gap-1.5">
-                <Eye className="w-3.5 h-3.5 text-emerald-400" />
-                <span>پیش‌نمایش زنده صفحه چاپ کتاب:</span>
-              </label>
+              <div className="flex items-center gap-1.5 p-0.5 rounded-xl bg-slate-800 border border-slate-700 text-[11px]">
+                <button
+                  type="button"
+                  onClick={() => setPreviewMode('body')}
+                  className={`px-3 py-1 rounded-lg transition font-semibold flex items-center gap-1 ${
+                    previewMode === 'body'
+                      ? 'bg-amber-500 text-slate-950 shadow-sm'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  <Eye className="w-3 h-3" />
+                  <span>صفحات متن کتاب</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPreviewMode('cover')}
+                  className={`px-3 py-1 rounded-lg transition font-semibold flex items-center gap-1 ${
+                    previewMode === 'cover'
+                      ? 'bg-amber-500 text-slate-950 shadow-sm'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  <BookOpen className="w-3 h-3" />
+                  <span>صفحه اول و جلد</span>
+                </button>
+              </div>
+
               <span className="text-[10px] text-slate-400">
                 {activeTheme.name.split(' (')[0]} • {activeTheme.dividerSymbol}
               </span>
@@ -1636,7 +2035,7 @@ export const ExportDesignModal: React.FC<ExportDesignModalProps> = ({
 
             {/* Simulated Printed Page */}
             <div
-              className={`flex-1 rounded-2xl p-6 sm:p-7 shadow-2xl flex flex-col justify-between transition-all duration-300 select-none overflow-hidden min-h-[440px] relative ${
+              className={`flex-1 rounded-2xl p-6 sm:p-7 shadow-2xl flex flex-col justify-between transition-all duration-300 select-none overflow-hidden min-h-[460px] relative ${
                 borderStyle === 'ornate_spiritual'
                   ? 'border-4 border-double'
                   : borderStyle === 'double_classic'
@@ -1664,132 +2063,251 @@ export const ExportDesignModal: React.FC<ExportDesignModalProps> = ({
                 </div>
               )}
 
-              {/* Running Header */}
-              {showHeader && headerText ? (
-                <div>
-                  <div
-                    className="border-b pb-2 flex items-center justify-between text-[10px] opacity-85"
-                    style={{
-                      borderColor: customColors.borderColor || activeTheme.borderColor,
-                      color: customColors.headerColor || activeTheme.textColor,
-                    }}
-                  >
-                    <span className="font-bold truncate max-w-[200px]">{headerText}</span>
-                    <span className="font-serif italic text-[9px] truncate max-w-[110px]" dir="ltr">
-                      {project.originalTitle || 'Chapter 1'}
-                    </span>
-                  </div>
-                  {/* Visual Top Margin Breathing Room */}
-                  <div style={{ height: topMargin === 'compact' ? '8px' : topMargin === 'generous' ? '20px' : topMargin === 'extra_generous' ? '30px' : '14px' }} />
-                </div>
-              ) : (
-                <div style={{ height: topMargin === 'compact' ? '12px' : topMargin === 'generous' ? '28px' : topMargin === 'extra_generous' ? '38px' : '18px' }} className="flex items-center justify-center">
-                  <span className="text-[8.5px] text-slate-400/50 italic border-b border-dashed border-slate-300/40 pb-0.5">
-                    (حاشیه بالای صفحه: {topMargin === 'compact' ? 'فشرده' : topMargin === 'generous' ? 'باز' : topMargin === 'extra_generous' ? 'لوکس' : 'استاندارد کتابی'})
-                  </span>
-                </div>
-              )}
-
-              {/* Sample Content */}
-              <div className="my-auto py-3 space-y-2.5 text-right">
-                {/* Chapter Title & Divider (H1) */}
-                <div className="text-center space-y-1">
-                  <h3
-                    className="font-extrabold text-sm sm:text-base tracking-tight"
-                    style={{ color: customColors.heading1Color || activeTheme.headingColor }}
-                  >
-                    فصل اول: دروازه ورود به آرامش درون
-                  </h3>
-                  <div
-                    className="text-xs font-serif opacity-85"
-                    style={{ color: customColors.accentColor || activeTheme.accentColor }}
-                  >
-                    {activeTheme.dividerSymbol}
-                  </div>
-                </div>
-
-                {/* Subheadings H2 & H3 (زیرمنوها) */}
-                <div className="pt-1">
-                  <h4
-                    className="font-bold text-xs sm:text-[13px] tracking-tight pb-0.5"
-                    style={{ color: customColors.heading2Color || activeTheme.headingColor }}
-                  >
-                    زیرمنو و تیتر فرعی: رهایی از بند تعاریف ذهنی
-                  </h4>
-                  <h5
-                    className="font-semibold text-[10.5px]"
-                    style={{ color: customColors.heading3Color || activeTheme.accentColor }}
-                  >
-                    بخش ۱.۱: مشاهده‌گری بدون قضاوت و سکون ذهن
-                  </h5>
-                </div>
-
-                {/* Sample Distinct Paragraph 1 */}
-                <p
-                  className="text-justify leading-relaxed text-[11px] sm:text-xs"
-                  style={{
-                    lineHeight: lineSpacing === 'compact' ? 1.65 : lineSpacing === 'relaxed' ? 2.25 : 1.95,
-                    fontSize: fontSize === 'small' ? '10px' : fontSize === 'large' ? '13px' : '11.5px',
-                    marginBottom: paragraphSpacing === 'compact' ? '12px' : paragraphSpacing === 'generous' ? '28px' : paragraphSpacing === 'relaxed' ? '22px' : '16px',
-                    color: customColors.textColor || activeTheme.textColor,
-                  }}
-                >
-                  بزرگ‌ترین مانع در مسیر درک حقیقت، هم‌هویت‌شدن با{' '}
-                  <span style={{ color: customColors.accentColor || '#9b2c2c', fontWeight: 'bold' }}>ذهن شرطی‌شده</span> است. هنگامی که انسان اسیر
-                  جریان بی‌پایان افکار می‌گردد، ارتباط بنیادین خود را با ساحت آرامش درونی از دست می‌دهد.
-                </p>
-
-                {/* Sample Quote */}
+              {previewMode === 'cover' ? (
+                /* ================= COVER PAGE PREVIEW ================= */
                 <div
-                  className="p-2.5 rounded-lg border-r-4 text-[10.5px] italic opacity-95 my-1"
-                  style={{
-                    borderRightColor: customColors.accentColor || activeTheme.accentColor,
-                    backgroundColor: `${customColors.borderColor || activeTheme.borderColor}20`,
-                    color: customColors.textColor || activeTheme.textColor,
-                  }}
-                >
-                  «سکوت، زبانی است که کائنات به واسطه آن ژرف‌ترین حقایق را آشکار می‌سازد.»
-                </div>
-
-                {/* Sample Distinct Paragraph 2 */}
-                <p
-                  className="text-justify leading-relaxed text-[11px] sm:text-xs"
-                  style={{
-                    lineHeight: lineSpacing === 'compact' ? 1.65 : lineSpacing === 'relaxed' ? 2.25 : 1.95,
-                    fontSize: fontSize === 'small' ? '10px' : fontSize === 'large' ? '13px' : '11.5px',
-                    color: customColors.textColor || activeTheme.textColor,
-                  }}
-                >
-                  با ایجاد فاصله شفاف بین پاراگراف‌ها، ذهن خواننده فرصت تامل و تنفس می‌یابد و هماهنگی بصری کتاب چاپی به اوج می‌رسد.
-                </p>
-              </div>
-
-              {/* Running Footer */}
-              {showFooter && footerText ? (
-                <div
-                  className="border-t pt-2 flex items-center justify-between text-[10px] opacity-85"
+                  className={`my-auto py-6 space-y-4 w-full ${
+                    coverLayout === 'right_aligned' ? 'text-right' : 'text-center'
+                  } ${
+                    coverLayout === 'framed_spiritual'
+                      ? 'border-2 border-double p-5 rounded-2xl'
+                      : ''
+                  }`}
                   style={{
                     borderColor: customColors.borderColor || activeTheme.borderColor,
-                    color: customColors.footerColor || activeTheme.textColor,
                   }}
                 >
-                  <span className="truncate max-w-[200px]">{footerText}</span>
-                  {showPageNumbers && <span className="font-bold font-mono">صفحه ۲۴</span>}
-                </div>
-              ) : showPageNumbers ? (
-                <div
-                  className="border-t pt-1 flex items-center justify-end text-[10px] opacity-85"
-                  style={{
-                    borderColor: customColors.borderColor || activeTheme.borderColor,
-                    color: customColors.footerColor || activeTheme.textColor,
-                  }}
-                >
-                  <span className="font-bold font-mono">صفحه ۲۴</span>
+                  {/* Ornate Motif */}
+                  {coverShowMotif && (
+                    <div
+                      className="text-lg tracking-[6px] select-none"
+                      style={{ color: customColors.accentColor || activeTheme.accentColor }}
+                    >
+                      ✤ ───── ❦ ───── ✤
+                    </div>
+                  )}
+
+                  {/* Title */}
+                  <div className="space-y-1.5 pt-2">
+                    <h2
+                      className="font-extrabold tracking-tight leading-tight"
+                      style={{
+                        fontSize: `${coverTitleSize * 0.72}pt`,
+                        color: coverTitleColor || customColors.heading1Color || activeTheme.headingColor,
+                      }}
+                    >
+                      {coverTitle || project.title || project.originalTitle || 'عنوان کتاب'}
+                    </h2>
+
+                    {coverSubtitle && (
+                      <p
+                        className="opacity-75 font-serif italic"
+                        style={{
+                          fontSize: `${coverSubtitleSize * 0.75}pt`,
+                          color: coverSubtitleColor || customColors.textColor || activeTheme.textColor,
+                        }}
+                      >
+                        {coverSubtitle}
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Divider Symbol */}
+                  {coverShowDivider && (
+                    <div
+                      className="text-base select-none py-1"
+                      style={{ color: customColors.accentColor || activeTheme.accentColor }}
+                    >
+                      ❖
+                    </div>
+                  )}
+
+                  {/* Author, Translator, Publisher */}
+                  <div className="space-y-2 pt-2">
+                    {(coverAuthor || project.author) && (
+                      <div
+                        className="font-bold opacity-90"
+                        style={{
+                          fontSize: `${coverAuthorSize * 0.75}pt`,
+                          color: coverAuthorColor || customColors.textColor || activeTheme.textColor,
+                        }}
+                      >
+                        نویسنده: {coverAuthor || project.author}
+                      </div>
+                    )}
+
+                    {(coverTranslator || project.translator) && (
+                      <div
+                        className="text-xs opacity-80"
+                        style={{ color: customColors.textColor || activeTheme.textColor }}
+                      >
+                        ترجمه و نگارش: {coverTranslator || project.translator}
+                      </div>
+                    )}
+
+                    {coverPublisher && (
+                      <div
+                        className="text-xs font-semibold pt-1"
+                        style={{ color: customColors.headerColor || activeTheme.textColor }}
+                      >
+                        {coverPublisher}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Bottom Note */}
+                  {coverNote && (
+                    <div
+                      className="text-[10px] opacity-60 pt-4 border-t border-dashed"
+                      style={{
+                        borderColor: customColors.borderColor || activeTheme.borderColor,
+                        color: customColors.footerColor || activeTheme.textColor,
+                      }}
+                    >
+                      {coverNote}
+                    </div>
+                  )}
                 </div>
               ) : (
-                <div className="text-[9px] text-slate-400/50 pt-1 italic border-t border-dashed border-slate-300/40">
-                  (بدون فوتر در پایین صفحه)
-                </div>
+                /* ================= BODY PAGE PREVIEW ================= */
+                <>
+                  {/* Running Header */}
+                  {showHeader && headerText ? (
+                    <div>
+                      <div
+                        className="border-b pb-2 flex items-center justify-between text-[10px] opacity-85"
+                        style={{
+                          borderColor: customColors.borderColor || activeTheme.borderColor,
+                          color: customColors.headerColor || activeTheme.textColor,
+                        }}
+                      >
+                        <span className="font-bold truncate max-w-[200px]">{headerText}</span>
+                        <span className="font-serif italic text-[9px] truncate max-w-[110px]" dir="ltr">
+                          {project.originalTitle || 'Chapter 1'}
+                        </span>
+                      </div>
+                      {/* Visual Top Margin Breathing Room */}
+                      <div style={{ height: topMargin === 'compact' ? '8px' : topMargin === 'generous' ? '20px' : topMargin === 'extra_generous' ? '30px' : '14px' }} />
+                    </div>
+                  ) : (
+                    <div style={{ height: topMargin === 'compact' ? '12px' : topMargin === 'generous' ? '28px' : topMargin === 'extra_generous' ? '38px' : '18px' }} className="flex items-center justify-center">
+                      <span className="text-[8.5px] text-slate-400/50 italic border-b border-dashed border-slate-300/40 pb-0.5">
+                        (حاشیه بالای صفحه: {topMargin === 'compact' ? 'فشرده' : topMargin === 'generous' ? 'باز' : topMargin === 'extra_generous' ? 'لوکس' : 'استاندارد کتابی'})
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Sample Content */}
+                  <div className="my-auto py-3 space-y-2.5 text-right">
+                    {/* Chapter Title & Divider (H1 with heading1Size) */}
+                    <div className="text-center space-y-1">
+                      <h3
+                        className="font-extrabold tracking-tight"
+                        style={{
+                          color: customColors.heading1Color || activeTheme.headingColor,
+                          fontSize: `${heading1Size * 0.72}pt`,
+                        }}
+                      >
+                        فصل اول: دروازه ورود به آرامش درون
+                      </h3>
+                      <div
+                        className="text-xs font-serif opacity-85"
+                        style={{ color: customColors.accentColor || activeTheme.accentColor }}
+                      >
+                        {activeTheme.dividerSymbol}
+                      </div>
+                    </div>
+
+                    {/* Subheadings H2 & H3 (زیرمنوها با heading2Size و heading3Size) */}
+                    <div className="pt-1">
+                      <h4
+                        className="font-bold tracking-tight pb-0.5"
+                        style={{
+                          color: customColors.heading2Color || activeTheme.headingColor,
+                          fontSize: `${heading2Size * 0.72}pt`,
+                        }}
+                      >
+                        زیرمنو و تیتر فرعی: رهایی از بند تعاریف ذهنی
+                      </h4>
+                      <h5
+                        className="font-semibold"
+                        style={{
+                          color: customColors.heading3Color || activeTheme.accentColor,
+                          fontSize: `${heading3Size * 0.72}pt`,
+                        }}
+                      >
+                        بخش ۱.۱: مشاهده‌گری بدون قضاوت و سکون ذهن
+                      </h5>
+                    </div>
+
+                    {/* Sample Distinct Paragraph 1 */}
+                    <p
+                      className="text-justify leading-relaxed text-[11px] sm:text-xs"
+                      style={{
+                        lineHeight: lineSpacing === 'compact' ? 1.65 : lineSpacing === 'relaxed' ? 2.25 : 1.95,
+                        fontSize: fontSize === 'small' ? '10px' : fontSize === 'large' ? '13px' : '11.5px',
+                        marginBottom: paragraphSpacing === 'compact' ? '12px' : paragraphSpacing === 'generous' ? '28px' : paragraphSpacing === 'relaxed' ? '22px' : '16px',
+                        color: customColors.textColor || activeTheme.textColor,
+                      }}
+                    >
+                      بزرگ‌ترین مانع در مسیر درک حقیقت، هم‌هویت‌شدن با{' '}
+                      <span style={{ color: customColors.accentColor || '#9b2c2c', fontWeight: 'bold' }}>ذهن شرطی‌شده</span> است. هنگامی که انسان اسیر
+                      جریان بی‌پایان افکار می‌گردد، ارتباط بنیادین خود را با ساحت آرامش درونی از دست می‌دهد.
+                    </p>
+
+                    {/* Sample Quote */}
+                    <div
+                      className="p-2.5 rounded-lg border-r-4 text-[10.5px] italic opacity-95 my-1"
+                      style={{
+                        borderRightColor: customColors.accentColor || activeTheme.accentColor,
+                        backgroundColor: `${customColors.borderColor || activeTheme.borderColor}20`,
+                        color: customColors.textColor || activeTheme.textColor,
+                      }}
+                    >
+                      «سکوت، زبانی است که کائنات به واسطه آن ژرف‌ترین حقایق را آشکار می‌سازد.»
+                    </div>
+
+                    {/* Sample Distinct Paragraph 2 */}
+                    <p
+                      className="text-justify leading-relaxed text-[11px] sm:text-xs"
+                      style={{
+                        lineHeight: lineSpacing === 'compact' ? 1.65 : lineSpacing === 'relaxed' ? 2.25 : 1.95,
+                        fontSize: fontSize === 'small' ? '10px' : fontSize === 'large' ? '13px' : '11.5px',
+                        color: customColors.textColor || activeTheme.textColor,
+                      }}
+                    >
+                      با ایجاد فاصله شفاف بین پاراگراف‌ها، ذهن خواننده فرصت تامل و تنفس می‌یابد و هماهنگی بصری کتاب چاپی به اوج می‌رسد.
+                    </p>
+                  </div>
+
+                  {/* Running Footer */}
+                  {showFooter && footerText ? (
+                    <div
+                      className="border-t pt-2 flex items-center justify-between text-[10px] opacity-85"
+                      style={{
+                        borderColor: customColors.borderColor || activeTheme.borderColor,
+                        color: customColors.footerColor || activeTheme.textColor,
+                      }}
+                    >
+                      <span className="truncate max-w-[200px]">{footerText}</span>
+                      {showPageNumbers && <span className="font-bold font-mono">صفحه ۲۴</span>}
+                    </div>
+                  ) : showPageNumbers ? (
+                    <div
+                      className="border-t pt-1 flex items-center justify-end text-[10px] opacity-85"
+                      style={{
+                        borderColor: customColors.borderColor || activeTheme.borderColor,
+                        color: customColors.footerColor || activeTheme.textColor,
+                      }}
+                    >
+                      <span className="font-bold font-mono">صفحه ۲۴</span>
+                    </div>
+                  ) : (
+                    <div className="text-[9px] text-slate-400/50 pt-1 italic border-t border-dashed border-slate-300/40">
+                      (بدون فوتر در پایین صفحه)
+                    </div>
+                  )}
+                </>
               )}
             </div>
 

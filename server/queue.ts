@@ -392,7 +392,16 @@ export class QueueManager {
           keyConfig.totalRequests++;
           keyConfig.successfulRequests++;
           keyConfig.lastLatencyMs = latency;
-          keyConfig.totalTokensUsed += (chunk.estimatedTokens || 100) * 2;
+          const chunkTokens = (chunk.estimatedTokens || 100) * 2;
+          keyConfig.totalTokensUsed += chunkTokens;
+
+          const todayDateStr = new Date().toISOString().slice(0, 10);
+          if (keyConfig.todayDate !== todayDateStr) {
+            keyConfig.todayDate = todayDateStr;
+            keyConfig.todayTokensUsed = chunkTokens;
+          } else {
+            keyConfig.todayTokensUsed = (keyConfig.todayTokensUsed || 0) + chunkTokens;
+          }
           db.saveApiKey(keyConfig);
 
           chunk.status = 'completed';
@@ -727,6 +736,13 @@ ${compactSample}`;
       // Record approximate minimal token usage (~250 in + ~80 out = ~330 tokens)
       const approxTokens = Math.ceil(compactSample.length / 4) + 120;
       key.totalTokensUsed = (key.totalTokensUsed || 0) + approxTokens;
+      const todayDateStr = new Date().toISOString().slice(0, 10);
+      if (key.todayDate !== todayDateStr) {
+        key.todayDate = todayDateStr;
+        key.todayTokensUsed = approxTokens;
+      } else {
+        key.todayTokensUsed = (key.todayTokensUsed || 0) + approxTokens;
+      }
       key.totalRequests = (key.totalRequests || 0) + 1;
       key.successfulRequests = (key.successfulRequests || 0) + 1;
       db.saveApiKey(key);

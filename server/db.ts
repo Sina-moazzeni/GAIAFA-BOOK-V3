@@ -135,6 +135,8 @@ export interface ApiKeyConfig {
   successfulRequests: number;
   failedRequests: number;
   totalTokensUsed: number;
+  todayTokensUsed?: number;
+  todayDate?: string;
   rpmCount: number;
   cooldownUntil: number;
   lastLatencyMs?: number;
