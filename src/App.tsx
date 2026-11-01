@@ -155,6 +155,7 @@ export default function App() {
   // Synchronized refs to prevent stale closure bugs in polling intervals and background syncs
   const activeBookIdRef = useRef<string>(activeBookId);
   const activeChunkIdRef = useRef<string>(activeChunkId);
+  const isFetchingChunksRef = useRef<Record<string, boolean>>({});
 
   useEffect(() => {
     activeBookIdRef.current = activeBookId;
@@ -492,6 +493,11 @@ export default function App() {
     const targetId = typeof target === 'string' ? target : target.id;
     if (!targetId) return null;
 
+    if (isFetchingChunksRef.current[targetId]) {
+      const existing = books.find((b) => b.id === targetId) || (typeof target !== 'string' ? target : null);
+      return existing;
+    }
+
     const existing = books.find((b) => b.id === targetId) || (typeof target !== 'string' ? target : null);
     const existingHasChunks = existing && Array.isArray(existing.chunks) && existing.chunks.length > 0;
     const existingCompletedCount = existingHasChunks
@@ -508,6 +514,7 @@ export default function App() {
     }
 
     try {
+      isFetchingChunksRef.current[targetId] = true;
       const token = authToken || (typeof window !== 'undefined' ? localStorage.getItem(STORAGE_KEY_AUTH_TOKEN) : '') || '';
       const headers: Record<string, string> = {};
       if (token) headers['Authorization'] = `Bearer ${token}`;
@@ -516,9 +523,12 @@ export default function App() {
       if (res.ok) {
         const data = await res.json();
         if (data.book) {
+          const serverChunks = Array.isArray(data.book.chunks) ? data.book.chunks : [];
+          // Preserve existing chunks if server returned empty chunks
+          const finalChunks = serverChunks.length > 0 ? serverChunks : (existingHasChunks ? existing.chunks : []);
           const fullBook: BookProject = {
             ...data.book,
-            chunks: Array.isArray(data.book.chunks) ? data.book.chunks : [],
+            chunks: finalChunks,
             glossary: Array.isArray(data.book.glossary) ? data.book.glossary : [],
           };
           setBooks((prev) => prev.map((b) => (b.id === targetId ? fullBook : b)));
@@ -527,6 +537,8 @@ export default function App() {
       }
     } catch (e) {
       console.warn('Error loading book chunks', e);
+    } finally {
+      isFetchingChunksRef.current[targetId] = false;
     }
     return existing;
   };
@@ -555,49 +567,47 @@ export default function App() {
 
     if (targetView === 'workspace') {
       const targetBook = books.find((b) => b.id === targetId) || (typeof selected !== 'string' ? selected : undefined);
-      const existingCompleted = targetBook?.chunks ? targetBook.chunks.filter((c) => Boolean(c.translatedHtml && c.translatedHtml.trim())).length : 0;
-      const serverCompleted = targetBook?.completedChunks || 0;
-      const needsLoad = !targetBook?.chunks || targetBook.chunks.length === 0 || (serverCompleted > 0 && existingCompleted < serverCompleted);
+      const hasChunks = Boolean(targetBook?.chunks && targetBook.chunks.length > 0);
 
-      if (needsLoad) {
+      // ONLY show the full-page loading spinner if the book has ZERO chunks in memory!
+      if (!hasChunks) {
         setLoadingWorkspaceBookId(targetId);
       }
       setCurrentView('workspace');
 
-      ensureBookChunksLoaded(targetId, needsLoad).then((fullBook) => {
-        setLoadingWorkspaceBookId(null);
-        if (fullBook && fullBook.chunks.length > 0) {
-          if (!fullBook.chunks.some((c) => c.id === activeChunkIdRef.current)) {
-            setActiveChunkId(fullBook.chunks[0].id);
-            activeChunkIdRef.current = fullBook.chunks[0].id;
+      // Fetch fresh chunks (forced reload if no chunks, or silent background update if chunks already exist)
+      ensureBookChunksLoaded(targetId, !hasChunks)
+        .then((fullBook) => {
+          if (fullBook && fullBook.chunks.length > 0) {
+            if (!fullBook.chunks.some((c) => c.id === activeChunkIdRef.current)) {
+              setActiveChunkId(fullBook.chunks[0].id);
+              activeChunkIdRef.current = fullBook.chunks[0].id;
+            }
           }
-        }
-      }).catch(() => setLoadingWorkspaceBookId(null));
+        })
+        .finally(() => {
+          setLoadingWorkspaceBookId(null);
+        });
     } else if (targetView) {
       setCurrentView(targetView);
     }
   };
 
-  // Auto-fetch chunks if current view is workspace and active book chunks haven't been loaded yet or are missing translations
+  // Auto-fetch chunks if current view is workspace and active book chunks haven't been loaded yet
   useEffect(() => {
     if (currentView === 'workspace' && activeBookId) {
       const active = books.find((b) => b.id === activeBookId);
-      const existingCompleted = active?.chunks ? active.chunks.filter((c) => Boolean(c.translatedHtml && c.translatedHtml.trim())).length : 0;
-      const serverCompleted = active?.completedChunks || 0;
-      const needsFetch = !active?.chunks || active.chunks.length === 0 || (serverCompleted > 0 && existingCompleted < serverCompleted);
+      const hasChunks = Boolean(active?.chunks && active.chunks.length > 0);
 
-      if (active && needsFetch) {
+      // ONLY trigger full-page loader if the active book has NO chunks in memory and is not already fetching
+      if (active && !hasChunks && !isFetchingChunksRef.current[activeBookId]) {
         setLoadingWorkspaceBookId(activeBookId);
-        ensureBookChunksLoaded(activeBookId, true).then((fullBook) => {
+        ensureBookChunksLoaded(activeBookId, true).finally(() => {
           setLoadingWorkspaceBookId(null);
-          if (fullBook && fullBook.chunks.length > 0 && !activeChunkIdRef.current) {
-            setActiveChunkId(fullBook.chunks[0].id);
-            activeChunkIdRef.current = fullBook.chunks[0].id;
-          }
-        }).catch(() => setLoadingWorkspaceBookId(null));
+        });
       }
     }
-  }, [currentView, activeBookId, books]);
+  }, [currentView, activeBookId]);
 
   // Fetch user's books from server DB with active book preservation
   const fetchUserBooks = async (token: string, isSilent = false) => {
@@ -616,20 +626,18 @@ export default function App() {
         setBooks((prevBooks) => {
           return serverBooks.map((sb: any) => {
             const existing = prevBooks.find((p) => p.id === sb.id);
-            if (existing && existing.chunks && existing.chunks.length > 0 && (!sb.chunks || sb.chunks.length === 0)) {
+            if (existing && Array.isArray(existing.chunks) && existing.chunks.length > 0) {
               const existingCompletedCount = existing.chunks.filter((c: any) => Boolean(c.translatedHtml && c.translatedHtml.trim())).length;
               const serverCompletedCount = sb.completedChunks || 0;
 
-              // If server has more completed chunks than in-memory chunks, do not keep stale chunks!
-              if (serverCompletedCount > existingCompletedCount) {
-                if (activeBookIdRef.current === sb.id) {
-                  setTimeout(() => {
-                    ensureBookChunksLoaded(sb.id, true);
-                  }, 50);
-                }
-                return sb; // return sb with chunks: [] so it gets loaded fresh
+              // If server has more completed chunks than in-memory chunks, SILENTLY update chunks in background:
+              if (serverCompletedCount > existingCompletedCount && activeBookIdRef.current === sb.id) {
+                setTimeout(() => {
+                  ensureBookChunksLoaded(sb.id, true);
+                }, 50);
               }
 
+              // ALWAYS PRESERVE EXISTING CHUNKS! Never wipe out to empty []!
               return {
                 ...sb,
                 chunks: existing.chunks,
@@ -1465,6 +1473,7 @@ export default function App() {
                 setAddPageDefaultPosition(pos || 'after');
                 setIsAddPageModalOpen(true);
               }}
+              onBackToDashboard={() => setCurrentView('dashboard')}
             />
           </div>
         </div>

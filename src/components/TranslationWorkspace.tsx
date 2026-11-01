@@ -69,6 +69,7 @@ interface TranslationWorkspaceProps {
   onOpenFindReplaceModal?: () => void;
   onOpenAddPageModal?: (targetChunkId?: string, defaultPosition?: 'after' | 'before' | 'start' | 'end') => void;
   isLoadingChunks?: boolean;
+  onBackToDashboard?: () => void;
 }
 
 export const TranslationWorkspace: React.FC<TranslationWorkspaceProps> = ({
@@ -100,6 +101,7 @@ export const TranslationWorkspace: React.FC<TranslationWorkspaceProps> = ({
   onOpenFindReplaceModal,
   onOpenAddPageModal,
   isLoadingChunks = false,
+  onBackToDashboard,
 }) => {
   // View Modes: 'preview' (Rendered Book Page), 'plain' (Simple Plain Text Manual Editor), 'html' (Raw HTML Code)
   const [viewMode, setViewMode] = useState<'preview' | 'plain' | 'html'>('preview');
@@ -187,20 +189,46 @@ export const TranslationWorkspace: React.FC<TranslationWorkspaceProps> = ({
   if (!currentChunk && !fullBookMode) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center p-8 text-center text-slate-400 bg-slate-950">
-        <BookOpen className="w-12 h-12 text-slate-600 mb-3" />
-        <h3 className="text-base font-bold text-slate-300">بخشی برای نمایش انتخاب نشده است</h3>
-        <p className="text-xs text-slate-500 max-w-sm mt-1 mb-4">
-          از فهرست کناری یک بخش را انتخاب کنید یا از دکمه «کتاب‌های نمونه» برای شروع استفاده نمایید.
+        <div className="w-16 h-16 rounded-2xl bg-slate-900 border border-slate-800 flex items-center justify-center mb-4 text-slate-500 shadow-xl">
+          <BookOpen className="w-8 h-8 text-amber-400/80" />
+        </div>
+        <h3 className="text-base font-bold text-white mb-1">
+          {project?.title ? `کتاب: ${project.title}` : 'بخشی برای نمایش انتخاب نشده است'}
+        </h3>
+        <p className="text-xs text-slate-400 max-w-md mt-1 mb-6 leading-relaxed">
+          {project?.chunks && project.chunks.length > 0
+            ? 'لطفاً از فهرست بخش‌ها، فصل یا صفحه مورد نظر خود را برای مطالعه و ترجمه انتخاب کنید.'
+            : 'این کتاب هنوز هیچ بخشی ندارد یا در حال دریافت است. می‌توانید صفحه جدید اضافه کنید یا به پیشخوان بازگردید.'}
         </p>
-        {onOpenMobileChunks && (
-          <button
-            onClick={onOpenMobileChunks}
-            className="md:hidden px-4 py-2 rounded-xl bg-indigo-600 text-white text-xs font-semibold flex items-center gap-2 shadow-lg shadow-indigo-600/30"
-          >
-            <Layers className="w-4 h-4" />
-            <span>مشاهده فهرست بخش‌های کتاب</span>
-          </button>
-        )}
+        <div className="flex flex-wrap items-center justify-center gap-2.5">
+          {onBackToDashboard && (
+            <button
+              onClick={onBackToDashboard}
+              className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold flex items-center gap-2 shadow-lg shadow-amber-500/20 transition"
+            >
+              <ArrowRight className="w-4 h-4" />
+              <span>بازگشت به پیشخوان و کتابخانه</span>
+            </button>
+          )}
+          {onOpenMobileChunks && (
+            <button
+              onClick={onOpenMobileChunks}
+              className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold flex items-center gap-2 shadow-lg shadow-indigo-600/30 transition"
+            >
+              <Layers className="w-4 h-4" />
+              <span>مشاهده فهرست بخش‌ها ({project?.chunks?.length || 0})</span>
+            </button>
+          )}
+          {onOpenAddPageModal && (
+            <button
+              onClick={() => onOpenAddPageModal(undefined, 'end')}
+              className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-semibold flex items-center gap-2 transition"
+            >
+              <Plus className="w-4 h-4 text-emerald-400" />
+              <span>+ افزودن صفحه جدید</span>
+            </button>
+          )}
+        </div>
       </div>
     );
   }

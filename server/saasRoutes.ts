@@ -1077,7 +1077,12 @@ ${urls.map((u) => `  <url>
   // Get user's books (Ultra-lightweight metadata list - <10KB, instant load, zero data drain!)
   app.get('/api/books', requireAuth, (req, res) => {
     const user = (req as any).user as User;
-    const rawBooks = db.getBooks(user.id);
+    const isStaffOrAdmin = user.role === 'admin' || user.role === 'staff';
+    const allBooks = db.getBooks();
+    const rawBooks = isStaffOrAdmin
+      ? allBooks
+      : allBooks.filter(b => b.userId === user.id || b.userId === 'usr_demo_1' || b.userId === 'system' || b.id.startsWith('book_demo') || b.id.startsWith('sample_'));
+
     const books = rawBooks.map(b => {
       const totalChunks = (b as any).totalChunks !== undefined ? (b as any).totalChunks : (Array.isArray(b.chunks) ? b.chunks.length : 0);
       const completedChunks = (b as any).completedChunks !== undefined ? (b as any).completedChunks : (Array.isArray(b.chunks) ? b.chunks.filter(c => c.status === 'completed' || Boolean(c.translatedHtml)).length : 0);
@@ -1119,7 +1124,10 @@ ${urls.map((u) => `  <url>
       return res.status(404).json({ error: 'کتاب مورد نظر یافت نشد.' });
     }
 
-    if (book.userId !== user.id && user.role !== 'admin' && user.role !== 'staff') {
+    const isDemoOrPublic = book.id.startsWith('book_demo') || book.id.startsWith('sample_') || book.userId === 'usr_demo_1' || book.userId === 'system';
+    const canAccess = book.userId === user.id || user.role === 'admin' || user.role === 'staff' || isDemoOrPublic;
+
+    if (!canAccess) {
       return res.status(403).json({ error: 'شما دسترسی به این کتاب را ندارید.' });
     }
 
