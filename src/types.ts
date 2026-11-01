@@ -1,4 +1,4 @@
-export type ToneId = 'spiritual' | 'novel' | 'self_help' | 'academic' | 'business' | 'aerospace' | 'mathematics';
+export type ToneId = 'spiritual' | 'novel' | 'self_help' | 'academic' | 'business' | 'aerospace' | 'mathematics' | 'candid_secrets';
 
 export type UserRole = 'admin' | 'staff' | 'publisher' | 'user';
 
@@ -73,6 +73,13 @@ export interface ApiKeyItem {
   successfulRequests: number;
   failedRequests: number;
   totalTokensUsed: number;
+  todayTokensUsed?: number;
+  todayDate?: string;
+  todayCostUsd?: number;
+  todayCostTomans?: number;
+  totalCostUsd?: number;
+  totalCostTomans?: number;
+  costPerMillionTokens?: number;
   rpmCount: number;
   cooldownUntil: number;
   lastLatencyMs?: number;
@@ -139,10 +146,16 @@ export interface SystemSettings {
     captcha?: {
       enabled: boolean;
       provider: 'math' | 'recaptcha' | 'turnstile';
+      recaptchaVersion?: 'v2' | 'v3';
       siteKey: string;
       secretKey: string;
       requiredForLogin: boolean;
       requiredForRegister: boolean;
+    };
+    googleOAuth?: {
+      enabled: boolean;
+      clientId: string;
+      clientSecret: string;
     };
   };
   coupons?: Array<{
@@ -177,6 +190,11 @@ export interface SystemSettings {
     faviconUrl?: string;
     announcementEnabled: boolean;
     announcementText: string;
+    robotsTxt?: string;
+    customSitemapXml?: string;
+    llmsTxt?: string;
+    googleClientId?: string;
+    googleClientSecret?: string;
   };
   cms: {
     heroTitle: string;
@@ -452,6 +470,27 @@ export interface CustomColorPalette {
   accentColor?: string;     // رنگ کادر نقل‌قول و هایلایت‌ها
 }
 
+export interface CoverPageConfig {
+  layout?: 'center' | 'right' | 'frame' | 'classic_centered' | 'modern_minimal' | 'framed_spiritual' | 'right_aligned';
+  title?: string;
+  titleSize?: number; // e.g. 24 - 48 pt
+  titleColor?: string;
+  subtitle?: string;
+  subtitleSize?: number;
+  subtitleColor?: string;
+  author?: string;
+  authorSize?: number;
+  authorColor?: string;
+  translator?: string;
+  publisher?: string;
+  editionYear?: string;
+  note?: string;
+  showMotif?: boolean;
+  showDivider?: boolean;
+  bgColor?: string;
+  borderColor?: string;
+}
+
 export interface BookDesignConfig {
   themeId: BookThemeId;
   headerText: string;
@@ -462,7 +501,11 @@ export interface BookDesignConfig {
   brandName?: string;  // e.g. "انتشارات آرمان"
   showPageNumbers: boolean;
   showCoverPage: boolean;
+  coverPage?: CoverPageConfig;
   fontSize: 'small' | 'medium' | 'large';
+  heading1Size?: number; // سایز سرتیتر اصلی / عنوان فصل (H1) بر حسب pt
+  heading2Size?: number; // سایز تیتر فرعی (H2) بر حسب pt
+  heading3Size?: number; // سایز تیتر کوچک (H3) بر حسب pt
   lineSpacing: 'compact' | 'normal' | 'relaxed';
   paragraphSpacing?: 'compact' | 'normal' | 'relaxed' | 'generous';
   fontFamily: 'Vazirmatn' | 'Vazirmatn Medium' | 'B Nazanin' | 'B Mitra' | 'Tahoma' | 'IRANSans';
@@ -475,6 +518,7 @@ export interface BookDesignConfig {
   customColors?: CustomColorPalette;
   continuousFlow?: boolean; // چیدمان پیوسته روان زیر هم و بدون صفحه خالی اجباری بین فصول
   excludedChunkIds?: string[]; // شناسه‌های صفحات/بخش‌های انتخابی برای حذف از خروجی PDF و Word
+  textAlignment?: 'right' | 'both'; // تراز متن (راست‌چین تمیز بدون کشیدگی نامنظم در ورد یا تراز دوطرفه)
 }
 
 export interface BookProject {
@@ -501,6 +545,33 @@ export interface BookProject {
   status?: 'draft' | 'translating' | 'completed' | 'error';
   wordCount?: number;
   estimatedCost?: number;
+  adminCopy?: AdminBookCopy;
+  totalChunks?: number;
+  completedChunks?: number;
+  progressPercent?: number;
+  hasImages?: boolean;
+  hasAdminCopy?: boolean;
+}
+
+export interface AdminBookChunkCopy {
+  id: string;
+  chapterNumber: number;
+  chapterTitle: string;
+  chunkNumber: number;
+  englishText?: string;
+  translatedHtml?: string;
+  wordCount?: number;
+}
+
+export interface AdminBookCopy {
+  editedAt: number;
+  editedByAdminId?: string;
+  title: string;
+  originalTitle?: string;
+  author?: string;
+  translator?: string;
+  designConfig?: BookDesignConfig;
+  chunks: AdminBookChunkCopy[];
 }
 
 export interface ServerKeyStatus {

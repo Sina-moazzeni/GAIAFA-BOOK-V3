@@ -117,9 +117,10 @@ export const BooksLibraryModal: React.FC<BooksLibraryModalProps> = ({
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {filteredBooks.map(book => {
                 const isActive = book.id === activeBookId;
-                const totalWords = book.chunks.reduce((acc, c) => acc + c.wordCount, 0);
-                const completedChunks = book.chunks.filter(c => c.translatedHtml).length;
-                const progress = book.chunks.length > 0 ? Math.round((completedChunks / book.chunks.length) * 100) : 0;
+                const totalWords = book.wordCount || (book.chunks ? book.chunks.reduce((acc, c) => acc + (c.wordCount || 0), 0) : 0);
+                const totalChunks = (book as any).totalChunks !== undefined ? (book as any).totalChunks : (book.chunks?.length || 0);
+                const completedChunks = (book as any).completedChunks !== undefined ? (book as any).completedChunks : (book.chunks ? book.chunks.filter(c => c.translatedHtml || c.status === 'completed').length : 0);
+                const progress = (book as any).progressPercent !== undefined ? (book as any).progressPercent : (totalChunks > 0 ? Math.round((completedChunks / totalChunks) * 100) : 0);
 
                 return (
                   <div
@@ -160,7 +161,7 @@ export const BooksLibraryModal: React.FC<BooksLibraryModalProps> = ({
                     {/* Progress Bar & Stats */}
                     <div className="mt-4 pt-3 border-t border-slate-750 space-y-2">
                       <div className="flex items-center justify-between text-[11px] text-slate-400">
-                        <span>{completedChunks} از {book.chunks.length} بخش ترجمه شده</span>
+                        <span>{completedChunks} از {totalChunks} بخش ترجمه شده</span>
                         <span className="font-mono text-emerald-400 font-bold">{progress}٪</span>
                       </div>
                       

@@ -77,13 +77,33 @@ export function formatToDistinctParagraphs(html: string): string {
  */
 export function sanitizeTranslatedHtml(html: string): string {
   if (!html) return '';
-  return html
+  let sanitized = html
     .replace(/<span[^>]*style=["'][^"']*#(?:9b2c2c|c53030|e53e3e)[^"']*["'][^>]*>([\s\S]*?)<\/span>/gi, '$1')
     .replace(/<span[^>]*class=["'][^"']*highlight[^"']*["'][^>]*>([\s\S]*?)<\/span>/gi, '$1')
     .replace(/<h[1-3][^>]*>\s*مقدمه و بخش نخست\s*(?:\([^\)]*\))?\s*<\/h[1-3]>/gi, '')
     .replace(/<h[1-3][^>]*>[^<]*[\(\[\{]\s*بخش\s*[0-9۰-۹IVXLCDMivxlcdm]+\s*[\)\]\}][^<]*<\/h[1-3]>/gi, '')
     .replace(/<p[^>]*>\s*[\(\[\{]?\s*بخش\s*[0-9۰-۹IVXLCDMivxlcdm]+\s*[\)\]\}]?\s*<\/p>/gi, '')
+    // Strip accidental inline horizontal margins, paddings or text-indent that cause text overflow or right-edge clipping
+    .replace(/(?:margin-right|margin-left|padding-right|padding-left|text-indent)\s*:\s*[^;"]+;?/gi, '')
     .trim();
+
+  // Deduplicate identical images in chunk HTML (ensuring each image only appears ONCE)
+  const seenSrcs = new Set<string>();
+  sanitized = sanitized.replace(
+    /(?:<div[^>]*class="[^"]*book-illustration-wrap[^"]*"[^>]*>[\s\S]*?<img\s+[^>]*src=["']([^"']+)["'][^>]*>[\s\S]*?<\/div>|<figure[^>]*>[\s\S]*?<img\s+[^>]*src=["']([^"']+)["'][^>]*>[\s\S]*?<\/figure>|<img\s+[^>]*src=["']([^"']+)["'][^>]*>)/gi,
+    (wholeMatch, src1, src2, src3) => {
+      const src = src1 || src2 || src3;
+      if (!src) return wholeMatch;
+      const fingerprint = src.length > 250 ? src.slice(0, 250) : src;
+      if (seenSrcs.has(fingerprint)) {
+        return '';
+      }
+      seenSrcs.add(fingerprint);
+      return wholeMatch;
+    }
+  );
+
+  return sanitized;
 }
 
 /**
@@ -94,10 +114,10 @@ export function htmlToPlainText(html: string): string {
   if (!html) return '';
   let clean = html;
 
-  // Preserve image slots
-  clean = clean.replace(/<figure[^>]*class="[^"]*book-illustration-figure[^"]*"[^>]*>([\s\S]*?)<\/figure>/gi, '\n[[تصویر کتاب]]\n');
-  clean = clean.replace(/<div[^>]*class="[^"]*book-illustration-wrap[^"]*"[^>]*>([\s\S]*?)<\/div>/gi, '\n[[تصویر کتاب]]\n');
-  clean = clean.replace(/<img[^>]*>/gi, '\n[[تصویر کتاب]]\n');
+  // Preserve image slots cleanly without producing duplicate tokens for nested wrappers
+  clean = clean.replace(/<figure[^>]*>[\s\S]*?<img[^>]*>[\s\S]*?<\/figure>|<div[^>]*class="[^"]*book-illustration-wrap[^"]*"[^>]*>[\s\S]*?<\/div>|<img[^>]*>/gi, '\n[[تصویر کتاب]]\n');
+  // Collapse any consecutive duplicate image placeholders into a single token
+  clean = clean.replace(/(?:\[\[(?:تصویر کتاب|IMAGE_PRESERVED_SLOT_\d+)\]\]\s*){2,}/gi, '[[تصویر کتاب]]\n');
 
   // Replace block closures with double newlines
   clean = clean.replace(/<\/(p|h1|h2|h3|h4|blockquote|div)>/gi, '\n\n');
@@ -128,12 +148,19 @@ export function htmlToPlainText(html: string): string {
 export function plainTextToHtml(plainText: string, originalHtml?: string): string {
   if (!plainText || !plainText.trim()) return '';
 
-  // Extract any original high-res image blocks from originalHtml to prevent losing images
+  // Extract distinct original high-res image blocks from originalHtml to prevent losing or duplicating images
   const originalImages: string[] = [];
+  const seenOriginalFp = new Set<string>();
   if (originalHtml) {
-    const imgMatches = originalHtml.match(/<div[^>]*class="[^"]*book-illustration-wrap[^"]*"[^>]*>[\s\S]*?<\/div>|<img[^>]*src=["']data:[^"']+["'][^>]*>/gi);
+    const imgMatches = originalHtml.match(/<div[^>]*class="[^"]*book-illustration-wrap[^"]*"[^>]*>[\s\S]*?<\/div>|<figure[^>]*>[\s\S]*?<\/figure>|<img[^>]*src=["']data:[^"']+["'][^>]*>/gi);
     if (imgMatches) {
-      originalImages.push(...imgMatches);
+      for (const m of imgMatches) {
+        const fp = m.slice(0, 200);
+        if (!seenOriginalFp.has(fp)) {
+          seenOriginalFp.add(fp);
+          originalImages.push(m);
+        }
+      }
     }
   }
 
@@ -302,6 +329,11 @@ export function groupChunksIntoChapters(chunks: BookChunk[], excludedChunkIds?: 
       currentChapter.htmlContent += `\n${sanitizedChunkHtml}`;
     }
   }
+
+  // Ensure strict image deduplication on concatenated chapter content
+  chapters.forEach(ch => {
+    ch.htmlContent = sanitizeTranslatedHtml(ch.htmlContent);
+  });
 
   return chapters;
 }
@@ -473,36 +505,108 @@ export async function buildClientDocxDocument(project: BookProject): Promise<Doc
 
   const docChildren: ParagraphType[] = [];
 
-  // Title Page
+  // Title Page (Cover / First Page)
+  const cover = design.coverPage;
+  const coverTitle = cover?.title?.trim() || project.title || project.originalTitle || 'کتاب ترجمه شده';
+  const coverTitleSize = Math.round((cover?.titleSize || 28) * 2);
+  const coverTitleColor = cover?.titleColor ? cover.titleColor.replace(/^#/, '') : h1Color;
+  const coverSubtitle = cover?.subtitle?.trim() || '';
+  const coverSubtitleSize = Math.round((cover?.subtitleSize || 14) * 2);
+  const coverAuthor = cover?.author?.trim() || project.author || '';
+  const coverAuthorSize = Math.round((cover?.authorSize || 14) * 2);
+  const coverTranslator = cover?.translator?.trim() || project.translator || '';
+  const coverPublisher = cover?.publisher?.trim() || '';
+  const coverNote = cover?.note?.trim() || '';
+  const coverShowMotif = cover?.showMotif !== false;
+  const coverShowDivider = cover?.showDivider !== false;
+  const coverAlign = (cover?.layout === 'right_aligned' || cover?.layout === 'right') ? AlignmentType.RIGHT : AlignmentType.CENTER;
+
+  if (coverShowMotif) {
+    docChildren.push(
+      new Paragraph({
+        alignment: coverAlign,
+        spacing: { before: 1400, after: 200 },
+        bidirectional: true,
+        children: [
+          new TextRun({
+            text: '✤ ───── ❦ ───── ✤',
+            font: fontDef,
+            size: 24,
+            color: 'B45309',
+            rightToLeft: true,
+          }),
+        ],
+      })
+    );
+  }
+
   docChildren.push(
     new Paragraph({
-      alignment: AlignmentType.CENTER,
-      spacing: { before: 2000, after: 400 },
+      alignment: coverAlign,
+      spacing: { before: coverShowMotif ? 300 : 2000, after: 300 },
       bidirectional: true,
       children: [
         new TextRun({
-          text: project.title || project.originalTitle || 'کتاب ترجمه شده',
+          text: coverTitle,
           font: fontDef,
-          size: 48, // 24pt
+          size: coverTitleSize,
           bold: true,
-          color: h1Color,
+          color: coverTitleColor,
           rightToLeft: true,
         }),
       ],
     })
   );
 
-  if (project.author) {
+  if (coverSubtitle) {
     docChildren.push(
       new Paragraph({
-        alignment: AlignmentType.CENTER,
+        alignment: coverAlign,
+        spacing: { after: 300 },
+        bidirectional: true,
+        children: [
+          new TextRun({
+            text: coverSubtitle,
+            font: fontDef,
+            size: coverSubtitleSize,
+            color: '64748B',
+            rightToLeft: true,
+          }),
+        ],
+      })
+    );
+  }
+
+  if (coverShowDivider) {
+    docChildren.push(
+      new Paragraph({
+        alignment: coverAlign,
+        spacing: { before: 200, after: 400 },
+        bidirectional: true,
+        children: [
+          new TextRun({
+            text: '❖',
+            font: fontDef,
+            size: 20,
+            color: 'D97706',
+            rightToLeft: true,
+          }),
+        ],
+      })
+    );
+  }
+
+  if (coverAuthor) {
+    docChildren.push(
+      new Paragraph({
+        alignment: coverAlign,
         spacing: { after: 200 },
         bidirectional: true,
         children: [
           new TextRun({
-            text: `نویسنده: ${project.author}`,
+            text: `نویسنده: ${coverAuthor}`,
             font: fontDef,
-            size: 26, // 13pt
+            size: coverAuthorSize,
             color: '4A5568',
             rightToLeft: true,
           }),
@@ -511,19 +615,58 @@ export async function buildClientDocxDocument(project: BookProject): Promise<Doc
     );
   }
 
-  if (project.translator) {
+  if (coverTranslator) {
     docChildren.push(
       new Paragraph({
-        alignment: AlignmentType.CENTER,
-        spacing: { after: 1200 },
+        alignment: coverAlign,
+        spacing: { after: 300 },
         bidirectional: true,
         children: [
           new TextRun({
-            text: `ترجمه و ویرایش: ${project.translator}`,
+            text: `ترجمه و ویرایش: ${coverTranslator}`,
             font: fontDef,
             size: 24, // 12pt
             italics: true,
             color: '718096',
+            rightToLeft: true,
+          }),
+        ],
+      })
+    );
+  }
+
+  if (coverPublisher) {
+    docChildren.push(
+      new Paragraph({
+        alignment: coverAlign,
+        spacing: { after: 200 },
+        bidirectional: true,
+        children: [
+          new TextRun({
+            text: `ناشر: ${coverPublisher}`,
+            font: fontDef,
+            size: 22, // 11pt
+            color: '64748B',
+            rightToLeft: true,
+          }),
+        ],
+      })
+    );
+  }
+
+  if (coverNote) {
+    docChildren.push(
+      new Paragraph({
+        alignment: coverAlign,
+        spacing: { after: 600 },
+        bidirectional: true,
+        children: [
+          new TextRun({
+            text: coverNote,
+            font: fontDef,
+            size: 20, // 10pt
+            color: '94A3B8',
+            italics: true,
             rightToLeft: true,
           }),
         ],
@@ -646,18 +789,22 @@ export async function buildClientDocxDocument(project: BookProject): Promise<Doc
       const plainText = cleanHtmlNoImg.replace(/<[^>]+>/g, '').trim();
       if (!plainText) continue;
 
+      const h1DocxSize = Math.round((design.heading1Size || 22) * 2);
+      const h2DocxSize = Math.round((design.heading2Size || 17) * 2);
+      const h3DocxSize = Math.round((design.heading3Size || 14) * 2);
+
       if (tag === 'h1') {
         docChildren.push(
           new Paragraph({
             heading: HeadingLevel.HEADING_1,
-            alignment: AlignmentType.CENTER,
+            alignment: AlignmentType.RIGHT,
             spacing: { before: 500, after: 300 },
             bidirectional: true,
             children: [
               new TextRun({
                 text: plainText,
                 font: fontDef,
-                size: 36,
+                size: h1DocxSize,
                 bold: true,
                 color: h1Color,
                 rightToLeft: true,
@@ -677,7 +824,7 @@ export async function buildClientDocxDocument(project: BookProject): Promise<Doc
               new TextRun({
                 text: plainText,
                 font: fontDef,
-                size: 30,
+                size: h2DocxSize,
                 bold: true,
                 color: h2Color,
                 rightToLeft: true,
@@ -696,7 +843,7 @@ export async function buildClientDocxDocument(project: BookProject): Promise<Doc
               new TextRun({
                 text: plainText,
                 font: fontDef,
-                size: 26,
+                size: h3DocxSize,
                 bold: true,
                 color: h3Color,
                 rightToLeft: true,
@@ -738,10 +885,11 @@ export async function buildClientDocxDocument(project: BookProject): Promise<Doc
           })
         );
       } else {
-        // Standard Persian Paragraph with distinct spacing for high readability
+        // Standard Persian Paragraph with natural RTL alignment (prevents ugly word gaps from justified in Word)
+        const paraAlignment = design.textAlignment === 'both' ? AlignmentType.BOTH : AlignmentType.RIGHT;
         docChildren.push(
           new Paragraph({
-            alignment: AlignmentType.BOTH, // Justified
+            alignment: paraAlignment,
             spacing: { line: pLineSpacing, before: pSpacingBefore, after: pSpacingAfter },
             bidirectional: true,
             children: parseHtmlToTextRuns(innerHtml, fontFamily, TextRun),
@@ -752,10 +900,11 @@ export async function buildClientDocxDocument(project: BookProject): Promise<Doc
 
     if (!foundAny) {
       const lines = html.replace(/<[^>]+>/g, '').split('\n').map(l => l.trim()).filter(Boolean);
+      const paraAlignment = design.textAlignment === 'both' ? AlignmentType.BOTH : AlignmentType.RIGHT;
       lines.forEach(line => {
         docChildren.push(
           new Paragraph({
-            alignment: AlignmentType.BOTH,
+            alignment: paraAlignment,
             spacing: { line: 360, after: 200 },
             bidirectional: true,
             children: [
@@ -786,7 +935,7 @@ export async function buildClientDocxDocument(project: BookProject): Promise<Doc
             color: textColor,
           },
           paragraph: {
-            alignment: AlignmentType.BOTH,
+            alignment: AlignmentType.RIGHT,
             spacing: { line: pLineSpacing, after: pSpacingAfter },
           },
         },
@@ -1028,12 +1177,12 @@ export function downloadWordHtml(project: BookProject) {
         mso-bidi-font-family: '${fontFamily}';
         mso-ascii-font-family: '${fontFamily}';
       }
-      h1 { color: ${headingColor}; font-size: 24pt; margin-bottom: 22px; text-align: center; }
-      h2 { color: ${h2Color}; font-size: 18pt; margin-top: 28px; margin-bottom: 14px; }
-      h3 { color: ${h3Color}; font-size: 14pt; margin-top: 18px; margin-bottom: 10px; }
-      p { line-height: 2.2; font-size: 12.5pt; text-align: justify; margin-bottom: ${pMarginBottom}; }
+      h1 { color: ${headingColor}; font-size: 22pt; margin-bottom: 20px; text-align: right; font-weight: bold; }
+      h2 { color: ${h2Color}; font-size: 17pt; margin-top: 24px; margin-bottom: 12px; text-align: right; font-weight: bold; }
+      h3 { color: ${h3Color}; font-size: 14pt; margin-top: 18px; margin-bottom: 10px; text-align: right; font-weight: bold; }
+      p { line-height: 2.0; font-size: 12.5pt; text-align: right; margin-bottom: ${pMarginBottom}; text-justify: none; }
       blockquote { border-right: 4px solid ${h2Color}; padding: 12px 18px; margin: 18px 0; background: #f7fafc; color: #4a5568; font-style: italic; }
-      span.highlight { color: #9b2c2c; font-weight: bold; }
+      span.highlight { color: inherit; font-weight: 600; }
       img, .book-embedded-image { max-width: 85%; height: auto; display: block; margin: 18px auto; border-radius: 8px; }
       .book-illustration-wrap { text-align: center; margin: 20px 0; }
     </style>

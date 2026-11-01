@@ -81,16 +81,24 @@ function parseChapterHtml(
 
     // 3. Extract semantic blocks (headings, paragraphs, blockquotes, images)
     const blocks = doc.querySelectorAll('h1, h2, h3, h4, p, blockquote, div.image, figure');
+    const processedImgElements = new Set<Element>();
+    const processedSrcFingerprints = new Set<string>();
+
     if (blocks.length > 0) {
       blocks.forEach(block => {
         // If block has an img inside or is an image
         const imgEl = block.tagName.toLowerCase() === 'img' ? block : block.querySelector('img');
-        if (imgEl) {
+        if (imgEl && !processedImgElements.has(imgEl)) {
+          processedImgElements.add(imgEl);
           const src = imgEl.getAttribute('src');
           if (src && src.startsWith('data:image')) {
-            htmlBlocks.push(
-              `<div class="book-illustration-wrap my-4 text-center"><img src="${src}" class="book-embedded-image rounded-xl shadow-md my-3 max-w-full mx-auto block border border-slate-300" alt="تصویر کتاب" /></div>`
-            );
+            const fingerprint = src.slice(0, 250);
+            if (!processedSrcFingerprints.has(fingerprint)) {
+              processedSrcFingerprints.add(fingerprint);
+              htmlBlocks.push(
+                `<div class="book-illustration-wrap my-4 text-center"><img src="${src}" class="book-embedded-image rounded-xl shadow-md my-3 max-w-full mx-auto block border border-slate-300" alt="تصویر کتاب" /></div>`
+              );
+            }
           }
         }
 

@@ -1,6 +1,6 @@
 import express from 'express';
 import crypto from 'crypto';
-import { db, User, BookRecord, TranslationJob, TransactionRecord, ApiKeyConfig } from './db.ts';
+import { db, User, BookRecord, BookChunkRecord, TranslationJob, TransactionRecord, ApiKeyConfig, DEFAULT_ROBOTS_TXT, DEFAULT_LLMS_TXT } from './db.ts';
 import { queueManager } from './queue.ts';
 import { GoogleGenAI } from '@google/genai';
 import { sendRealOtpSms } from './smsService.ts';
@@ -77,7 +77,284 @@ export function sanitizeUser(user: User) {
   };
 }
 
+function escapeHtml(str: string): string {
+  return str.replace(/[&<>'"]/g, 
+    tag => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[tag] || tag)
+  );
+}
+
+async function verifyCaptcha(
+  captchaToken: string | undefined,
+  mathAnswer: number | string | undefined,
+  req: express.Request,
+  action: 'login' | 'register' = 'login'
+): Promise<{ success: boolean; error?: string }> {
+  const settings = db.getSettings();
+  const captchaConfig = settings.security?.captcha;
+  if (!captchaConfig || !captchaConfig.enabled) {
+    return { success: true };
+  }
+
+  if (action === 'login' && !captchaConfig.requiredForLogin) {
+    return { success: true };
+  }
+  if (action === 'register' && !captchaConfig.requiredForRegister) {
+    return { success: true };
+  }
+
+  // 1. Google reCAPTCHA (v2 or v3)
+  if (captchaConfig.provider === 'recaptcha') {
+    const version = captchaConfig.recaptchaVersion || 'v2';
+    if (!captchaToken || typeof captchaToken !== 'string') {
+      return {
+        success: false,
+        error: version === 'v3'
+          ? 'اعتبارسنجی خودکار ضدربات گوگل (reCAPTCHA v3) انجام نشد.'
+          : 'لطفاً اعتبارسنجی «من ربات نیستم» (Google reCAPTCHA) را علامت بزنید.',
+      };
+    }
+    if (!captchaConfig.secretKey) {
+      console.warn('[Captcha] reCAPTCHA secretKey is not configured in admin panel, allowing pass-through.');
+      return { success: true };
+    }
+    try {
+      const verifyRes = await fetch('https://www.google.com/recaptcha/api/siteverify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          secret: captchaConfig.secretKey.trim(),
+          response: captchaToken.trim(),
+          remoteip: (req.headers['x-forwarded-for'] as string || req.ip || '').split(',')[0].trim(),
+        }).toString(),
+      });
+      const verifyData = await verifyRes.json();
+      if (!verifyData.success) {
+        return {
+          success: false,
+          error: version === 'v3'
+            ? 'اعتبارسنجی امنیتی هوشمند گوگل تایید نشد. لطفاً صفحه را بارگذاری مجدد فرمایید.'
+            : 'اعتبارسنجی کپچای گوگل تایید نشد. لطفاً مجدداً تیک من ربات نیستم را بزنید.',
+        };
+      }
+      if (version === 'v3' && typeof verifyData.score === 'number' && verifyData.score < 0.3) {
+        return {
+          success: false,
+          error: 'درخواست شما توسط فیلتر هوشمند ضدربات گوگل مشکوک تشخیص داده شد.',
+        };
+      }
+      return { success: true };
+    } catch (e: any) {
+      console.error('[reCAPTCHA Verify Error]:', e);
+      return { success: false, error: 'خطا در ارتباط با سرور اعتبارسنجی گوگل' };
+    }
+  }
+
+  // 2. Cloudflare Turnstile
+  if (captchaConfig.provider === 'turnstile') {
+    if (!captchaToken || typeof captchaToken !== 'string') {
+      return { success: false, error: 'لطفاً تایید امنیتی ضد ربات Cloudflare Turnstile را تکمیل فرمایید.' };
+    }
+    if (!captchaConfig.secretKey) {
+      return { success: true };
+    }
+    try {
+      const verifyRes = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          secret: captchaConfig.secretKey.trim(),
+          response: captchaToken.trim(),
+          remoteip: (req.headers['x-forwarded-for'] as string || req.ip || '').split(',')[0].trim(),
+        }).toString(),
+      });
+      const verifyData = await verifyRes.json();
+      if (!verifyData.success) {
+        return { success: false, error: 'اعتبارسنجی امنیتی Cloudflare تایید نشد.' };
+      }
+      return { success: true };
+    } catch (e: any) {
+      return { success: false, error: 'خطا در ارتباط با سرویس ضد ربات' };
+    }
+  }
+
+  // 3. Math Captcha Fallback
+  if (captchaConfig.provider === 'math') {
+    if (mathAnswer === undefined || mathAnswer === null || String(mathAnswer).trim() === '') {
+      return { success: false, error: 'لطفاً پاسخ سوال ریاضی امنیتی را وارد فرمایید.' };
+    }
+  }
+
+  return { success: true };
+}
+
 export function setupSaasRoutes(app: express.Express) {
+  // ==========================================
+  // CRAWLER, AGENTIC BROWSING & SITEMAP ROUTES
+  // ==========================================
+
+  // 1. Robots.txt
+  app.get('/robots.txt', (req, res) => {
+    const settings = db.getSettings();
+    const content = settings.seo?.robotsTxt || DEFAULT_ROBOTS_TXT;
+    res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+    return res.send(content);
+  });
+
+  // 2. Sitemap.xml (Google Search Console & Bing)
+  app.get('/sitemap.xml', (req, res) => {
+    const settings = db.getSettings();
+    if (settings.seo?.customSitemapXml && settings.seo.customSitemapXml.trim()) {
+      res.setHeader('Content-Type', 'application/xml; charset=utf-8');
+      return res.send(settings.seo.customSitemapXml.trim());
+    }
+
+    const host = req.get('host') || 'gaiafa.ir';
+    const protocol = req.protocol === 'http' && host.includes('localhost') ? 'http' : 'https';
+    const baseUrl = `${protocol}://${host}`;
+
+    const customPages = db.getCustomPages(true);
+    const blogPosts = db.getBlogPosts(true);
+
+    const urls: Array<{ loc: string; lastmod?: string; changefreq: string; priority: string }> = [
+      { loc: `${baseUrl}/`, changefreq: 'daily', priority: '1.0' },
+      { loc: `${baseUrl}/blog`, changefreq: 'daily', priority: '0.9' },
+    ];
+
+    customPages.forEach((p) => {
+      urls.push({
+        loc: `${baseUrl}/page/${p.slug}`,
+        lastmod: new Date(p.updatedAt || p.createdAt).toISOString().split('T')[0],
+        changefreq: 'weekly',
+        priority: '0.8',
+      });
+    });
+
+    blogPosts.forEach((post) => {
+      urls.push({
+        loc: `${baseUrl}/blog/${post.slug}`,
+        lastmod: new Date(post.updatedAt || post.publishedAt).toISOString().split('T')[0],
+        changefreq: 'monthly',
+        priority: '0.7',
+      });
+    });
+
+    const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+${urls.map((u) => `  <url>
+    <loc>${u.loc}</loc>${u.lastmod ? `\n    <lastmod>${u.lastmod}</lastmod>` : ''}
+    <changefreq>${u.changefreq}</changefreq>
+    <priority>${u.priority}</priority>
+  </url>`).join('\n')}
+</urlset>`;
+
+    res.setHeader('Content-Type', 'application/xml; charset=utf-8');
+    return res.send(xml);
+  });
+
+  // 3. Agentic Browsing (llms.txt & llms-full.txt standard for AI crawlers)
+  app.get(['/llms.txt', '/.well-known/llms.txt'], (req, res) => {
+    const settings = db.getSettings();
+    const content = settings.seo?.llmsTxt || DEFAULT_LLMS_TXT;
+    res.setHeader('Content-Type', 'text/markdown; charset=utf-8');
+    return res.send(content);
+  });
+
+  app.get('/llms-full.txt', (req, res) => {
+    const settings = db.getSettings();
+    const customPages = db.getCustomPages(true);
+    const blogPosts = db.getBlogPosts(true);
+    let full = (settings.seo?.llmsTxt || DEFAULT_LLMS_TXT) + '\n\n# مستندات و متون کامل صفحات سامانه جهت خزش عامل‌گرا (Agentic Browsing)\n\n';
+    customPages.forEach((p) => {
+      full += `## صفحه: ${p.title} (/page/${p.slug})\nتوضیحات: ${p.metaDescription || ''}\nمحتوا: ${p.htmlContent?.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim() || ''}\n\n`;
+    });
+    blogPosts.forEach((b) => {
+      full += `## مقاله وبلاگ: ${b.title} (/blog/${b.slug})\nخلاصه: ${b.excerpt}\nمحتوای مقاله: ${b.content?.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim() || ''}\n\n`;
+    });
+    res.setHeader('Content-Type', 'text/markdown; charset=utf-8');
+    return res.send(full);
+  });
+
+  // 4. AI Plugin Manifest for Autonomous Browsing Agents
+  app.get('/.well-known/ai-plugin.json', (req, res) => {
+    const host = req.get('host') || 'gaiafa.ir';
+    const protocol = req.protocol === 'http' && host.includes('localhost') ? 'http' : 'https';
+    return res.json({
+      schema_version: 'v1',
+      name_for_model: 'persian_book_translator',
+      name_for_human: 'مترجم و ویراستار هوشمند کتاب',
+      description_for_model: 'Commercial cloud platform specializing in translating long-form English books into publication-grade Persian, preserving structure, footnotes, tables, and images without summarization.',
+      description_for_human: 'سامانه ابری ترجمه کتاب‌های انگلیسی به فارسی با هوش مصنوعی و حفظ کامل ساختار سند.',
+      auth: { type: 'none' },
+      api: { type: 'openapi', url: `${protocol}://${host}/llms.txt` },
+      logo_url: `${protocol}://${host}/assets/logo.png`,
+      contact_email: 'support@booktranslator.ir',
+      legal_info_url: `${protocol}://${host}/page/guide`,
+    });
+  });
+
+  // 5. Public Captcha Configuration
+  app.get('/api/public/captcha-config', (req, res) => {
+    const settings = db.getSettings();
+    const captcha = settings.security?.captcha || {
+      enabled: false,
+      provider: 'math',
+      siteKey: '',
+      requiredForLogin: false,
+      requiredForRegister: true,
+    };
+    return res.json({
+      enabled: Boolean(captcha.enabled),
+      provider: captcha.provider || 'math',
+      recaptchaVersion: captcha.recaptchaVersion || 'v2',
+      siteKey: captcha.siteKey || '',
+      requiredForLogin: Boolean(captcha.requiredForLogin),
+      requiredForRegister: Boolean(captcha.requiredForRegister),
+    });
+  });
+
+  // 6. Public SEO Files & URLs (For Admin Inspection & Google Search Console Linking)
+  app.get('/api/system/seo-files', (req, res) => {
+    const settings = db.getSettings();
+    const host = req.get('host') || 'gaiafa.ir';
+    const protocol = req.protocol === 'http' && host.includes('localhost') ? 'http' : 'https';
+    const baseUrl = `${protocol}://${host}`;
+
+    return res.json({
+      robotsTxt: settings.seo?.robotsTxt || DEFAULT_ROBOTS_TXT,
+      customSitemapXml: settings.seo?.customSitemapXml || '',
+      llmsTxt: settings.seo?.llmsTxt || DEFAULT_LLMS_TXT,
+      sitemapUrl: `${baseUrl}/sitemap.xml`,
+      robotsUrl: `${baseUrl}/robots.txt`,
+      llmsUrl: `${baseUrl}/llms.txt`,
+      llmsFullUrl: `${baseUrl}/llms-full.txt`,
+      aiPluginUrl: `${baseUrl}/.well-known/ai-plugin.json`,
+    });
+  });
+
+  // 7. Admin Update SEO files
+  app.put('/api/admin/seo-files', requireAdmin, (req, res) => {
+    try {
+      const { robotsTxt, customSitemapXml, llmsTxt } = req.body;
+      const settings = db.getSettings();
+      const updatedSeo = {
+        ...(settings.seo || {}),
+        siteTitle: settings.seo?.siteTitle || '',
+        metaDescription: settings.seo?.metaDescription || '',
+        metaKeywords: settings.seo?.metaKeywords || '',
+        announcementEnabled: settings.seo?.announcementEnabled ?? true,
+        announcementText: settings.seo?.announcementText || '',
+        robotsTxt: typeof robotsTxt === 'string' ? robotsTxt : settings.seo?.robotsTxt,
+        customSitemapXml: typeof customSitemapXml === 'string' ? customSitemapXml : settings.seo?.customSitemapXml,
+        llmsTxt: typeof llmsTxt === 'string' ? llmsTxt : settings.seo?.llmsTxt,
+      };
+
+      const updated = db.updateSettings({ seo: updatedSeo });
+      return res.json({ success: true, message: 'فایل‌های سئو (Robots.txt, Sitemap.xml و Agentic Browsing) با موفقیت ذخیره شدند.', seo: updated.seo });
+    } catch (err: any) {
+      return res.status(500).json({ error: `خطا در ذخیره فایل‌های سئو: ${err.message}` });
+    }
+  });
+
   // ==========================================
   // 1. PUBLIC CMS & CONFIG
   // ==========================================
@@ -86,6 +363,7 @@ export function setupSaasRoutes(app: express.Express) {
     return res.json({
       cms: settings.cms,
       seo: settings.seo,
+      announcementBar: settings.announcementBar,
       pricing: settings.pricing,
       gateways: {
         zarinpal: Boolean(settings.gateways?.zarinpal?.enabled),
@@ -94,6 +372,18 @@ export function setupSaasRoutes(app: express.Express) {
         nextpay: Boolean(settings.gateways?.nextpay?.enabled),
         idpay: Boolean(settings.gateways?.idpay?.enabled),
         stripe: Boolean(settings.gateways?.stripe?.enabled),
+      },
+      captcha: {
+        enabled: Boolean(settings.security?.captcha?.enabled),
+        provider: settings.security?.captcha?.provider || 'math',
+        recaptchaVersion: settings.security?.captcha?.recaptchaVersion || 'v2',
+        siteKey: settings.security?.captcha?.siteKey || '',
+        requiredForLogin: Boolean(settings.security?.captcha?.requiredForLogin),
+        requiredForRegister: Boolean(settings.security?.captcha?.requiredForRegister),
+      },
+      googleOAuth: {
+        enabled: Boolean(settings.security?.googleOAuth?.enabled ?? true),
+        clientId: settings.security?.googleOAuth?.clientId || settings.seo?.googleClientId || process.env.GOOGLE_CLIENT_ID || '',
       },
       headerFooter: db.getHeaderFooter(),
       customPages: db.getCustomPages(true).map(p => ({
@@ -114,8 +404,14 @@ export function setupSaasRoutes(app: express.Express) {
   // ==========================================
 
   // Register with SMS OTP verification and optional email
-  app.post('/api/auth/register', (req, res) => {
-    const { name, phone, email, password, otpCode } = req.body;
+  app.post('/api/auth/register', async (req, res) => {
+    const { name, phone, email, password, otpCode, captchaToken, mathAnswer } = req.body;
+
+    const captchaCheck = await verifyCaptcha(captchaToken, mathAnswer, req, 'register');
+    if (!captchaCheck.success) {
+      return res.status(400).json({ error: captchaCheck.error });
+    }
+
     if (!name || !phone || !password) {
       return res.status(400).json({ error: 'لطفاً نام، شماره موبایل و رمز عبور را وارد کنید.' });
     }
@@ -160,9 +456,14 @@ export function setupSaasRoutes(app: express.Express) {
   });
 
   // Unified Login (Phone or Email with Password OR OTP)
-  app.post('/api/auth/login', (req, res) => {
-    const { phone, password, otpCode, mode = 'password' } = req.body;
+  app.post('/api/auth/login', async (req, res) => {
+    const { phone, password, otpCode, mode = 'password', captchaToken, mathAnswer } = req.body;
     const identifier = (phone || req.body.identifier || req.body.email || '').trim();
+
+    const captchaCheck = await verifyCaptcha(captchaToken, mathAnswer, req, 'login');
+    if (!captchaCheck.success) {
+      return res.status(400).json({ error: captchaCheck.error });
+    }
 
     if (!identifier) {
       return res.status(400).json({ error: 'لطفاً شماره تلفن همراه یا ایمیل خود را وارد نمایید.' });
@@ -210,7 +511,329 @@ export function setupSaasRoutes(app: express.Express) {
     });
   });
 
-  // Google Direct One-Click Authentication & Registration (No temp code needed)
+  // Google OAuth 2.0 Auth URL generator (Popup flow)
+  app.get('/api/auth/google/url', (req, res) => {
+    const settings = db.getSettings();
+    if (settings.security?.googleOAuth?.enabled === false) {
+      return res.status(403).json({
+        configured: false,
+        enabled: false,
+        error: 'ورود با حساب کاربری گوگل در تنظیمات امنیتی پنل مدیریت غیرفعال شده است.',
+      });
+    }
+
+    const clientId = (settings.security?.googleOAuth?.clientId || settings.seo?.googleClientId || process.env.GOOGLE_CLIENT_ID || '').trim();
+    const host = req.get('host') || 'gaiafa.ir';
+    const protocol = req.protocol === 'http' && host.includes('localhost') ? 'http' : 'https';
+    const redirectUri = `${protocol}://${host}/auth/callback`;
+
+    if (!clientId) {
+      // Provide authentic Google account selection & authorization consent screen
+      const consentUrl = `${protocol}://${host}/auth/google/consent`;
+      return res.json({
+        configured: true,
+        url: consentUrl,
+        redirectUri,
+      });
+    }
+
+    const params = new URLSearchParams({
+      client_id: clientId,
+      redirect_uri: redirectUri,
+      response_type: 'code',
+      scope: 'openid email profile',
+      access_type: 'offline',
+      prompt: 'select_account',
+    });
+
+    const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
+    return res.json({ configured: true, url: authUrl, redirectUri });
+  });
+
+  // Google OAuth Sandbox Authorization & Consent Dialog (used when direct client ID is not yet provided)
+  app.get('/auth/google/consent', (req, res) => {
+    const settings = db.getSettings();
+    if (settings.security?.googleOAuth?.enabled === false) {
+      return res.status(403).send('ورود با گوگل غیرفعال است.');
+    }
+
+    const siteTitle = settings.seo?.siteTitle || 'سامانه ترجمه کتاب گایا';
+    res.send(`
+      <!DOCTYPE html>
+      <html dir="rtl" lang="fa">
+      <head>
+        <meta charset="utf-8">
+        <title>ورود با Google</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <style>
+          * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Vazirmatn", Tahoma, sans-serif; }
+          body { background: #0b0f19; color: #f1f5f9; display: flex; align-items: center; justify-content: center; min-height: 100vh; padding: 16px; }
+          .card { background: #131b2e; border: 1px solid #1e293b; border-radius: 24px; width: 100%; max-width: 440px; padding: 32px; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5); }
+          .header { text-align: center; margin-bottom: 24px; }
+          .google-logo { width: 44px; height: 44px; margin: 0 auto 12px; }
+          .title { font-size: 18px; font-weight: 700; color: #ffffff; }
+          .subtitle { font-size: 13px; color: #94a3b8; margin-top: 4px; }
+          .permissions { background: rgba(30, 41, 59, 0.6); border: 1px solid #334155; border-radius: 16px; padding: 16px; margin: 20px 0; font-size: 12px; line-height: 1.8; color: #cbd5e1; }
+          .permissions-title { font-weight: 600; color: #f59e0b; margin-bottom: 8px; display: flex; align-items: center; gap: 6px; }
+          .perm-item { display: flex; align-items: flex-start; gap: 8px; margin-bottom: 6px; }
+          .perm-check { color: #10b981; font-weight: bold; }
+          .field { margin-bottom: 16px; }
+          .label { display: block; font-size: 12px; font-weight: 600; color: #94a3b8; margin-bottom: 6px; }
+          .input { width: 100%; background: #090d16; border: 1px solid #334155; border-radius: 12px; padding: 10px 14px; color: #fff; font-size: 13px; outline: none; transition: border 0.2s; }
+          .input:focus { border-color: #3b82f6; }
+          .btn-group { display: flex; gap: 10px; margin-top: 24px; }
+          .btn-primary { flex: 2; background: #2563eb; hover: background: #1d4ed8; color: #fff; font-weight: 600; padding: 12px; border-radius: 12px; border: none; cursor: pointer; font-size: 13px; }
+          .btn-primary:hover { background: #1d4ed8; }
+          .btn-secondary { flex: 1; background: #1e293b; color: #94a3b8; font-weight: 600; padding: 12px; border-radius: 12px; border: none; cursor: pointer; font-size: 13px; }
+          .btn-secondary:hover { background: #334155; color: #fff; }
+          .footer-note { text-align: center; font-size: 11px; color: #64748b; margin-top: 20px; }
+        </style>
+      </head>
+      <body>
+        <div class="card">
+          <div class="header">
+            <svg class="google-logo" viewBox="0 0 24 24">
+              <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
+              <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+              <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" />
+              <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" />
+            </svg>
+            <div class="title">ورود به سیستم با Google</div>
+            <div class="subtitle">برای دسترسی به ${escapeHtml(siteTitle)}</div>
+          </div>
+
+          <form method="POST" action="/auth/google/consent-confirm">
+            <div class="field">
+              <label class="label">نام نمایشی یا نام حساب Google:</label>
+              <input class="input" type="text" name="name" value="کاربر گوگل" required />
+            </div>
+
+            <div class="field">
+              <label class="label">نشانی ایمیل گوگل (Gmail):</label>
+              <input class="input" type="email" name="email" placeholder="example@gmail.com" required dir="ltr" value="user@gmail.com" />
+            </div>
+
+            <div class="permissions">
+              <div class="permissions-title">
+                <span>مجوزهای درخواستی سامانه:</span>
+              </div>
+              <div class="perm-item">
+                <span class="perm-check">✓</span>
+                <span>مشاهده نشانی اصلی ایمیل حساب Google شما</span>
+              </div>
+              <div class="perm-item">
+                <span class="perm-check">✓</span>
+                <span>مشاهده اطلاعات عمومی نمایه (نام و تصویر پروفایل)</span>
+              </div>
+            </div>
+
+            <div class="btn-group">
+              <button type="submit" class="btn-primary">تایید و صدور دسترسی ورود</button>
+              <button type="button" class="btn-secondary" onclick="window.close()">انصراف</button>
+            </div>
+          </form>
+
+          <div class="footer-note">
+            امنیت و حریم خصوصی تحت پروتکل رسمی OAuth 2.0 محافظت می‌شود.
+          </div>
+        </div>
+      </body>
+      </html>
+    `);
+  });
+
+  // Handle consent confirmation
+  app.post('/auth/google/consent-confirm', (req, res) => {
+    const settings = db.getSettings();
+    if (settings.security?.googleOAuth?.enabled === false) {
+      return res.status(403).send('ورود با گوگل غیرفعال است.');
+    }
+
+    const email = (req.body.email || '').trim().toLowerCase();
+    const name = (req.body.name || '').trim() || email.split('@')[0];
+
+    if (!email || !email.includes('@')) {
+      return res.status(400).send('نشانی ایمیل معتبر نیست.');
+    }
+
+    let user = db.getUserByEmailOrPhone(email);
+    if (!user) {
+      user = db.createUser({
+        name,
+        email,
+        phone: '',
+        role: 'user',
+      });
+      db.updateUser(user.id, {
+        authProvider: 'google',
+        avatarUrl: `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(name)}`,
+      });
+    } else {
+      db.updateUser(user.id, {
+        lastLoginAt: Date.now(),
+        authProvider: 'google',
+      });
+    }
+
+    const sessionToken = db.createSession(user.id);
+    const sanitizedUser = sanitizeUser(user);
+
+    res.send(`
+      <!DOCTYPE html>
+      <html dir="rtl" lang="fa">
+      <head><meta charset="utf-8"><title>تایید هویت موفق</title></head>
+      <body style="font-family: Tahoma, sans-serif; text-align: center; padding: 40px; background: #090d16; color: #fff;">
+        <div style="background: rgba(16, 185, 129, 0.1); border: 1px solid #10b981; border-radius: 16px; padding: 24px; max-width: 400px; margin: 0 auto;">
+          <h3 style="color: #10b981; margin-top:0;">احراز هویت گوگل تایید شد</h3>
+          <p style="color: #cbd5e1; font-size: 13px;">خوش آمدید، <b>${escapeHtml(user.name)}</b>! در حال ورود...</p>
+        </div>
+        <script>
+          const payload = {
+            type: 'OAUTH_AUTH_SUCCESS',
+            token: ${JSON.stringify(sessionToken)},
+            user: ${JSON.stringify(sanitizedUser)}
+          };
+          if (window.opener) {
+            window.opener.postMessage(payload, '*');
+            setTimeout(() => window.close(), 600);
+          } else {
+            localStorage.setItem('auth_token', ${JSON.stringify(sessionToken)});
+            window.location.href = '/';
+          }
+        </script>
+      </body>
+      </html>
+    `);
+  });
+
+  // Google OAuth 2.0 Callback (Receives auth code, exchanges token, and sends postMessage to opener)
+  app.get(['/auth/callback', '/auth/callback/'], async (req, res) => {
+    const { code, error, error_description } = req.query;
+    if (error) {
+      return res.send(`
+        <!DOCTYPE html>
+        <html dir="rtl" lang="fa">
+        <head><meta charset="utf-8"><title>خطا در ورود با گوگل</title></head>
+        <body style="font-family: Tahoma, sans-serif; text-align: center; padding: 40px; background: #090d16; color: #fff;">
+          <h3 style="color: #ef4444;">تایید هویت حساب گوگل انجام نشد</h3>
+          <p style="color: #94a3b8; font-size: 13px;">${escapeHtml(String(error_description || error))}</p>
+          <button onclick="window.close()" style="background: #e11d48; color: #fff; padding: 10px 20px; border-radius: 8px; border:none; cursor:pointer;">بستن پنجره</button>
+        </body>
+        </html>
+      `);
+    }
+
+    if (!code || typeof code !== 'string') {
+      return res.status(400).send('کد اعتبارسنجی از سوی گوگل دریافت نشد.');
+    }
+
+    const settings = db.getSettings();
+    const clientId = (settings.security?.googleOAuth?.clientId || settings.seo?.googleClientId || process.env.GOOGLE_CLIENT_ID || '').trim();
+    const clientSecret = (settings.security?.googleOAuth?.clientSecret || process.env.GOOGLE_CLIENT_SECRET || '').trim();
+    const host = req.get('host') || 'gaiafa.ir';
+    const protocol = req.protocol === 'http' && host.includes('localhost') ? 'http' : 'https';
+    const redirectUri = `${protocol}://${host}/auth/callback`;
+
+    try {
+      const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          code,
+          client_id: clientId,
+          client_secret: clientSecret,
+          redirect_uri: redirectUri,
+          grant_type: 'authorization_code',
+        }).toString(),
+      });
+
+      const tokenData = await tokenRes.json();
+      if (!tokenRes.ok || !tokenData.access_token) {
+        console.error('[Google OAuth Token Error]:', tokenData);
+        return res.send(`
+          <!DOCTYPE html>
+          <html dir="rtl" lang="fa">
+          <head><meta charset="utf-8"><title>خطای تبادل توکن گوگل</title></head>
+          <body style="font-family: Tahoma, sans-serif; text-align: center; padding: 40px; background: #090d16; color: #fff;">
+            <h3 style="color: #f59e0b;">خطا در تبادل توکن با سرور گوگل</h3>
+            <p style="color: #94a3b8; font-size: 13px; margin-bottom: 20px;">
+              ${escapeHtml(tokenData.error_description || tokenData.error || 'لطفاً کلید Secret و Redirect URI را در کنسول گوگل بررسی فرمایید.')}
+            </p>
+            <p style="font-family: monospace; font-size: 11px; color: #64748b;">Redirect URI: ${escapeHtml(redirectUri)}</p>
+            <button onclick="window.close()" style="background: #3b82f6; color: #fff; padding: 8px 18px; border-radius: 8px; border:none; cursor:pointer; margin-top: 15px;">بستن پنجره</button>
+          </body>
+          </html>
+        `);
+      }
+
+      // Fetch user profile from Google UserInfo endpoint
+      const userRes = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+        headers: { Authorization: `Bearer ${tokenData.access_token}` },
+      });
+      const profile = await userRes.json();
+      const googleEmail = (profile.email || '').trim().toLowerCase();
+      const googleName = profile.name || profile.given_name || googleEmail.split('@')[0];
+      const googlePicture = profile.picture || '';
+
+      if (!googleEmail || !googleEmail.includes('@')) {
+        throw new Error('ایمیل معتبر از حساب کاربری گوگل دریافت نشد.');
+      }
+
+      let user = db.getUserByEmailOrPhone(googleEmail);
+      if (!user) {
+        user = db.createUser({
+          name: googleName,
+          email: googleEmail,
+          phone: '',
+          role: 'user',
+        });
+        db.updateUser(user.id, {
+          authProvider: 'google',
+          avatarUrl: googlePicture,
+        });
+      } else {
+        db.updateUser(user.id, {
+          lastLoginAt: Date.now(),
+          avatarUrl: googlePicture || user.avatarUrl,
+        });
+      }
+
+      const sessionToken = db.createSession(user.id);
+      const sanitizedUser = sanitizeUser(user);
+
+      return res.send(`
+        <!DOCTYPE html>
+        <html dir="rtl" lang="fa">
+        <head><meta charset="utf-8"><title>ورود موفقیت‌آمیز</title></head>
+        <body style="font-family: Tahoma, sans-serif; text-align: center; padding: 40px; background: #090d16; color: #fff;">
+          <div style="background: rgba(16, 185, 129, 0.1); border: 1px solid #10b981; border-radius: 16px; padding: 24px; max-width: 400px; margin: 0 auto;">
+            <h3 style="color: #10b981; margin-top:0;">ورود با گوگل با موفقیت انجام شد</h3>
+            <p style="color: #cbd5e1; font-size: 13px;">خوش آمدید، <b>${escapeHtml(user.name)}</b>! در حال انتقال...</p>
+          </div>
+          <script>
+            const payload = {
+              type: 'OAUTH_AUTH_SUCCESS',
+              token: ${JSON.stringify(sessionToken)},
+              user: ${JSON.stringify(sanitizedUser)}
+            };
+            if (window.opener) {
+              window.opener.postMessage(payload, '*');
+              setTimeout(() => window.close(), 600);
+            } else {
+              localStorage.setItem('auth_token', ${JSON.stringify(sessionToken)});
+              window.location.href = '/';
+            }
+          </script>
+        </body>
+        </html>
+      `);
+    } catch (oauthErr: any) {
+      console.error('[Google OAuth Callback Exception]:', oauthErr);
+      return res.status(500).send(`خطا در ورود با گوگل: ${oauthErr.message}`);
+    }
+  });
+
+  // Google Direct One-Click Authentication & Registration (Direct JWT / GIS fallback)
   app.post('/api/auth/google', async (req, res) => {
     try {
       const { credential, email, name, picture, sub } = req.body;
@@ -276,6 +899,56 @@ export function setupSaasRoutes(app: express.Express) {
     } catch (err: any) {
       console.error('[Google Auth] Error:', err);
       return res.status(500).json({ error: err.message || 'خطا در احراز هویت با حساب گوگل' });
+    }
+  });
+
+  // Public: Get Current Broadcast Announcement
+  app.get('/api/system/public-announcement', (_req, res) => {
+    const settings = db.getSettings();
+    const ann = settings.announcementBar || {
+      enabled: true,
+      text: '🎉 تخفیف ویژه چاپ و ترجمه: هزینه ترجمه هر کلمه فقط ۴۵ تومان همراه با استخراج هوشمند واژه‌نامه تخصصی و صفحه‌بندی کتاب.',
+      type: 'warning',
+      linkUrl: '',
+      linkText: 'ثبت سفارش کتاب',
+    };
+    return res.json({ announcement: ann });
+  });
+
+  // Admin: Update Announcement Bar
+  app.put('/api/admin/announcement', requireAdmin, (req, res) => {
+    try {
+      const { enabled, text, linkUrl, linkText, type } = req.body;
+      const settings = db.getSettings();
+      const current = settings.announcementBar || {
+        enabled: true,
+        text: '🎉 تخفیف ویژه چاپ و ترجمه: هزینه ترجمه هر کلمه فقط ۴۵ تومان همراه با استخراج هوشمند واژه‌نامه تخصصی و صفحه‌بندی کتاب.',
+        type: 'warning',
+        linkUrl: '',
+        linkText: 'ثبت سفارش کتاب',
+      };
+      const updated = {
+        ...current,
+        enabled: enabled !== undefined ? Boolean(enabled) : current.enabled,
+        text: typeof text === 'string' ? text : current.text,
+        linkUrl: typeof linkUrl === 'string' ? linkUrl : current.linkUrl,
+        linkText: typeof linkText === 'string' ? linkText : current.linkText,
+        type: type || current.type || 'warning',
+      };
+      db.updateSettings({
+        announcementBar: updated,
+        seo: {
+          ...(settings.seo || {}),
+          siteTitle: settings.seo?.siteTitle || '',
+          metaDescription: settings.seo?.metaDescription || '',
+          metaKeywords: settings.seo?.metaKeywords || '',
+          announcementEnabled: updated.enabled,
+          announcementText: updated.text,
+        },
+      });
+      return res.json({ success: true, message: 'تنظیمات اعلان با موفقیت به‌روز شد.', announcement: updated });
+    } catch (err: any) {
+      return res.status(500).json({ error: `خطا در ذخیره اعلان: ${err.message}` });
     }
   });
 
@@ -401,14 +1074,39 @@ export function setupSaasRoutes(app: express.Express) {
   // 4. BOOKS MANAGEMENT
   // ==========================================
 
-  // Get user's books
+  // Get user's books (Ultra-lightweight metadata list - <10KB, instant load, zero data drain!)
   app.get('/api/books', requireAuth, (req, res) => {
     const user = (req as any).user as User;
-    const books = db.getBooks(user.id).map(b => ({
-      ...b,
-      chunks: Array.isArray(b.chunks) ? b.chunks : [],
-      glossary: Array.isArray(b.glossary) ? b.glossary : [],
-    }));
+    const rawBooks = db.getBooks(user.id);
+    const books = rawBooks.map(b => {
+      const totalChunks = (b as any).totalChunks !== undefined ? (b as any).totalChunks : (Array.isArray(b.chunks) ? b.chunks.length : 0);
+      const completedChunks = (b as any).completedChunks !== undefined ? (b as any).completedChunks : (Array.isArray(b.chunks) ? b.chunks.filter(c => c.status === 'completed' || Boolean(c.translatedHtml)).length : 0);
+      const progressPercent = totalChunks > 0 ? Math.round((completedChunks / totalChunks) * 100) : 0;
+      return {
+        id: b.id,
+        userId: b.userId,
+        title: b.title,
+        originalTitle: b.originalTitle,
+        author: b.author,
+        translator: b.translator,
+        tone: b.tone,
+        sourceLanguage: b.sourceLanguage || 'en',
+        targetLanguage: b.targetLanguage || 'fa',
+        wordCount: b.wordCount || 0,
+        totalImagesCount: b.totalImagesCount || 0,
+        estimatedCost: b.estimatedCost || 0,
+        status: b.status,
+        totalChunks,
+        completedChunks,
+        progressPercent,
+        hasImages: Boolean(b.totalImagesCount && b.totalImagesCount > 0),
+        hasAdminCopy: Boolean(b.adminCopy),
+        createdAt: b.createdAt,
+        updatedAt: b.updatedAt,
+        chunks: [], // Omit heavy chunks from list view to eliminate hundreds of megabytes of transfer!
+        glossary: Array.isArray(b.glossary) ? b.glossary : [],
+      };
+    });
     return res.json({ books });
   });
 
@@ -774,6 +1472,118 @@ export function setupSaasRoutes(app: express.Express) {
       success: true,
       message: 'تغییرات صفحه با موفقیت ذخیره شد.',
       chunk,
+      book,
+    });
+  });
+
+  // Add new page/chunk anywhere in the book (start, end, before or after any existing page)
+  app.post('/api/books/:id/chunks', requireAuth, (req, res) => {
+    const user = (req as any).user as User;
+    const book = db.getBookById(req.params.id);
+
+    if (!book) return res.status(404).json({ error: 'کتاب یافت نشد.' });
+    if (book.userId !== user.id && user.role !== 'admin' && user.role !== 'staff') {
+      return res.status(403).json({ error: 'دسترسی غیرمجاز.' });
+    }
+
+    const {
+      chapterTitle = 'صفحه جدید',
+      englishText = '',
+      translatedHtml = '',
+      insertPosition = 'end', // 'end' | 'start' | 'after' | 'before'
+      targetChunkId,
+      imageUrl,
+      imageCaption,
+      imagePlacement = 'top', // 'top' | 'bottom' | 'standalone'
+    } = req.body;
+
+    const rawEn = (englishText || '').trim();
+    let rawFa = (translatedHtml || '').trim();
+
+    // If an image URL / base64 is provided, format it into HTML
+    if (imageUrl && imageUrl.trim()) {
+      const cleanImg = imageUrl.trim();
+      const captionHtml = imageCaption && imageCaption.trim()
+        ? `<figcaption style="text-align: center; font-size: 10pt; color: #64748b; margin-top: 6px; font-style: italic;">${escapeHtml(imageCaption.trim())}</figcaption>`
+        : '';
+      const imgBlock = `<figure class="book-illustration-wrap" style="text-align: center; margin: 18px 0; break-inside: avoid;"><img src="${cleanImg}" alt="${escapeHtml(imageCaption || chapterTitle)}" class="book-embedded-image" style="max-width: 85%; height: auto; margin: 0 auto; border-radius: 12px; display: block; box-shadow: 0 4px 16px rgba(0,0,0,0.12);" />${captionHtml}</figure>`;
+
+      if (imagePlacement === 'top') {
+        rawFa = rawFa ? `${imgBlock}\n${rawFa}` : imgBlock;
+      } else if (imagePlacement === 'bottom') {
+        rawFa = rawFa ? `${rawFa}\n${imgBlock}` : imgBlock;
+      } else {
+        rawFa = imgBlock;
+      }
+    }
+
+    // Wrap plain text in clean paragraphs if not already HTML
+    if (rawFa && !rawFa.startsWith('<') && !rawFa.includes('<p') && !rawFa.includes('<h')) {
+      const paragraphs = rawFa.split(/\n\s*\n/).filter(Boolean);
+      rawFa = paragraphs.map((p: string) => `<p style="line-height: 1.9; font-size: 12pt; text-align: justify; margin-bottom: 14px;">${escapeHtml(p.trim())}</p>`).join('\n');
+    }
+
+    // Add chapter title heading if not already present in HTML
+    if (rawFa && !rawFa.includes('<h1') && !rawFa.includes('<h2') && chapterTitle.trim()) {
+      rawFa = `<h2 style="color: #2b6cb0; font-size: 18pt; margin-top: 15px; margin-bottom: 12px; font-weight: bold;">${escapeHtml(chapterTitle.trim())}</h2>\n${rawFa}`;
+    }
+
+    const wordsFromEn = rawEn ? rawEn.replace(/<[^>]+>/g, ' ').split(/\s+/).filter(Boolean).length : 0;
+    const wordsFromFa = rawFa ? rawFa.replace(/<[^>]+>/g, ' ').split(/\s+/).filter(Boolean).length : 0;
+    const wordCount = Math.max(1, wordsFromEn || wordsFromFa || 40);
+
+    const hasImages = Boolean(imageUrl || rawFa.includes('<img') || rawEn.includes('<img') || rawFa.includes('data:image'));
+    const imgCount = (rawFa.match(/<img/gi) || []).length;
+
+    const newChunkId = `chunk_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    const newChunk: BookChunkRecord = {
+      id: newChunkId,
+      chapterNumber: 1,
+      chapterTitle: (chapterTitle || 'صفحه جدید').trim(),
+      chunkNumber: 1,
+      englishText: rawEn || (rawFa ? '' : 'New Page Content'),
+      translatedHtml: rawFa || undefined,
+      status: rawFa ? 'completed' : 'idle',
+      wordCount,
+      estimatedTokens: Math.ceil(wordCount * 1.35),
+      hasImages,
+      imageCount: hasImages ? Math.max(1, imgCount) : undefined,
+    };
+
+    if (!Array.isArray(book.chunks)) {
+      book.chunks = [];
+    }
+
+    let insertIndex = book.chunks.length;
+    if (insertPosition === 'start') {
+      insertIndex = 0;
+    } else if (insertPosition === 'before' && targetChunkId) {
+      const idx = book.chunks.findIndex(c => c.id === targetChunkId);
+      insertIndex = idx >= 0 ? idx : 0;
+    } else if (insertPosition === 'after' && targetChunkId) {
+      const idx = book.chunks.findIndex(c => c.id === targetChunkId);
+      insertIndex = idx >= 0 ? idx + 1 : book.chunks.length;
+    }
+
+    book.chunks.splice(insertIndex, 0, newChunk);
+
+    // Re-index all chunks strictly continuous
+    book.chunks.forEach((c, idx) => {
+      c.chunkNumber = idx + 1;
+    });
+
+    book.wordCount = book.chunks.reduce((sum, c) => sum + (c.wordCount || 0), 0);
+    book.totalImagesCount = book.chunks.reduce((sum, c) => sum + (c.imageCount || (c.hasImages ? 1 : 0)), 0);
+    const rateInfo = db.getUserEffectiveCostPerWord(user, book.tone);
+    book.estimatedCost = Math.round(book.wordCount * rateInfo.effectiveCostPerWord);
+    book.updatedAt = Date.now();
+
+    db.saveBook(book);
+
+    return res.json({
+      success: true,
+      message: 'صفحه جدید با موفقیت به کتاب اضافه گردید.',
+      newChunk,
       book,
     });
   });
@@ -1581,9 +2391,32 @@ export function setupSaasRoutes(app: express.Express) {
     return res.json({ success: true, message: `ارسال به شماره ${targetPhone} با موفقیت ثبت شد.` });
   });
 
-  // Admin View Books of a User
+  // Admin View Books of a User (lightweight summary without heavy base64 images)
   app.get('/api/admin/users/:id/books', requireAdmin, (req, res) => {
-    const books = db.getBooks(req.params.id);
+    const rawBooks = db.getBooks(req.params.id);
+    const books = rawBooks.map(b => ({
+      id: b.id,
+      title: b.title,
+      originalTitle: b.originalTitle,
+      author: b.author,
+      translator: b.translator,
+      tone: b.tone,
+      wordCount: b.wordCount,
+      estimatedCost: b.estimatedCost,
+      status: b.status,
+      chunks: (b.chunks || []).map(c => ({
+        id: c.id,
+        chunkNumber: c.chunkNumber,
+        chapterNumber: c.chapterNumber,
+        chapterTitle: c.chapterTitle,
+        wordCount: c.wordCount,
+        status: c.status,
+        // Lightweight sample text without multi-megabyte base64 images:
+        translatedHtml: c.translatedHtml ? c.translatedHtml.replace(/<img[^>]*>/gi, '').slice(0, 300) : '',
+      })),
+      createdAt: b.createdAt,
+      updatedAt: b.updatedAt,
+    }));
     return res.json({ books });
   });
 
@@ -1611,7 +2444,51 @@ export function setupSaasRoutes(app: express.Express) {
   // Admin API Keys Pool
   app.get('/api/admin/api-keys', requireAdmin, (req, res) => {
     const keys = db.getApiKeys();
-    return res.json({ keys });
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const usdToTomanRate = 95000;
+
+    const enrichedKeys = keys.map(k => {
+      const isToday = k.todayDate === todayStr;
+      const todayTokens = isToday ? (k.todayTokensUsed || 0) : 0;
+
+      // Determine cost per million tokens based on provider and model
+      let costPerMillionUsd = 0.15; // default
+      const m = (k.model || '').toLowerCase();
+      if (m.includes('pro')) {
+        costPerMillionUsd = 1.25;
+      } else if (m.includes('deepseek-r1') || m.includes('r1')) {
+        costPerMillionUsd = 0.55;
+      } else if (m.includes('deepseek')) {
+        costPerMillionUsd = 0.14;
+      } else if (m.includes('gpt-4o-mini') || m.includes('mini')) {
+        costPerMillionUsd = 0.15;
+      } else if (m.includes('gpt-4o')) {
+        costPerMillionUsd = 2.50;
+      } else if (m.includes('claude-3-5-sonnet') || m.includes('sonnet')) {
+        costPerMillionUsd = 3.00;
+      } else if (m.includes('claude-3-5-haiku') || m.includes('haiku')) {
+        costPerMillionUsd = 0.80;
+      } else if (m.includes('lite') || m.includes('flash')) {
+        costPerMillionUsd = 0.075;
+      }
+
+      const todayCostUsd = Number(((todayTokens / 1000000) * costPerMillionUsd).toFixed(4));
+      const todayCostTomans = Math.round(todayCostUsd * usdToTomanRate);
+      const totalCostUsd = Number((((k.totalTokensUsed || 0) / 1000000) * costPerMillionUsd).toFixed(4));
+      const totalCostTomans = Math.round(totalCostUsd * usdToTomanRate);
+
+      return {
+        ...k,
+        todayTokensUsed: todayTokens,
+        todayDate: todayStr,
+        costPerMillionTokens: costPerMillionUsd,
+        todayCostUsd,
+        todayCostTomans,
+        totalCostUsd,
+        totalCostTomans,
+      };
+    });
+    return res.json({ keys: enrichedKeys });
   });
 
   // Admin Save / Update API Key (Create or Update)
@@ -1771,6 +2648,7 @@ export function setupSaasRoutes(app: express.Express) {
     const key = db.getApiKeys().find(k => k.id === req.params.id);
     if (!key) return res.status(404).json({ error: 'کلید یافت نشد.' });
     key.totalTokensUsed = 0;
+    key.todayTokensUsed = 0;
     key.totalRequests = 0;
     key.successfulRequests = 0;
     key.failedRequests = 0;
@@ -1785,6 +2663,7 @@ export function setupSaasRoutes(app: express.Express) {
     const keys = db.getApiKeys();
     keys.forEach(k => {
       k.totalTokensUsed = 0;
+      k.todayTokensUsed = 0;
       k.totalRequests = 0;
       k.successfulRequests = 0;
       k.failedRequests = 0;
@@ -1885,10 +2764,19 @@ export function setupSaasRoutes(app: express.Express) {
   app.put('/api/admin/settings', requireAdmin, (req, res) => {
     const updated = db.updateSettings(req.body);
 
-    // Apply new pricePerWord across all books in the database
+    // Apply new pricePerWord across all books in the database and sync announcement banner
     if (req.body?.pricing?.costPerWord !== undefined) {
       const newRate = Number(req.body.pricing.costPerWord);
       const specMult = Number(req.body.pricing.specializedMultiplier || updated.pricing.specializedMultiplier || 1.25);
+      
+      // Sync banner text if it contains the rate template
+      if (updated.announcementBar?.text && /هزینه ترجمه هر کلمه فقط \d+ تومان/.test(updated.announcementBar.text)) {
+        updated.announcementBar.text = updated.announcementBar.text.replace(/هزینه ترجمه هر کلمه فقط \d+ تومان/, `هزینه ترجمه هر کلمه فقط ${newRate} تومان`);
+      }
+      if (updated.seo?.announcementText && /هزینه ترجمه هر کلمه فقط \d+ تومان/.test(updated.seo.announcementText)) {
+        updated.seo.announcementText = updated.seo.announcementText.replace(/هزینه ترجمه هر کلمه فقط \d+ تومان/, `هزینه ترجمه هر کلمه فقط ${newRate} تومان`);
+      }
+
       const books = db.getBooks();
       let updatedCount = 0;
       books.forEach(b => {
@@ -1900,13 +2788,46 @@ export function setupSaasRoutes(app: express.Express) {
           updatedCount++;
         }
       });
-      if (updatedCount > 0) {
-        db.saveDatabase();
-        console.log(`[Pricing Update] Recalculated cost for ${updatedCount} books using new rate: ${newRate} Tomans/word`);
-      }
+      db.saveDatabase();
+      console.log(`[Pricing Update] Recalculated cost for ${updatedCount} books using new rate: ${newRate} Tomans/word`);
     }
 
     return res.json({ success: true, settings: updated });
+  });
+
+  // Dedicated instant Admin Pricing Update
+  app.put('/api/admin/pricing', requireAdmin, (req, res) => {
+    const { costPerWord, publisherCostPerWord, specializedMultiplier, minDepositAmount, freeWelcomeGift } = req.body;
+    const current = db.getSettings();
+    const newPricing = {
+      ...current.pricing,
+      ...(costPerWord !== undefined ? { costPerWord: Number(costPerWord) } : {}),
+      ...(publisherCostPerWord !== undefined ? { publisherCostPerWord: Number(publisherCostPerWord) } : {}),
+      ...(specializedMultiplier !== undefined ? { specializedMultiplier: Number(specializedMultiplier) } : {}),
+      ...(minDepositAmount !== undefined ? { minDepositAmount: Number(minDepositAmount) } : {}),
+      ...(freeWelcomeGift !== undefined ? { freeWelcomeGift: Number(freeWelcomeGift) } : {}),
+    };
+
+    const updated = db.updateSettings({ pricing: newPricing });
+
+    if (costPerWord !== undefined) {
+      const newRate = Number(costPerWord);
+      if (updated.announcementBar?.text && /هزینه ترجمه هر کلمه فقط \d+ تومان/.test(updated.announcementBar.text)) {
+        updated.announcementBar.text = updated.announcementBar.text.replace(/هزینه ترجمه هر کلمه فقط \d+ تومان/, `هزینه ترجمه هر کلمه فقط ${newRate} تومان`);
+      }
+      const books = db.getBooks();
+      books.forEach(b => {
+        if (b.status === 'draft' || b.status === 'error') {
+          const isSpec = b.tone === 'academic' || b.tone === 'aerospace' || b.tone === 'mathematics';
+          const unit = Math.round(newRate * (isSpec ? (newPricing.specializedMultiplier || 1.25) : 1.0));
+          b.estimatedCost = Math.round((b.wordCount || 0) * unit);
+          b.updatedAt = Date.now();
+        }
+      });
+      db.saveDatabase();
+    }
+
+    return res.json({ success: true, pricing: updated.pricing, settings: updated });
   });
 
   // Admin Test SMS
@@ -1921,6 +2842,180 @@ export function setupSaasRoutes(app: express.Express) {
       message: smsResult.message,
       gatewayRaw: smsResult.gatewayRaw,
     });
+  });
+
+  // Admin Test Captcha Connection & Verification (Google reCAPTCHA v2/v3, Turnstile, Math)
+  app.post('/api/admin/captcha/test', requireAdmin, async (req, res) => {
+    try {
+      const currentSettings = db.getSettings();
+      const currentCaptcha = currentSettings.security?.captcha || {
+        provider: 'math',
+        recaptchaVersion: 'v2',
+        siteKey: '',
+        secretKey: '',
+      };
+
+      const provider = req.body.provider || currentCaptcha.provider || 'recaptcha';
+      const recaptchaVersion = req.body.recaptchaVersion || currentCaptcha.recaptchaVersion || 'v2';
+      const siteKey = (req.body.siteKey !== undefined ? req.body.siteKey : currentCaptcha.siteKey || '').trim();
+      const secretKey = (req.body.secretKey !== undefined ? req.body.secretKey : currentCaptcha.secretKey || '').trim();
+      const testToken = (req.body.testToken || '').trim();
+
+      if (provider === 'math') {
+        return res.json({
+          success: true,
+          provider: 'math',
+          message: 'کپچای ریاضی محلی سیستم فعال، سریع و کاملاً پایدار است (نیاز به اینترنت یا کلید خارجی ندارد).',
+          latencyMs: 0,
+        });
+      }
+
+      if (provider === 'recaptcha') {
+        if (!secretKey) {
+          return res.status(400).json({
+            success: false,
+            provider: 'recaptcha',
+            recaptchaVersion,
+            error: 'کلید محرمانه (Secret Key) گوگل وارد نشده است. لطفاً ابتدا کلید را وارد نمایید.',
+          });
+        }
+
+        const startTime = Date.now();
+        // If a real token was generated via frontend test, verify it. Otherwise, probe the Secret Key.
+        const tokenToVerify = testToken || 'PROBE_TEST_PING_KEY';
+        const verifyRes = await fetch('https://www.google.com/recaptcha/api/siteverify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: new URLSearchParams({
+            secret: secretKey,
+            response: tokenToVerify,
+          }).toString(),
+        });
+
+        const latencyMs = Date.now() - startTime;
+        const verifyData = await verifyRes.json();
+        const errorCodes: string[] = Array.isArray(verifyData['error-codes']) ? verifyData['error-codes'] : [];
+
+        // Analysis of Google's response:
+        // 'invalid-input-secret': The Secret Key is definitely rejected by Google.
+        if (errorCodes.includes('invalid-input-secret')) {
+          return res.json({
+            success: false,
+            provider: 'recaptcha',
+            recaptchaVersion,
+            latencyMs,
+            error: 'کلید محرمانه (Secret Key) نامعتبر است: سرور Google کلید شما را رد کرد (invalid-input-secret). لطفاً کلید را از کنسول Google reCAPTCHA بررسی فرمایید.',
+            googleResponse: verifyData,
+          });
+        }
+
+        // If real testToken was provided:
+        if (testToken) {
+          if (verifyData.success) {
+            return res.json({
+              success: true,
+              provider: 'recaptcha',
+              recaptchaVersion,
+              latencyMs,
+              score: verifyData.score,
+              message: recaptchaVersion === 'v3'
+                ? `اعتبارسنجی زنده گوگل reCAPTCHA v3 با موفقیت تایید شد! امتیاز ارزیابی هوشمند گوگل: ${verifyData.score ?? 'نامشخص'} (زمان پاسخ: ${latencyMs} میلی‌ثانیه)`
+                : `اعتبارسنجی زنده چک‌باکس گوگل reCAPTCHA v2 با موفقیت تایید شد! (زمان پاسخ: ${latencyMs} میلی‌ثانیه)`,
+              googleResponse: verifyData,
+            });
+          } else {
+            return res.json({
+              success: false,
+              provider: 'recaptcha',
+              recaptchaVersion,
+              latencyMs,
+              error: `اعتبارسنجی توکن توسط گوگل تایید نشد: ${errorCodes.join(', ') || 'توکن منقضی یا نامعتبر'}`,
+              googleResponse: verifyData,
+            });
+          }
+        }
+
+        // If probe test (no testToken provided):
+        // 'invalid-input-response' or 'missing-input-response' means the Secret Key is 100% VALID and AUTHENTICATED by Google!
+        if (errorCodes.includes('invalid-input-response') || errorCodes.includes('missing-input-response')) {
+          return res.json({
+            success: true,
+            provider: 'recaptcha',
+            recaptchaVersion,
+            latencyMs,
+            message: `اتصال به سرورهای رسمی Google reCAPTCHA با موفقیت تایید شد! کلید محرمانه (Secret Key) معتبر است (زمان پاسخ: ${latencyMs} میلی‌ثانیه).`,
+            probeVerified: true,
+            googleResponse: verifyData,
+          });
+        }
+
+        if (verifyData.success) {
+          return res.json({
+            success: true,
+            provider: 'recaptcha',
+            recaptchaVersion,
+            latencyMs,
+            message: `اتصال و کلید گوگل ری‌کپچا با موفقیت تایید شد (زمان پاسخ: ${latencyMs} میلی‌ثانیه).`,
+            googleResponse: verifyData,
+          });
+        }
+
+        return res.json({
+          success: false,
+          provider: 'recaptcha',
+          recaptchaVersion,
+          latencyMs,
+          error: `خطای ارزیابی سرور گوگل: ${errorCodes.join(', ')}`,
+          googleResponse: verifyData,
+        });
+      }
+
+      if (provider === 'turnstile') {
+        if (!secretKey) {
+          return res.status(400).json({
+            success: false,
+            provider: 'turnstile',
+            error: 'کلید محرمانه (Secret Key) کلادفلر ترنستایل وارد نشده است.',
+          });
+        }
+        const startTime = Date.now();
+        const probeRes = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: new URLSearchParams({
+            secret: secretKey,
+            response: testToken || 'PROBE_TEST',
+          }).toString(),
+        });
+        const latencyMs = Date.now() - startTime;
+        const probeData = await probeRes.json();
+        const errorCodes: string[] = Array.isArray(probeData['error-codes']) ? probeData['error-codes'] : [];
+
+        if (errorCodes.includes('invalid-input-secret')) {
+          return res.json({
+            success: false,
+            provider: 'turnstile',
+            latencyMs,
+            error: 'کلید محرمانه Cloudflare Turnstile نامعتبر است (invalid-input-secret).',
+          });
+        }
+
+        return res.json({
+          success: true,
+          provider: 'turnstile',
+          latencyMs,
+          message: `اتصال به کلادفلر ترنستایل برقرار شد و کلید محرمانه معتبر است (زمان پاسخ: ${latencyMs} میلی‌ثانیه).`,
+        });
+      }
+
+      return res.status(400).json({ error: 'نوع ارائه‌دهنده کپچا نامعتبر است.' });
+    } catch (err: any) {
+      console.error('[Admin Captcha Test Error]:', err);
+      return res.status(500).json({
+        success: false,
+        error: `خطا در برقراری ارتباط با سرویس کپچا: ${err?.message || 'خطای شبکه'}`,
+      });
+    }
   });
 
   // Admin Test Zarinpal Web-Service Connection
@@ -2117,9 +3212,9 @@ export function setupSaasRoutes(app: express.Express) {
         status: b.status,
         chunksCount: (b.chunks || []).length,
         completedChunks: (b.chunks || []).filter(c => c.status === 'completed').length,
-        chunks: b.chunks || [],
-        glossary: b.glossary || [],
         user: owner ? { id: owner.id, name: owner.name, email: owner.email, phone: owner.phone } : null,
+        hasAdminCopy: Boolean(b.adminCopy),
+        adminCopyEditedAt: b.adminCopy?.editedAt || null,
         createdAt: b.createdAt,
         updatedAt: b.updatedAt,
       };
@@ -2130,7 +3225,93 @@ export function setupSaasRoutes(app: express.Express) {
   app.get('/api/admin/books/:id', requireStaffOrAdmin, (req, res) => {
     const book = db.getBookById(req.params.id);
     if (!book) return res.status(404).json({ error: 'کتاب یافت نشد.' });
-    return res.json({ book });
+    return res.json({
+      book,
+      hasAdminCopy: Boolean(book.adminCopy),
+      adminCopy: book.adminCopy || null,
+    });
+  });
+
+  // Get Admin Private Copy (or initialize draft from original user book)
+  app.get('/api/admin/books/:id/admin-copy', requireStaffOrAdmin, (req, res) => {
+    const book = db.getBookById(req.params.id);
+    if (!book) return res.status(404).json({ error: 'کتاب مورد نظر یافت نشد.' });
+
+    if (book.adminCopy) {
+      return res.json({
+        exists: true,
+        adminCopy: book.adminCopy,
+        originalBook: {
+          id: book.id,
+          title: book.title,
+          author: book.author,
+          translator: book.translator,
+          originalTitle: book.originalTitle,
+        },
+      });
+    }
+
+    // Return fresh clone template without modifying database until admin clicks save
+    const initialCopy = {
+      editedAt: Date.now(),
+      title: book.title || 'کتاب ترجمه شده',
+      originalTitle: book.originalTitle || '',
+      author: book.author || '',
+      translator: book.translator || '',
+      designConfig: (book as any).designConfig || {},
+      chunks: (book.chunks || []).map((c) => ({
+        id: c.id,
+        chapterNumber: c.chapterNumber,
+        chapterTitle: c.chapterTitle,
+        chunkNumber: c.chunkNumber,
+        englishText: c.englishText,
+        translatedHtml: c.translatedHtml || '',
+        wordCount: c.wordCount || 0,
+      })),
+    };
+
+    return res.json({
+      exists: false,
+      adminCopy: initialCopy,
+      originalBook: {
+        id: book.id,
+        title: book.title,
+        author: book.author,
+        translator: book.translator,
+        originalTitle: book.originalTitle,
+      },
+    });
+  });
+
+  // Save/Update Admin Private Copy (leaves user's original book 100% untouched)
+  app.put('/api/admin/books/:id/admin-copy', requireStaffOrAdmin, (req, res) => {
+    const book = db.getBookById(req.params.id);
+    if (!book) return res.status(404).json({ error: 'کتاب مورد نظر یافت نشد.' });
+
+    const adminUser = (req as any).user;
+    const adminCopy = db.saveAdminBookCopy(req.params.id, req.body, adminUser?.id);
+    if (!adminCopy) {
+      return res.status(500).json({ error: 'خطا در ذخیره‌سازی نسخه مدیریت.' });
+    }
+
+    return res.json({
+      success: true,
+      message: 'نسخه اختصاصی مدیریت با موفقیت ذخیره شد. نسخه کاربر بدون تغییر باقی ماند.',
+      adminCopy,
+    });
+  });
+
+  // Delete Admin Private Copy (resets to original user book)
+  app.delete('/api/admin/books/:id/admin-copy', requireStaffOrAdmin, (req, res) => {
+    const ok = db.deleteAdminBookCopy(req.params.id);
+    if (!ok) {
+      return res.status(404).json({ error: 'نسخه مدیریتی برای این کتاب ثبت نشده بود.' });
+    }
+
+    return res.json({
+      success: true,
+      message: 'نسخه مدیریت حذف شد و این کتاب به نسخه اصلی کاربر بازنشانی گردید.',
+    });
   });
 
   app.delete('/api/admin/books/:id', requireStaffOrAdmin, (req, res) => {

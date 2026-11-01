@@ -19,6 +19,7 @@ import {
   BookOpen
 } from 'lucide-react';
 import { User, SystemSettings } from '../types.ts';
+import { CaptchaWidget } from './CaptchaWidget.tsx';
 
 interface DedicatedAuthPageProps {
   onAuthSuccess: (user: User, token: string) => void;
@@ -50,26 +51,42 @@ export function DedicatedAuthPage({ onAuthSuccess, onBackToHome, seoConfig }: De
   const [isRegOtpSent, setIsRegOtpSent] = useState(false);
   const [regPreviewOtp, setRegPreviewOtp] = useState<string | null>(null);
 
-  // Math Captcha
-  const [captchaQ, setCaptchaQ] = useState(() => {
-    const a = Math.floor(2 + Math.random() * 7);
-    const b = Math.floor(1 + Math.random() * 8);
-    return { a, b, answer: a + b };
-  });
-  const [userCaptcha, setUserCaptcha] = useState('');
-
-  const refreshCaptcha = () => {
-    const a = Math.floor(2 + Math.random() * 7);
-    const b = Math.floor(1 + Math.random() * 8);
-    setCaptchaQ({ a, b, answer: a + b });
-    setUserCaptcha('');
-  };
+  // Anti-bot Captcha tokens
+  const [captchaToken, setCaptchaToken] = useState('');
+  const [mathAnswer, setMathAnswer] = useState('');
 
   // State flags
   const [loading, setLoading] = useState(false);
   const [sendingOtp, setSendingOtp] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [googleOAuthEnabled, setGoogleOAuthEnabled] = useState(true);
+
+  // Fetch public settings for Google OAuth toggle status
+  useEffect(() => {
+    fetch('/api/public/config')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data?.googleOAuth?.enabled !== undefined) {
+          setGoogleOAuthEnabled(Boolean(data.googleOAuth.enabled));
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  // Listen for Google OAuth popup success message
+  useEffect(() => {
+    const handleMessage = (event: MessageEvent) => {
+      if (event.data?.type === 'OAUTH_AUTH_SUCCESS' && event.data?.token && event.data?.user) {
+        setLoading(false);
+        setSuccessMessage('ورود با حساب گوگل با موفقیت انجام شد.');
+        localStorage.setItem('auth_token', event.data.token);
+        onAuthSuccess(event.data.user, event.data.token);
+      }
+    };
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+  }, [onAuthSuccess]);
 
   // Timer countdown
   useEffect(() => {
@@ -160,16 +177,15 @@ export function DedicatedAuthPage({ onAuthSuccess, onBackToHome, seoConfig }: De
     setErrorMessage(null);
     setSuccessMessage(null);
 
-    if (Number(userCaptcha) !== captchaQ.answer) {
-      setErrorMessage('پاسخ اعتبارسنجی ریاضی نادرست است.');
-      refreshCaptcha();
-      return;
-    }
-
     setLoading(true);
     try {
       const isEmail = loginIdentifier.includes('@');
-      const payload: any = { password: loginPassword };
+      const payload: any = {
+        password: loginPassword,
+        captchaToken,
+        mathAnswer,
+        mode: 'password',
+      };
       if (isEmail) payload.email = loginIdentifier.trim();
       else payload.phone = loginIdentifier.trim();
 
@@ -185,7 +201,6 @@ export function DedicatedAuthPage({ onAuthSuccess, onBackToHome, seoConfig }: De
       onAuthSuccess(data.user, data.token);
     } catch (err: any) {
       setErrorMessage(err.message || 'خطا در ورود به حساب');
-      refreshCaptcha();
     } finally {
       setLoading(false);
     }
@@ -244,6 +259,8 @@ export function DedicatedAuthPage({ onAuthSuccess, onBackToHome, seoConfig }: De
           email: regEmail.trim() || undefined,
           password: regPassword,
           otpCode: regOtpCode.trim() || undefined,
+          captchaToken,
+          mathAnswer,
         }),
       });
       const data = await res.json();
@@ -258,46 +275,34 @@ export function DedicatedAuthPage({ onAuthSuccess, onBackToHome, seoConfig }: De
     }
   };
 
-  // Google Sign-In with 1-click
+  // Google Sign-In with real OAuth popup
   const handleGoogleSignIn = async () => {
     setErrorMessage(null);
     setSuccessMessage(null);
     setLoading(true);
 
     try {
-      let emailToAuth = 'sina96moazzeni@gmail.com';
-      let nameToAuth = 'Sina Moazzeni';
-
-      const promptEmail = window.prompt(
-        'ورود مستقیم با حساب گوگل (بدون نیاز به کد تایید پیامکی):\nآدرس ایمیل گوگل خود را تایید یا وارد نمایید:',
-        emailToAuth
-      );
-      if (promptEmail && promptEmail.trim()) {
-        emailToAuth = promptEmail.trim();
-        nameToAuth = emailToAuth.split('@')[0];
-      } else if (promptEmail === null) {
-        setLoading(false);
-        return;
+      const res = await fetch('/api/auth/google/url');
+      const data = await res.json();
+      if (!res.ok || !data.configured || !data.url) {
+        throw new Error(data.error || 'ورود با گوگل هنوز در پنل مدیریت پیکربندی نشده است. مدیر سامانه باید شناسه Client ID را در تب امنیت پنل مدیریت وارد کند.');
       }
 
-      const res = await fetch('/api/auth/google', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          email: emailToAuth,
-          name: nameToAuth,
-          sub: `g_${Date.now()}`,
-        }),
-      });
+      const width = 520;
+      const height = 660;
+      const left = Math.max(0, Math.round(window.screenX + (window.outerWidth - width) / 2));
+      const top = Math.max(0, Math.round(window.screenY + (window.outerHeight - height) / 2));
+      const authWindow = window.open(
+        data.url,
+        'google_oauth_popup',
+        `width=${width},height=${height},left=${left},top=${top},status=no,resizable=yes,scrollbars=yes`
+      );
 
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'خطا در احراز هویت با گوگل');
-
-      localStorage.setItem('auth_token', data.token);
-      onAuthSuccess(data.user, data.token);
+      if (!authWindow) {
+        throw new Error('مرورگر از باز شدن پنجره پاپ‌آپ گوگل جلوگیری کرد. لطفاً اجازه باز شدن پنجره پاپ‌آپ را صادر فرمایید.');
+      }
     } catch (err: any) {
       setErrorMessage(err.message || 'خطا در ورود با گوگل');
-    } finally {
       setLoading(false);
     }
   };
@@ -380,32 +385,33 @@ export function DedicatedAuthPage({ onAuthSuccess, onBackToHome, seoConfig }: De
 
 
 
-          {/* Direct Google Sign-In (Recommended) */}
-          <div className="mb-5 space-y-2">
-            <button
-              type="button"
-              onClick={handleGoogleSignIn}
-              disabled={loading}
-              className="w-full py-3 px-4 rounded-2xl bg-white hover:bg-slate-100 text-slate-800 font-bold text-xs shadow-lg shadow-white/5 transition flex items-center justify-center gap-2.5 border border-slate-200"
-            >
-              <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24">
-                <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
-                <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
-                <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" />
-                <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" />
-              </svg>
-              <span>ورود مستقیم با اکانت گوگل (۱-کلیک بدون نیاز به کد)</span>
-            </button>
-            <p className="text-[10px] text-slate-400 text-center">
-              بدون نیاز به ثبت‌نام مجدد یا دریافت پیامک • نشست دائمی و امن
-            </p>
-          </div>
+          {/* Direct Google Sign-In */}
+          {googleOAuthEnabled && (
+            <>
+              <div className="mb-5">
+                <button
+                  type="button"
+                  onClick={handleGoogleSignIn}
+                  disabled={loading}
+                  className="w-full py-3 px-4 rounded-2xl bg-white hover:bg-slate-100 text-slate-800 font-bold text-xs shadow-lg shadow-white/5 transition flex items-center justify-center gap-2.5 border border-slate-200"
+                >
+                  <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24">
+                    <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
+                    <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+                    <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" />
+                    <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" />
+                  </svg>
+                  <span>ورود با حساب کاربری گوگل</span>
+                </button>
+              </div>
 
-          <div className="relative flex py-2 items-center">
-            <div className="flex-grow border-t border-slate-800"></div>
-            <span className="flex-shrink mx-3 text-slate-500 text-[10px]">یا ورود با شماره همراه / کلمه عبور</span>
-            <div className="flex-grow border-t border-slate-800"></div>
-          </div>
+              <div className="relative flex py-2 items-center">
+                <div className="flex-grow border-t border-slate-800"></div>
+                <span className="flex-shrink mx-3 text-slate-500 text-[10px]">یا ورود با شماره همراه / کلمه عبور</span>
+                <div className="flex-grow border-t border-slate-800"></div>
+              </div>
+            </>
+          )}
 
           {/* Mode Switcher Tabs */}
           <div className="grid grid-cols-3 gap-1.5 p-1 bg-slate-950 rounded-2xl border border-slate-800 mb-6 text-xs font-semibold">
@@ -578,25 +584,12 @@ export function DedicatedAuthPage({ onAuthSuccess, onBackToHome, seoConfig }: De
                 </div>
               </div>
 
-              {/* Captcha */}
-              <div className="p-3 bg-slate-950 rounded-2xl border border-slate-800 flex items-center justify-between gap-3">
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-slate-400 font-mono">
-                    حاصل: <b className="text-white text-sm">{captchaQ.a} + {captchaQ.b} = ؟</b>
-                  </span>
-                  <button type="button" onClick={refreshCaptcha} className="text-slate-400 hover:text-white p-1">
-                    <RefreshCw className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-                <input
-                  type="number"
-                  dir="ltr"
-                  placeholder="پاسخ"
-                  value={userCaptcha}
-                  onChange={(e) => setUserCaptcha(e.target.value)}
-                  className="w-20 px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-700 text-center font-mono text-white text-xs focus:outline-none"
-                />
-              </div>
+              {/* Anti-Bot Captcha (Google reCAPTCHA / Cloudflare Turnstile / Math) */}
+              <CaptchaWidget
+                action="login"
+                onTokenChange={setCaptchaToken}
+                onMathAnswerChange={setMathAnswer}
+              />
 
               <button
                 type="submit"
@@ -697,6 +690,13 @@ export function DedicatedAuthPage({ onAuthSuccess, onBackToHome, seoConfig }: De
                 <Sparkles className="w-4 h-4 text-emerald-400 shrink-0" />
                 <span>با عضویت اولیه، اعتبار هدیه ترجمه رایگان به کیف پول شما اختصاص می‌یابد.</span>
               </div>
+
+              {/* Anti-Bot Captcha (Google reCAPTCHA / Cloudflare Turnstile / Math) */}
+              <CaptchaWidget
+                action="register"
+                onTokenChange={setCaptchaToken}
+                onMathAnswerChange={setMathAnswer}
+              />
 
               <button
                 type="submit"

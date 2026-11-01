@@ -7,6 +7,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const DATA_DIR = path.resolve(__dirname, '../data');
 const DB_FILE = path.resolve(DATA_DIR, 'database.json');
+const BOOKS_DIR = path.resolve(DATA_DIR, 'books');
 
 export type UserRole = 'admin' | 'staff' | 'publisher' | 'user';
 
@@ -47,6 +48,27 @@ export interface BookChunkRecord {
   imageCount?: number;
 }
 
+export interface AdminBookChunkCopy {
+  id: string;
+  chapterNumber: number;
+  chapterTitle: string;
+  chunkNumber: number;
+  englishText?: string;
+  translatedHtml?: string;
+  wordCount?: number;
+}
+
+export interface AdminBookCopy {
+  editedAt: number;
+  editedByAdminId?: string;
+  title: string;
+  originalTitle?: string;
+  author?: string;
+  translator?: string;
+  designConfig?: any;
+  chunks: AdminBookChunkCopy[];
+}
+
 export interface BookRecord {
   id: string;
   userId: string;
@@ -63,8 +85,13 @@ export interface BookRecord {
   chunks: BookChunkRecord[];
   glossary?: Array<{ id?: string; en: string; fa: string; note?: string }>;
   contextCache?: any;
+  totalImagesCount?: number;
+  adminCopy?: AdminBookCopy;
   createdAt: number;
   updatedAt: number;
+  totalChunks?: number;
+  completedChunks?: number;
+  progressPercent?: number;
 }
 
 export interface TranslationJob {
@@ -112,6 +139,8 @@ export interface ApiKeyConfig {
   successfulRequests: number;
   failedRequests: number;
   totalTokensUsed: number;
+  todayTokensUsed?: number;
+  todayDate?: string;
   rpmCount: number;
   cooldownUntil: number;
   lastLatencyMs?: number;
@@ -178,10 +207,16 @@ export interface SystemSettings {
     captcha: {
       enabled: boolean;
       provider: 'math' | 'recaptcha' | 'turnstile';
+      recaptchaVersion?: 'v2' | 'v3';
       siteKey: string;
       secretKey: string;
       requiredForLogin: boolean;
       requiredForRegister: boolean;
+    };
+    googleOAuth?: {
+      enabled: boolean;
+      clientId: string;
+      clientSecret: string;
     };
   };
   coupons?: Array<{
@@ -216,6 +251,11 @@ export interface SystemSettings {
     faviconUrl?: string;
     announcementEnabled: boolean;
     announcementText: string;
+    robotsTxt?: string;
+    customSitemapXml?: string;
+    llmsTxt?: string;
+    googleClientId?: string;
+    googleClientSecret?: string;
   };
   cms: {
     heroTitle: string;
@@ -450,6 +490,12 @@ export const DEFAULT_LANDING_SECTIONS: LandingSection[] = [
           description: 'لحنی قاطع، معاصر و تحلیلی متناسب با نیاز مدیران، پژوهشگران بازار سرمایه، کارآفرینان و دانشجویان.',
           tags: ['سیاست‌های پولی', 'تاب‌آوری روانی', 'چرخه عادات'],
         },
+        {
+          id: 't4',
+          title: '۴. صریح و رک (جامعه مخفی و رازها)',
+          description: 'لحنی عریان، کوبنده و بدون تلطیف عبارات؛ ویژه کتاب‌های جوامع مخفی، اسناد محرمانه، فرقه‌های سرّی و نظم نوین جهانی.',
+          tags: ['جامعه مخفی', 'اسناد محرمانه', 'دولت پنهان', 'افشاگری'],
+        },
       ],
     },
   },
@@ -494,6 +540,50 @@ export const DEFAULT_LANDING_SECTIONS: LandingSection[] = [
     },
   },
 ];
+
+export const DEFAULT_ROBOTS_TXT = `User-agent: *
+Allow: /
+Disallow: /api/
+Disallow: /admin
+Disallow: /?page=login
+
+# Sitemaps
+Sitemap: https://gaiafa.ir/sitemap.xml
+
+# LLM & AI Agents (Agentic Browsing Directives)
+User-agent: GPTBot
+Allow: /
+
+User-agent: Google-Extended
+Allow: /
+
+User-agent: CCBot
+Allow: /
+
+User-agent: PerplexityBot
+Allow: /
+
+User-agent: ClaudeBot
+Allow: /
+`;
+
+export const DEFAULT_LLMS_TXT = `# سامانه هوشمند و تجاری ترجمه کتاب و متون تخصصی
+> پلتفرم ابری ترجمه، ویرایش ساختاریافته و صفحه‌بندی کتاب‌های انگلیسی به فارسی با هوش مصنوعی و مدل‌های زبانی Gemini، DeepSeek و GPT.
+
+## قابلیت‌های سامانه
+- ترجمه کامل و بدون خلاصه‌سازی (Zero-Summarization Guarantee)
+- حفظ کامل ساختار، پاراگراف‌بندی، جداول و تصاویر درون‌متنی کتاب
+- استخراج هوشمند واژه‌نامه تخصصی (Glossary Alignment) برای حفظ اصطلاحات در کل اثر
+- لحن‌های گوناگون: معنوی و خودشناسی، رمان و ادبیات، روانشناسی، دانشگاهی، علوم پایه و اقتصاد
+- دریافت خروجی استاندارد مایکروسافت ورد (DOCX)، فایل PDF صفحه‌آرایی‌شده با فونت رسمی وزیرمتن و فرمت EPUB
+
+## صفحات و راهنماها
+- [صفحه اصلی](https://gaiafa.ir/)
+- [راهنما و شرایط کاربری](https://gaiafa.ir/page/guide)
+- [تعرفه‌ها و ماشین‌حساب](https://gaiafa.ir/page/pricing)
+- [درباره سامانه ترجمه کتاب](https://gaiafa.ir/page/about-us)
+- [وبلاگ تخصصی و مقالات](https://gaiafa.ir/blog)
+`;
 
 const DEFAULT_SETTINGS: SystemSettings = {
   pricing: {
@@ -553,11 +643,17 @@ const DEFAULT_SETTINGS: SystemSettings = {
     rateLimitRpm: 120,
     captcha: {
       enabled: false,
-      provider: 'math',
-      siteKey: '',
-      secretKey: '',
-      requiredForLogin: false,
+      provider: 'recaptcha',
+      recaptchaVersion: 'v2',
+      siteKey: '6LdiFgcuAAAAAJhcWDyjWFil4dDqdSEI-DMsWxq5',
+      secretKey: '6LdiFgcuAAAAAEmuykCaV94oGQNPaA3w-1JhHH5h',
+      requiredForLogin: true,
       requiredForRegister: true,
+    },
+    googleOAuth: {
+      enabled: true,
+      clientId: '',
+      clientSecret: '',
     },
   },
   coupons: [
@@ -688,7 +784,12 @@ const DEFAULT_SETTINGS: SystemSettings = {
     logoUrl: '',
     faviconUrl: '',
     announcementEnabled: true,
-    announcementText: '🎉 به پلتفرم تجاری ترجمه کتاب خوش آمدید! با ثبت‌نام اولیه ۲۵,۰۰۰ تومان هدیه ترجمه دریافت کنید.',
+    announcementText: '🎉 تخفیف ویژه چاپ و ترجمه: هزینه ترجمه هر کلمه فقط ۴۵ تومان همراه با استخراج هوشمند واژه‌نامه تخصصی و صفحه‌بندی کتاب.',
+    robotsTxt: DEFAULT_ROBOTS_TXT,
+    customSitemapXml: '',
+    llmsTxt: DEFAULT_LLMS_TXT,
+    googleClientId: '',
+    googleClientSecret: '',
   },
   keyPoolSettings: {
     allowAutoSwitchOnTranslationFailure: false, // Default false: no automatic model switch during translation
@@ -879,6 +980,9 @@ class Database {
     if (!fs.existsSync(DATA_DIR)) {
       fs.mkdirSync(DATA_DIR, { recursive: true });
     }
+    if (!fs.existsSync(BOOKS_DIR)) {
+      fs.mkdirSync(BOOKS_DIR, { recursive: true });
+    }
   }
 
   private loadData(): DatabaseSchema {
@@ -934,9 +1038,27 @@ class Database {
                 ...(parsed.settings?.gateways?.stripe || {}),
               },
             },
+            announcementBar: {
+              ...DEFAULT_SETTINGS.announcementBar,
+              ...(parsed.settings?.announcementBar || {}),
+            },
+            security: {
+              ...DEFAULT_SETTINGS.security,
+              ...(parsed.settings?.security || {}),
+              captcha: {
+                ...DEFAULT_SETTINGS.security.captcha,
+                ...(parsed.settings?.security?.captcha || {}),
+              },
+              googleOAuth: {
+                ...DEFAULT_SETTINGS.security.googleOAuth,
+                ...(parsed.settings?.security?.googleOAuth || {}),
+              },
+            },
             seo: {
               ...DEFAULT_SETTINGS.seo,
               ...(parsed.settings?.seo || {}),
+              robotsTxt: parsed.settings?.seo?.robotsTxt || DEFAULT_ROBOTS_TXT,
+              llmsTxt: parsed.settings?.seo?.llmsTxt || DEFAULT_LLMS_TXT,
             },
             sms: {
               ...DEFAULT_SETTINGS.sms,
@@ -966,6 +1088,39 @@ class Database {
       }
     } else {
       schema = this.createDefaultSeed();
+    }
+
+    // Migrate & decouple any heavy book chunks into individual files to keep database.json ultra-fast & lightweight (<100KB)
+    if (Array.isArray(schema.books)) {
+      schema.books.forEach((b: any) => {
+        const bookFilePath = path.resolve(BOOKS_DIR, `${b.id}.json`);
+        const totalChunks = b.totalChunks || (b.chunks ? b.chunks.length : 0);
+        const completedChunks = b.completedChunks || (b.chunks ? b.chunks.filter((c: any) => c.status === 'completed' || Boolean(c.translatedHtml)).length : 0);
+        const totalImagesCount = b.totalImagesCount || (b.chunks ? b.chunks.reduce((acc: number, c: any) => acc + (c.imageCount || (c.hasImages ? 1 : 0)), 0) : 0);
+
+        b.totalChunks = totalChunks;
+        b.completedChunks = completedChunks;
+        b.totalImagesCount = totalImagesCount;
+
+        if (Array.isArray(b.chunks) && b.chunks.length > 0) {
+          if (!fs.existsSync(bookFilePath)) {
+            try {
+              fs.writeFileSync(bookFilePath, JSON.stringify({
+                chunks: b.chunks,
+                adminCopy: b.adminCopy || null,
+                contextCache: b.contextCache || null,
+              }), 'utf-8');
+            } catch (err) {
+              console.warn(`[DB] Error migrating book ${b.id}:`, err);
+            }
+          }
+          // Clear heavy chunks from main database.json memory
+          b.chunks = [];
+          if (b.adminCopy) {
+            b.adminCopy = { ...b.adminCopy, chunks: [] };
+          }
+        }
+      });
     }
 
     // Ensure Default Permanent Seed Users ALWAYS exist and have known credentials
@@ -1310,7 +1465,7 @@ class Database {
               chapterTitle: 'فصل نخست: شما ذهن خود نیستید',
               chunkNumber: 1,
               englishText: 'You are not your mind. The greatest obstacle to experiencing this reality of connectedness is identification with your mind, which causes thought to become compulsive.',
-              translatedHtml: '<h1 style="color: #1a365d; font-size: 24pt; margin-bottom: 20px; text-align: center;">شما ذهن خود نیستید</h1>\n<p style="line-height: 1.9; font-size: 12pt; text-align: justify; margin-bottom: 14px;">بزرگ‌ترین مانع در تجربه پیوند بنیادین با هستی، <span style="color: #9b2c2c; font-weight: bold;">همانندپنداری با ذهن</span> است؛ امری که باعث می‌شود اندیشیدن به یک اجبار ناخودآگاه تبدیل گردد. ناتوانی در متوقف ساختن جریان افکار، رنجی جانکاه است که کمتر کسی به آن واقف است.</p>',
+              translatedHtml: '<h1 style="color: #1a365d; font-size: 24pt; margin-bottom: 20px; text-align: center;">شما ذهن خود نیستید</h1>\n<p style="line-height: 1.9; font-size: 12pt; text-align: justify; margin-bottom: 14px;">بزرگ‌ترین مانع در تجربه پیوند بنیادین با هستی، <span style="font-weight: bold;">همانندپنداری با ذهن</span> است؛ امری که باعث می‌شود اندیشیدن به یک اجبار ناخودآگاه تبدیل گردد. ناتوانی در متوقف ساختن جریان افکار، رنجی جانکاه است که کمتر کسی به آن واقف است.</p>',
               status: 'completed',
               wordCount: 35,
               estimatedTokens: 48,
@@ -1367,7 +1522,7 @@ class Database {
   private saveData(data: DatabaseSchema) {
     try {
       const tempFile = `${DB_FILE}.tmp`;
-      fs.writeFileSync(tempFile, JSON.stringify(data, null, 2), 'utf-8');
+      fs.writeFileSync(tempFile, JSON.stringify(data), 'utf-8');
       fs.renameSync(tempFile, DB_FILE);
     } catch (err) {
       console.error('Failed to save database atomically:', err);
@@ -1653,25 +1808,113 @@ class Database {
     return false;
   }
 
-  // --- Books Management ---
+  // --- Books Management (Ultra-Fast & Decoupled Architecture) ---
   public getBooks(userId?: string): BookRecord[] {
-    if (userId) {
-      return this.data.books.filter(b => b.userId === userId);
-    }
-    return this.data.books;
+    const list = userId ? this.data.books.filter(b => b.userId === userId) : this.data.books;
+    return list;
   }
 
   public getBookById(id: string): BookRecord | undefined {
-    return this.data.books.find(b => b.id === id);
+    const bookMeta = this.data.books.find(b => b.id === id);
+    if (!bookMeta) return undefined;
+
+    const bookFilePath = path.resolve(BOOKS_DIR, `${id}.json`);
+    let chunks = Array.isArray(bookMeta.chunks) ? bookMeta.chunks : [];
+    let adminCopy = bookMeta.adminCopy;
+    let contextCache = bookMeta.contextCache;
+
+    if (fs.existsSync(bookFilePath)) {
+      try {
+        const raw = fs.readFileSync(bookFilePath, 'utf-8');
+        const content = JSON.parse(raw);
+        if (Array.isArray(content.chunks) && content.chunks.length > 0) {
+          chunks = content.chunks;
+        }
+        if (content.adminCopy) {
+          adminCopy = content.adminCopy;
+        }
+        if (content.contextCache) {
+          contextCache = content.contextCache;
+        }
+      } catch (err) {
+        console.warn(`[DB] Failed to read book content file for ${id}:`, err);
+      }
+    }
+
+    return {
+      ...bookMeta,
+      chunks,
+      adminCopy,
+      contextCache,
+    };
   }
 
   public saveBook(book: BookRecord): BookRecord {
-    const idx = this.data.books.findIndex(b => b.id === book.id);
+    this.ensureDataDirectory();
     book.updatedAt = Date.now();
+
+    const incomingChunks = Array.isArray(book.chunks) ? book.chunks : [];
+    const bookFilePath = path.resolve(BOOKS_DIR, `${book.id}.json`);
+    let finalChunks = incomingChunks;
+    let finalAdminCopy = book.adminCopy;
+    let finalContextCache = book.contextCache;
+
+    // If incoming chunks array is empty, but book file exists with chunks on disk, preserve existing content!
+    if (finalChunks.length === 0 && fs.existsSync(bookFilePath)) {
+      try {
+        const raw = fs.readFileSync(bookFilePath, 'utf-8');
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed.chunks) && parsed.chunks.length > 0) {
+          finalChunks = parsed.chunks;
+        }
+        if (parsed.adminCopy && !finalAdminCopy) {
+          finalAdminCopy = parsed.adminCopy;
+        }
+        if (parsed.contextCache && !finalContextCache) {
+          finalContextCache = parsed.contextCache;
+        }
+      } catch (err) {}
+    }
+
+    const totalChunks = finalChunks.length > 0 ? finalChunks.length : (book.totalChunks || 0);
+    const completedChunks = finalChunks.length > 0
+      ? finalChunks.filter(c => c.status === 'completed' || Boolean(c.translatedHtml)).length
+      : (book.completedChunks || 0);
+    const progressPercent = totalChunks > 0 ? Math.round((completedChunks / totalChunks) * 100) : 0;
+    const totalImagesCount = book.totalImagesCount !== undefined
+      ? book.totalImagesCount
+      : (finalChunks.length > 0 ? finalChunks.reduce((acc, c) => acc + (c.imageCount || (c.hasImages ? 1 : 0)), 0) : 0);
+
+    // Save heavy content (chunks, adminCopy, contextCache) in isolated file
+    try {
+      const bookPayload = JSON.stringify({
+        chunks: finalChunks,
+        adminCopy: finalAdminCopy || null,
+        contextCache: finalContextCache || null,
+      });
+      const tmpPath = `${bookFilePath}.tmp`;
+      fs.writeFileSync(tmpPath, bookPayload, 'utf-8');
+      fs.renameSync(tmpPath, bookFilePath);
+    } catch (err) {
+      console.error(`[DB] Error saving individual book file for ${book.id}:`, err);
+    }
+
+    // Save lightweight metadata in main DB
+    const bookMeta: BookRecord = {
+      ...book,
+      totalChunks,
+      completedChunks,
+      progressPercent,
+      totalImagesCount,
+      chunks: [], // Kept empty in main db.json to guarantee 100% lightweight database!
+      adminCopy: book.adminCopy ? { ...book.adminCopy, chunks: [] } : undefined,
+    };
+
+    const idx = this.data.books.findIndex(b => b.id === book.id);
     if (idx !== -1) {
-      this.data.books[idx] = book;
+      this.data.books[idx] = bookMeta;
     } else {
-      this.data.books.unshift(book);
+      this.data.books.unshift(bookMeta);
     }
     this.saveData(this.data);
     return book;
@@ -1681,12 +1924,77 @@ class Database {
     const idx = this.data.books.findIndex(b => b.id === bookId && (!userId || b.userId === userId));
     if (idx !== -1) {
       this.data.books.splice(idx, 1);
-      // Also clean up any associated active jobs
       this.data.jobs = this.data.jobs.filter(j => j.bookId !== bookId);
+
+      // Clean up individual book content file
+      try {
+        const bookFilePath = path.resolve(BOOKS_DIR, `${bookId}.json`);
+        if (fs.existsSync(bookFilePath)) {
+          fs.unlinkSync(bookFilePath);
+        }
+      } catch (e) {}
+
       this.saveData(this.data);
       return true;
     }
     return false;
+  }
+
+  // --- Admin Private Book Copy Management ---
+  public getAdminBookCopy(bookId: string): AdminBookCopy | null {
+    const book = this.getBookById(bookId);
+    if (!book) return null;
+    return book.adminCopy || null;
+  }
+
+  public saveAdminBookCopy(
+    bookId: string,
+    copyData: {
+      title?: string;
+      originalTitle?: string;
+      author?: string;
+      translator?: string;
+      designConfig?: any;
+      chunks?: AdminBookChunkCopy[];
+    },
+    adminId?: string
+  ): AdminBookCopy | null {
+    const fullBook = this.getBookById(bookId);
+    if (!fullBook) return null;
+
+    const baseChunks: AdminBookChunkCopy[] = copyData.chunks && Array.isArray(copyData.chunks)
+      ? copyData.chunks
+      : (fullBook.chunks || []).map(c => ({
+          id: c.id,
+          chapterNumber: c.chapterNumber,
+          chapterTitle: c.chapterTitle,
+          chunkNumber: c.chunkNumber,
+          englishText: c.englishText,
+          translatedHtml: c.translatedHtml || '',
+          wordCount: c.wordCount || 0,
+        }));
+
+    fullBook.adminCopy = {
+      editedAt: Date.now(),
+      editedByAdminId: adminId,
+      title: (copyData.title || fullBook.title || 'کتاب ترجمه شده').trim(),
+      originalTitle: (copyData.originalTitle ?? fullBook.originalTitle ?? '').trim(),
+      author: (copyData.author ?? fullBook.author ?? '').trim(),
+      translator: (copyData.translator ?? fullBook.translator ?? '').trim(),
+      designConfig: copyData.designConfig || (fullBook as any).designConfig || {},
+      chunks: baseChunks,
+    };
+
+    this.saveBook(fullBook);
+    return fullBook.adminCopy;
+  }
+
+  public deleteAdminBookCopy(bookId: string): boolean {
+    const fullBook = this.getBookById(bookId);
+    if (!fullBook || !fullBook.adminCopy) return false;
+    delete fullBook.adminCopy;
+    this.saveBook(fullBook);
+    return true;
   }
 
   // --- Jobs Management ---
@@ -1828,6 +2136,32 @@ class Database {
           }),
           ...(updates.security?.captcha || {}),
         },
+        googleOAuth: {
+          ...(currentSettings.security?.googleOAuth || {
+            enabled: true,
+            clientId: '',
+            clientSecret: '',
+          }),
+          ...(updates.security?.googleOAuth || {}),
+        },
+      },
+      announcementBar: {
+        ...(currentSettings.announcementBar || {
+          enabled: true,
+          text: '🎉 تخفیف ویژه چاپ و ترجمه: هزینه ترجمه هر کلمه فقط ۴۵ تومان همراه با استخراج هوشمند واژه‌نامه تخصصی و صفحه‌بندی کتاب.',
+          type: 'info',
+        }),
+        ...(updates.announcementBar || {}),
+      },
+      seo: {
+        ...DEFAULT_SETTINGS.seo,
+        ...(currentSettings.seo || {}),
+        ...(updates.seo || {}),
+        siteTitle: updates.seo?.siteTitle || currentSettings.seo?.siteTitle || DEFAULT_SETTINGS.seo!.siteTitle,
+        metaDescription: updates.seo?.metaDescription || currentSettings.seo?.metaDescription || DEFAULT_SETTINGS.seo!.metaDescription,
+        metaKeywords: updates.seo?.metaKeywords || currentSettings.seo?.metaKeywords || DEFAULT_SETTINGS.seo!.metaKeywords,
+        announcementEnabled: updates.seo?.announcementEnabled ?? currentSettings.seo?.announcementEnabled ?? DEFAULT_SETTINGS.seo!.announcementEnabled,
+        announcementText: updates.seo?.announcementText || currentSettings.seo?.announcementText || DEFAULT_SETTINGS.seo!.announcementText,
       },
       cms: { ...currentSettings.cms, ...(updates.cms || {}) },
       coupons: updates.coupons || currentSettings.coupons || [],
@@ -1895,6 +2229,7 @@ class Database {
 
   // --- Export Database Backup ---
   public exportBackup() {
+    const fullBooks = this.data.books.map(b => this.getBookById(b.id) || b);
     return {
       version: '2.0',
       exportedAt: new Date().toISOString(),
@@ -1911,7 +2246,7 @@ class Database {
       },
       data: {
         users: this.data.users,
-        books: this.data.books,
+        books: fullBooks,
         jobs: this.data.jobs,
         transactions: this.data.transactions,
         settings: this.data.settings,
@@ -1940,12 +2275,7 @@ class Database {
     if (Array.isArray(incoming.books)) {
       incoming.books.forEach((inBook: BookRecord) => {
         if (!inBook || !inBook.id) return;
-        const existingIdx = this.data.books.findIndex(b => b.id === inBook.id);
-        if (existingIdx !== -1) {
-          this.data.books[existingIdx] = inBook;
-        } else {
-          this.data.books.push(inBook);
-        }
+        this.saveBook(inBook);
         restoredBooks++;
       });
     }

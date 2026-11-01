@@ -72,11 +72,15 @@ import {
 } from '../types.ts';
 import { DEFAULT_LANDING_SECTIONS } from '../constants/landingDefaults.ts';
 import { DailyRevenueView } from './DailyRevenueView.tsx';
+import { AdminBookEditorModal } from './AdminBookEditorModal.tsx';
+import { downloadDocx } from '../utils/exporter.ts';
+import { CaptchaWidget } from './CaptchaWidget.tsx';
 
 interface AdminPanelProps {
   currentUser: User;
   onBackToUserPanel: () => void;
   onLogout: () => void;
+  onCostPerWordUpdated?: (newRate: number) => void;
 }
 
 export type AdminTab =
@@ -210,12 +214,19 @@ export function AdminSectionGuide({
   );
 }
 
-export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPanelProps) {
+export function AdminPanel({ currentUser, onBackToUserPanel, onLogout, onCostPerWordUpdated }: AdminPanelProps) {
   const isStaff = currentUser.role === 'staff';
   const [activeTab, setActiveTab] = useState<AdminTab>(isStaff ? 'overview' : 'overview');
 
-  // Overview Data
-  const [overview, setOverview] = useState<any>(null);
+  // Overview Data (Cached locally so stats never flicker to zero on refresh)
+  const [overview, setOverview] = useState<any>(() => {
+    try {
+      const cached = localStorage.getItem('admin_overview_cache');
+      return cached ? JSON.parse(cached) : null;
+    } catch (e) {
+      return null;
+    }
+  });
   const [loadingOverview, setLoadingOverview] = useState(false);
 
   // Monthly Analytics Data
@@ -230,6 +241,7 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
   // Dedicated Completed Books State
   const [completedBookSearch, setCompletedBookSearch] = useState('');
   const [readingBookModal, setReadingBookModal] = useState<any | null>(null);
+  const [adminEditingBook, setAdminEditingBook] = useState<any | null>(null);
   const [readingFontSize, setReadingFontSize] = useState<number>(16);
   const [loadingFullBook, setLoadingFullBook] = useState(false);
 
@@ -415,6 +427,18 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
   const [testSmsPhone, setTestSmsPhone] = useState('09121234567');
   const [smsResult, setSmsResult] = useState<string | null>(null);
 
+  // Test Captcha State
+  const [testingCaptcha, setTestingCaptcha] = useState(false);
+  const [captchaTestResult, setCaptchaTestResult] = useState<{
+    success: boolean;
+    message?: string;
+    error?: string;
+    latencyMs?: number;
+    score?: number;
+    provider?: string;
+    recaptchaVersion?: string;
+  } | null>(null);
+
   // Coupons
   const [coupons, setCoupons] = useState<any[]>([]);
   const [newCouponCode, setNewCouponCode] = useState('');
@@ -431,6 +455,18 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
   const [isClearingCache, setIsClearingCache] = useState(false);
   const [batchTargetModel, setBatchTargetModel] = useState('gemini-3.1-flash-lite');
   const [isSwitchingBatchModel, setIsSwitchingBatchModel] = useState(false);
+
+  // SEO Files & Agentic Browsing (Sitemap, Robots.txt, LLMs.txt)
+  const [seoFilesTab, setSeoFilesTab] = useState<'robots' | 'sitemap' | 'llms'>('robots');
+  const [robotsTxtContent, setRobotsTxtContent] = useState('');
+  const [sitemapXmlContent, setSitemapXmlContent] = useState('');
+  const [llmsTxtContent, setLlmsTxtContent] = useState('');
+  const [isSavingSeoFiles, setIsSavingSeoFiles] = useState(false);
+  const [seoFilesSaveSuccess, setSeoFilesSaveSuccess] = useState(false);
+  const [copiedSeoLink, setCopiedSeoLink] = useState<string | null>(null);
+  const [isSavingAnnouncement, setIsSavingAnnouncement] = useState(false);
+  const [announcementSaveSuccess, setAnnouncementSaveSuccess] = useState(false);
+  const [copiedOAuthUri, setCopiedOAuthUri] = useState(false);
 
   const token = localStorage.getItem('auth_token') || '';
 
@@ -449,7 +485,84 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
     fetchBlogPosts();
     fetchBlogCategories();
     fetchScriptsConfig();
+    fetchSeoFiles();
   }, []);
+
+  const fetchSeoFiles = async () => {
+    try {
+      const res = await fetch('/api/system/seo-files');
+      if (res.ok) {
+        const data = await res.json();
+        setRobotsTxtContent(data.robotsTxt || '');
+        setSitemapXmlContent(data.customSitemapXml || '');
+        setLlmsTxtContent(data.llmsTxt || '');
+      }
+    } catch (e) {
+      console.warn('Could not fetch seo files');
+    }
+  };
+
+  const handleSaveSeoFiles = async () => {
+    setIsSavingSeoFiles(true);
+    try {
+      const currentToken = localStorage.getItem('auth_token') || token;
+      const res = await fetch('/api/admin/seo-files', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${currentToken}`,
+        },
+        body: JSON.stringify({
+          robotsTxt: robotsTxtContent,
+          customSitemapXml: sitemapXmlContent,
+          llmsTxt: llmsTxtContent,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setSeoFilesSaveSuccess(true);
+        setTimeout(() => setSeoFilesSaveSuccess(false), 3500);
+      } else {
+        alert(data.error || 'خطا در ذخیره فایل‌های سئو');
+      }
+    } catch (e: any) {
+      alert(`خطا: ${e.message}`);
+    } finally {
+      setIsSavingSeoFiles(false);
+    }
+  };
+
+  const handleSaveAnnouncement = async () => {
+    if (!settings) return;
+    setIsSavingAnnouncement(true);
+    try {
+      const currentToken = localStorage.getItem('auth_token') || token;
+      const currentAnn = settings.announcementBar || {
+        enabled: true,
+        text: '🎉 تخفیف ویژه چاپ و ترجمه: هزینه ترجمه هر کلمه فقط ۴۵ تومان همراه با استخراج هوشمند واژه‌نامه تخصصی و صفحه‌بندی کتاب.',
+        type: 'warning',
+        linkUrl: '',
+        linkText: 'ثبت سفارش کتاب',
+      };
+      const res = await fetch('/api/admin/announcement', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${currentToken}`,
+        },
+        body: JSON.stringify(currentAnn),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setAnnouncementSaveSuccess(true);
+        setTimeout(() => setAnnouncementSaveSuccess(false), 3500);
+      }
+    } catch (e: any) {
+      alert(`خطا در ذخیره اعلان: ${e.message}`);
+    } finally {
+      setIsSavingAnnouncement(false);
+    }
+  };
 
   const fetchCoupons = async () => {
     try {
@@ -502,15 +615,21 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
   const fetchOverview = async () => {
     setLoadingOverview(true);
     try {
+      const currentToken = localStorage.getItem('auth_token') || token;
       const res = await fetch('/api/admin/overview', {
-        headers: { Authorization: `Bearer ${token}` },
+        headers: { Authorization: `Bearer ${currentToken}` },
       });
       if (res.ok) {
         const data = await res.json();
-        setOverview(data);
+        if (data && typeof data === 'object' && data.totalBooks !== undefined) {
+          setOverview(data);
+          try {
+            localStorage.setItem('admin_overview_cache', JSON.stringify(data));
+          } catch (e) {}
+        }
       }
     } catch (e) {
-      console.warn('Could not fetch admin overview');
+      console.warn('Could not fetch admin overview', e);
     } finally {
       setLoadingOverview(false);
     }
@@ -753,15 +872,64 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
     }
   };
 
+  // Download standard DOCX format (supports admin private copy when present)
+  const handleDownloadWordDocx = async (book: any) => {
+    const fullBook = await fetchBookDetailsIfNeeded(book);
+    const sourceData = (fullBook.hasAdminCopy && fullBook.adminCopy) ? fullBook.adminCopy : fullBook;
+    const title = sourceData.title || fullBook.title || 'کتاب ترجمه شده';
+    const chunks = sourceData.chunks || fullBook.chunks || [];
+
+    const projectForExport = {
+      id: fullBook.id,
+      title,
+      originalTitle: sourceData.originalTitle || fullBook.originalTitle || '',
+      author: sourceData.author || fullBook.author || '',
+      translator: sourceData.translator || fullBook.translator || 'سامانه هوشمند ترجمه کتاب',
+      chunks: chunks.map((c: any) => ({
+        id: c.id,
+        chapterNumber: c.chapterNumber,
+        chapterTitle: c.chapterTitle || c.title || `بخش ${c.chunkNumber || 1}`,
+        chunkNumber: c.chunkNumber || 1,
+        englishText: c.englishText || '',
+        translatedHtml: c.translatedHtml || c.translatedText || '',
+        status: 'completed' as const,
+        wordCount: c.wordCount || 0,
+        estimatedTokens: 0,
+      })),
+      glossary: fullBook.glossary || [],
+      model: 'standard',
+      tone: 'formal' as any,
+      createdAt: fullBook.createdAt || Date.now(),
+      updatedAt: Date.now(),
+      designConfig: {
+        textAlignment: 'right' as const,
+        fontFamily: 'Vazirmatn Medium',
+        themeId: 'spiritual' as any,
+        showHeader: true,
+        showFooter: true,
+        headerText: title,
+        footerText: fullBook.hasAdminCopy ? 'نسخه اختصاصی ویرایش مدیریت' : 'سامانه هوشمند ترجمه کتاب',
+      },
+    };
+
+    try {
+      await downloadDocx(projectForExport as any);
+    } catch (err: any) {
+      alert(`خطا در دانلود فایل Word (.docx): ${err.message}`);
+    }
+  };
+
   const handleDownloadWordDoc = async (book: any) => {
     const fullBook = await fetchBookDetailsIfNeeded(book);
-    const title = fullBook.title || 'کتاب ترجمه شده';
+    const sourceData = (fullBook.hasAdminCopy && fullBook.adminCopy) ? fullBook.adminCopy : fullBook;
+    const title = sourceData.title || fullBook.title || 'کتاب ترجمه شده';
     let chaptersHtml = '';
-    if (fullBook.chunks && fullBook.chunks.length > 0) {
-      chaptersHtml = fullBook.chunks.map((ch: any, idx: number) => `
+    const chunks = sourceData.chunks || fullBook.chunks || [];
+    if (chunks && chunks.length > 0) {
+      chaptersHtml = chunks.map((ch: any, idx: number) => `
         <div style="page-break-before: always; margin-top: 32px; padding-top: 20px;">
-          <h2 style="color: #1e3a8a; font-size: 18pt; border-bottom: 2px solid #3b82f6; padding-bottom: 8px;">بخش ${idx + 1}: ${ch.title || `فصل ${idx + 1}`}</h2>
-          <div style="font-size: 13pt; line-height: 2.2; text-align: justify; margin-top: 16px;">
+          <h2 style="color: #1e3a8a; font-size: 17pt; font-weight: bold; text-align: right; border-bottom: 2px solid #3b82f6; padding-bottom: 8px;">بخش ${idx + 1}: ${ch.chapterTitle || ch.title || `فصل ${idx + 1}`}</h2>
+          <div style="font-size: 12.5pt; line-height: 2.1; text-align: right; text-justify: none; margin-top: 16px;">
             ${ch.translatedHtml || ch.translatedText?.replace(/\n/g, '<br/>') || '<p>متن ترجمه شده‌ای ثبت نشده است.</p>'}
           </div>
         </div>
@@ -777,17 +945,20 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
         <title>${title}</title>
         <style>
           @page { size: A4; margin: 2.5cm; }
-          body { font-family: 'B Nazanin', 'Vazirmatn', 'Tahoma', Arial, sans-serif; direction: rtl; text-align: right; line-height: 2.2; font-size: 13pt; color: #111; }
-          h1 { color: #0f172a; font-size: 24pt; text-align: center; margin-bottom: 8px; }
+          body { font-family: 'Vazirmatn', 'B Nazanin', 'Tahoma', Arial, sans-serif; direction: rtl; text-align: right; line-height: 2.1; font-size: 12.5pt; color: #111; }
+          h1 { color: #0f172a; font-size: 22pt; font-weight: bold; text-align: right; margin-bottom: 12px; }
+          h2 { color: #1e3a8a; font-size: 17pt; font-weight: bold; text-align: right; }
+          p, div { text-align: right; text-justify: none; }
           .meta { text-align: center; color: #64748b; font-size: 11pt; margin-bottom: 30px; }
         </style>
       </head>
       <body dir="rtl">
         <h1>${title}</h1>
         <div class="meta">
-          ${fullBook.originalTitle ? `<p>عنوان زبان اصلی: ${fullBook.originalTitle}</p>` : ''}
-          ${fullBook.author ? `<p>نویسنده: ${fullBook.author}</p>` : ''}
+          ${sourceData.originalTitle || fullBook.originalTitle ? `<p>عنوان زبان اصلی: ${sourceData.originalTitle || fullBook.originalTitle}</p>` : ''}
+          ${sourceData.author || fullBook.author ? `<p>نویسنده: ${sourceData.author || fullBook.author}</p>` : ''}
           <p>خروجی رسمی مترجم هوش مصنوعی | تاریخ: ${new Date().toLocaleDateString('fa-IR-u-nu-latn')}</p>
+          ${fullBook.hasAdminCopy ? '<p style="color:#7c3aed; font-weight:bold;">نسخه اختصاصی ویرایش مدیریت</p>' : ''}
         </div>
         <hr/>
         ${chaptersHtml}
@@ -1265,6 +1436,40 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
     }
   };
 
+  // Test Captcha Connection & Validity
+  const handleTestCaptcha = async (optionalToken?: string) => {
+    if (!settings?.security?.captcha) return;
+    setTestingCaptcha(true);
+    setCaptchaTestResult(null);
+    try {
+      const captchaState = settings.security.captcha;
+      const currentToken = localStorage.getItem('auth_token') || token;
+      const res = await fetch('/api/admin/captcha/test', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${currentToken}`,
+        },
+        body: JSON.stringify({
+          provider: captchaState.provider || 'math',
+          recaptchaVersion: captchaState.recaptchaVersion || 'v2',
+          siteKey: captchaState.siteKey || '',
+          secretKey: captchaState.secretKey || '',
+          testToken: typeof optionalToken === 'string' ? optionalToken : undefined,
+        }),
+      });
+      const data = await res.json();
+      setCaptchaTestResult(data);
+    } catch (err: any) {
+      setCaptchaTestResult({
+        success: false,
+        error: `خطا در برقراری ارتباط با سرور تست: ${err?.message || 'خطای ناشناخته'}`,
+      });
+    } finally {
+      setTestingCaptcha(false);
+    }
+  };
+
   // Save Settings
   const handleSaveSettings = async () => {
     if (!settings) return;
@@ -1284,6 +1489,15 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
       if (res.ok && data.success) {
         if (data.settings) {
           setSettings(data.settings);
+          if (data.settings.pricing?.costPerWord) {
+            const newRate = Number(data.settings.pricing.costPerWord);
+            if (onCostPerWordUpdated) onCostPerWordUpdated(newRate);
+            window.dispatchEvent(
+              new CustomEvent('pricing-updated', {
+                detail: { costPerWord: newRate, pricing: data.settings.pricing },
+              })
+            );
+          }
         }
         setSaveSettingsSuccess(true);
         setSettingsToast({
@@ -2024,29 +2238,31 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-['Vazirmatn'] selection:bg-amber-500/30">
       {/* Top Admin Header */}
       <header className="sticky top-0 z-40 bg-slate-900/95 backdrop-blur-md border-b border-amber-500/30 shadow-lg">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className={`w-11 h-11 rounded-2xl flex items-center justify-center font-black shadow-lg ${
+        <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-2.5 sm:py-0 min-h-[60px] sm:h-20 flex items-center justify-between gap-2 sm:gap-4">
+          <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
+            <div className={`w-9 h-9 sm:w-11 sm:h-11 rounded-xl sm:rounded-2xl flex items-center justify-center font-black shadow-lg shrink-0 ${
               isStaff
                 ? 'bg-gradient-to-tr from-blue-600 to-indigo-500 text-white shadow-blue-500/20'
                 : 'bg-gradient-to-tr from-amber-500 to-amber-400 text-slate-950 shadow-amber-500/20'
             }`}>
-              {isStaff ? <Users className="w-6 h-6" /> : <ShieldCheck className="w-6 h-6" />}
+              {isStaff ? <Users className="w-5 h-5 sm:w-6 sm:h-6" /> : <ShieldCheck className="w-5 h-5 sm:w-6 sm:h-6" />}
             </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="font-extrabold text-white text-base">
-                  {isStaff ? 'میز کاربری پرسنل و پشتیبانی سامانه' : 'پنل مدیریت ارشد سامانه'}
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-1.5 sm:gap-2">
+                <span className="font-extrabold text-white text-xs sm:text-base truncate">
+                  <span className="sm:hidden">{isStaff ? 'میز پرسنل' : 'پنل مدیریت ارشد'}</span>
+                  <span className="hidden sm:inline">{isStaff ? 'میز کاربری پرسنل و پشتیبانی سامانه' : 'پنل مدیریت ارشد سامانه'}</span>
                 </span>
-                <span className={`text-[10px] px-2 py-0.5 rounded-full font-black ${
+                <span className={`text-[9px] sm:text-[10px] px-1.5 sm:px-2 py-0.5 rounded-full font-black shrink-0 ${
                   isStaff
                     ? 'bg-blue-500 text-white'
                     : 'bg-amber-500 text-slate-950'
                 }`}>
-                  {isStaff ? 'STAFF / پشتیبان سامانه' : 'SUPER ADMIN'}
+                  <span className="sm:hidden">{isStaff ? 'پشتیبان' : 'مدیر کل'}</span>
+                  <span className="hidden sm:inline">{isStaff ? 'STAFF / پشتیبان سامانه' : 'SUPER ADMIN'}</span>
                 </span>
               </div>
-              <p className="text-xs text-slate-400">
+              <p className="text-[11px] text-slate-400 hidden md:block truncate mt-0.5">
                 {isStaff
                   ? 'مدیریت کاربران، نرخ‌های اختصاصی، کدهای تخفیف، صف ترجمه و بررسی پروژه‌ها'
                   : 'نظارت بر کاربران، استخر موازی هوش مصنوعی، درآمدها و امنیت'}
@@ -2054,29 +2270,31 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
             </div>
           </div>
 
-          <div className="flex items-center gap-2 sm:gap-3">
+          <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
             <button
               onClick={() => setActiveTab('guides')}
-              className={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold border transition-all ${
+              className={`inline-flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3.5 py-1.5 sm:py-2 rounded-xl text-xs font-semibold border transition-all ${
                 activeTab === 'guides'
                   ? 'bg-amber-500 text-slate-950 font-bold border-amber-400 shadow-md shadow-amber-500/20'
                   : 'bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border-amber-500/30'
               }`}
               title="مشاهده تمام راهنماها و دستورالعمل‌های مدیریتی"
             >
-              <HelpCircle className="w-4 h-4 text-amber-400" />
-              <span>راهنمای جامع مدیریت</span>
+              <HelpCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-amber-400" />
+              <span className="hidden sm:inline">راهنمای جامع</span>
             </button>
             <button
               onClick={onBackToUserPanel}
-              className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 transition-all"
+              className="inline-flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3.5 py-1.5 sm:py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 transition-all"
+              title="بازگشت به پیشخوان کاربری"
             >
-              <ArrowLeft className="w-4 h-4 text-amber-400" />
-              <span>میز کاربری</span>
+              <ArrowLeft className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-amber-400" />
+              <span>پیشخوان</span>
             </button>
             <button
               onClick={onLogout}
-              className="px-3 py-2 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 text-xs font-semibold transition-all"
+              className="px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 text-xs font-semibold transition-all"
+              title="خروج از حساب"
             >
               خروج
             </button>
@@ -2085,12 +2303,12 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
       </header>
 
       {/* Tabs Navigation */}
-      <div className="bg-slate-900/90 border-b border-slate-800 backdrop-blur-sm sticky top-16 sm:top-20 z-30">
-        <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-2.5 sm:py-3">
-          <div className="flex overflow-x-auto pb-1 sm:pb-0 sm:grid sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2 text-xs font-semibold scrollbar-none">
+      <div className="bg-slate-900/90 border-b border-slate-800 backdrop-blur-sm sticky top-14 sm:top-20 z-30">
+        <div className="max-w-7xl mx-auto px-2 sm:px-6 lg:px-8 py-2 sm:py-3">
+          <div className="flex overflow-x-auto pb-1.5 sm:pb-0 sm:grid sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-1.5 sm:gap-2 text-xs font-semibold scrollbar-none items-center">
             <button
               onClick={() => setActiveTab('overview')}
-              className={`p-2.5 rounded-xl transition-all flex items-center justify-center gap-2 border shrink-0 min-w-[130px] sm:min-w-0 ${
+              className={`px-3 py-2 sm:p-2.5 rounded-xl transition-all flex items-center justify-center gap-1.5 sm:gap-2 border shrink-0 whitespace-nowrap min-w-max sm:min-w-0 ${
                 activeTab === 'overview'
                   ? 'bg-amber-500 text-slate-950 font-bold border-amber-400 shadow-md shadow-amber-500/20'
                   : 'bg-slate-950/60 text-slate-300 border-slate-800/80 hover:bg-slate-800 hover:text-white'
@@ -2103,7 +2321,7 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
             {!isStaff && (
               <button
                 onClick={() => { setActiveTab('monthly_analytics'); fetchMonthlyAnalytics(); }}
-                className={`p-2.5 rounded-xl transition-all flex items-center justify-center gap-2 border ${
+                className={`px-3 py-2 sm:p-2.5 rounded-xl transition-all flex items-center justify-center gap-1.5 sm:gap-2 border shrink-0 whitespace-nowrap min-w-max sm:min-w-0 ${
                   activeTab === 'monthly_analytics'
                     ? 'bg-amber-500 text-slate-950 font-bold border-amber-400 shadow-md shadow-amber-500/20'
                     : 'bg-slate-950/60 text-slate-300 border-slate-800/80 hover:bg-slate-800 hover:text-white'
@@ -2117,7 +2335,7 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
             {!isStaff && (
               <button
                 onClick={() => setActiveTab('daily_revenue')}
-                className={`p-2.5 rounded-xl transition-all flex items-center justify-center gap-2 border shrink-0 min-w-[150px] sm:min-w-0 ${
+                className={`px-3 py-2 sm:p-2.5 rounded-xl transition-all flex items-center justify-center gap-1.5 sm:gap-2 border shrink-0 whitespace-nowrap min-w-max sm:min-w-0 ${
                   activeTab === 'daily_revenue'
                     ? 'bg-amber-500 text-slate-950 font-bold border-amber-400 shadow-md shadow-amber-500/20'
                     : 'bg-slate-950/60 text-slate-300 border-slate-800/80 hover:bg-slate-800 hover:text-white'
@@ -2131,7 +2349,7 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
 
             <button
               onClick={() => { setActiveTab('completed_books'); fetchAllBooks(); }}
-              className={`p-2.5 rounded-xl transition-all flex items-center justify-center gap-2 border ${
+              className={`px-3 py-2 sm:p-2.5 rounded-xl transition-all flex items-center justify-center gap-1.5 sm:gap-2 border shrink-0 whitespace-nowrap min-w-max sm:min-w-0 ${
                 activeTab === 'completed_books'
                   ? 'bg-amber-500 text-slate-950 font-bold border-amber-400 shadow-md shadow-amber-500/20'
                   : 'bg-slate-950/60 text-slate-300 border-slate-800/80 hover:bg-slate-800 hover:text-white'
@@ -2146,7 +2364,7 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
 
             <button
               onClick={() => { setActiveTab('all_books'); fetchAllBooks(); }}
-              className={`p-2.5 rounded-xl transition-all flex items-center justify-center gap-2 border ${
+              className={`px-3 py-2 sm:p-2.5 rounded-xl transition-all flex items-center justify-center gap-1.5 sm:gap-2 border shrink-0 whitespace-nowrap min-w-max sm:min-w-0 ${
                 activeTab === 'all_books'
                   ? 'bg-amber-500 text-slate-950 font-bold border-amber-400 shadow-md shadow-amber-500/20'
                   : 'bg-slate-950/60 text-slate-300 border-slate-800/80 hover:bg-slate-800 hover:text-white'
@@ -2158,7 +2376,7 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
 
             <button
               onClick={() => setActiveTab('users')}
-              className={`p-2.5 rounded-xl transition-all flex items-center justify-center gap-2 border ${
+              className={`px-3 py-2 sm:p-2.5 rounded-xl transition-all flex items-center justify-center gap-1.5 sm:gap-2 border shrink-0 whitespace-nowrap min-w-max sm:min-w-0 ${
                 activeTab === 'users'
                   ? 'bg-amber-500 text-slate-950 font-bold border-amber-400 shadow-md shadow-amber-500/20'
                   : 'bg-slate-950/60 text-slate-300 border-slate-800/80 hover:bg-slate-800 hover:text-white'
@@ -2170,7 +2388,7 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
 
             <button
               onClick={() => { setActiveTab('coupons'); fetchCoupons(); }}
-              className={`p-2.5 rounded-xl transition-all flex items-center justify-center gap-2 border shrink-0 min-w-[130px] sm:min-w-0 ${
+              className={`px-3 py-2 sm:p-2.5 rounded-xl transition-all flex items-center justify-center gap-1.5 sm:gap-2 border shrink-0 whitespace-nowrap min-w-max sm:min-w-0 ${
                 activeTab === 'coupons'
                   ? 'bg-amber-500 text-slate-950 font-bold border-amber-400 shadow-md shadow-amber-500/20'
                   : 'bg-slate-950/60 text-slate-300 border-slate-800/80 hover:bg-slate-800 hover:text-white'
@@ -2183,7 +2401,7 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
             {!isStaff && (
               <button
                 onClick={() => setActiveTab('api_pool')}
-                className={`p-2.5 rounded-xl transition-all flex items-center justify-center gap-2 border ${
+                className={`px-3 py-2 sm:p-2.5 rounded-xl transition-all flex items-center justify-center gap-1.5 sm:gap-2 border shrink-0 whitespace-nowrap min-w-max sm:min-w-0 ${
                   activeTab === 'api_pool'
                     ? 'bg-amber-500 text-slate-950 font-bold border-amber-400 shadow-md shadow-amber-500/20'
                     : 'bg-slate-950/60 text-slate-300 border-slate-800/80 hover:bg-slate-800 hover:text-white'
@@ -2197,7 +2415,7 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
             {!isStaff && (
               <button
                 onClick={() => setActiveTab('finance')}
-                className={`p-2.5 rounded-xl transition-all flex items-center justify-center gap-2 border ${
+                className={`px-3 py-2 sm:p-2.5 rounded-xl transition-all flex items-center justify-center gap-1.5 sm:gap-2 border shrink-0 whitespace-nowrap min-w-max sm:min-w-0 ${
                   activeTab === 'finance'
                     ? 'bg-amber-500 text-slate-950 font-bold border-amber-400 shadow-md shadow-amber-500/20'
                     : 'bg-slate-950/60 text-slate-300 border-slate-800/80 hover:bg-slate-800 hover:text-white'
@@ -2210,7 +2428,7 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
 
             <button
               onClick={() => { setActiveTab('page_builder'); fetchCustomPages(); }}
-              className={`p-2.5 rounded-xl transition-all flex items-center justify-center gap-2 border ${
+              className={`px-3 py-2 sm:p-2.5 rounded-xl transition-all flex items-center justify-center gap-1.5 sm:gap-2 border shrink-0 whitespace-nowrap min-w-max sm:min-w-0 ${
                 activeTab === 'page_builder'
                   ? 'bg-amber-500 text-slate-950 font-bold border-amber-400 shadow-md shadow-amber-500/20'
                   : 'bg-slate-950/60 text-slate-300 border-slate-800/80 hover:bg-slate-800 hover:text-white'
@@ -2223,7 +2441,7 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
 
             <button
               onClick={() => { setActiveTab('header_footer'); fetchHeaderFooter(); }}
-              className={`p-2.5 rounded-xl transition-all flex items-center justify-center gap-2 border ${
+              className={`px-3 py-2 sm:p-2.5 rounded-xl transition-all flex items-center justify-center gap-1.5 sm:gap-2 border shrink-0 whitespace-nowrap min-w-max sm:min-w-0 ${
                 activeTab === 'header_footer'
                   ? 'bg-amber-500 text-slate-950 font-bold border-amber-400 shadow-md shadow-amber-500/20'
                   : 'bg-slate-950/60 text-slate-300 border-slate-800/80 hover:bg-slate-800 hover:text-white'
@@ -2235,7 +2453,7 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
 
             <button
               onClick={() => setActiveTab('cms')}
-              className={`p-2.5 rounded-xl transition-all flex items-center justify-center gap-2 border ${
+              className={`px-3 py-2 sm:p-2.5 rounded-xl transition-all flex items-center justify-center gap-1.5 sm:gap-2 border shrink-0 whitespace-nowrap min-w-max sm:min-w-0 ${
                 activeTab === 'cms'
                   ? 'bg-amber-500 text-slate-950 font-bold border-amber-400 shadow-md shadow-amber-500/20'
                   : 'bg-slate-950/60 text-slate-300 border-slate-800/80 hover:bg-slate-800 hover:text-white'
@@ -2247,7 +2465,7 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
 
             <button
               onClick={() => { setActiveTab('seo'); fetchSettings(); }}
-              className={`p-2.5 rounded-xl transition-all flex items-center justify-center gap-2 border ${
+              className={`px-3 py-2 sm:p-2.5 rounded-xl transition-all flex items-center justify-center gap-1.5 sm:gap-2 border shrink-0 whitespace-nowrap min-w-max sm:min-w-0 ${
                 activeTab === 'seo'
                   ? 'bg-amber-500 text-slate-950 font-bold border-amber-400 shadow-md shadow-amber-500/20'
                   : 'bg-slate-950/60 text-slate-300 border-slate-800/80 hover:bg-slate-800 hover:text-white'
@@ -2259,7 +2477,7 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
 
             <button
               onClick={() => { setActiveTab('blog_manager'); fetchBlogPosts(); fetchBlogCategories(); }}
-              className={`p-2.5 rounded-xl transition-all flex items-center justify-center gap-2 border ${
+              className={`px-3 py-2 sm:p-2.5 rounded-xl transition-all flex items-center justify-center gap-1.5 sm:gap-2 border shrink-0 whitespace-nowrap min-w-max sm:min-w-0 ${
                 activeTab === 'blog_manager'
                   ? 'bg-amber-500 text-slate-950 font-bold border-amber-400 shadow-md shadow-amber-500/20'
                   : 'bg-slate-950/60 text-slate-300 border-slate-800/80 hover:bg-slate-800 hover:text-white'
@@ -2273,7 +2491,7 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
             {!isStaff && (
               <button
                 onClick={() => { setActiveTab('scripts_analytics'); fetchScriptsConfig(); }}
-                className={`p-2.5 rounded-xl transition-all flex items-center justify-center gap-2 border ${
+                className={`px-3 py-2 sm:p-2.5 rounded-xl transition-all flex items-center justify-center gap-1.5 sm:gap-2 border shrink-0 whitespace-nowrap min-w-max sm:min-w-0 ${
                   activeTab === 'scripts_analytics'
                     ? 'bg-amber-500 text-slate-950 font-bold border-amber-400 shadow-md shadow-amber-500/20'
                     : 'bg-slate-950/60 text-slate-300 border-slate-800/80 hover:bg-slate-800 hover:text-white'
@@ -2287,7 +2505,7 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
             {!isStaff && (
               <button
                 onClick={() => setActiveTab('security')}
-                className={`p-2.5 rounded-xl transition-all flex items-center justify-center gap-2 border ${
+                className={`px-3 py-2 sm:p-2.5 rounded-xl transition-all flex items-center justify-center gap-1.5 sm:gap-2 border shrink-0 whitespace-nowrap min-w-max sm:min-w-0 ${
                   activeTab === 'security'
                     ? 'bg-amber-500 text-slate-950 font-bold border-amber-400 shadow-md shadow-amber-500/20'
                     : 'bg-slate-950/60 text-slate-300 border-slate-800/80 hover:bg-slate-800 hover:text-white'
@@ -2300,7 +2518,7 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
 
             <button
               onClick={() => setActiveTab('guides')}
-              className={`p-2.5 rounded-xl transition-all flex items-center justify-center gap-2 border ${
+              className={`px-3 py-2 sm:p-2.5 rounded-xl transition-all flex items-center justify-center gap-1.5 sm:gap-2 border shrink-0 whitespace-nowrap min-w-max sm:min-w-0 ${
                 activeTab === 'guides'
                   ? 'bg-amber-500 text-slate-950 font-bold border-amber-400 shadow-md shadow-amber-500/20'
                   : 'bg-slate-950/60 text-slate-300 border-slate-800/80 hover:bg-slate-800 hover:text-white'
@@ -2970,6 +3188,14 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
                             {b.author && (
                               <div className="text-[10px] text-amber-400/80 mt-0.5">نویسنده: {b.author}</div>
                             )}
+                            {b.hasAdminCopy && (
+                              <div className="mt-1">
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-purple-500/20 text-purple-300 border border-purple-500/30 text-[10px] font-bold" title="این کتاب دارای نسخه اختصاصی ویرایش شده توسط مدیریت است">
+                                  <Sparkles className="w-3 h-3 text-purple-400" />
+                                  <span>دارای نسخه مدیریت</span>
+                                </span>
+                              </div>
+                            )}
                           </td>
                           <td className="py-4 px-4">
                             <div className="text-slate-200 font-medium">{b.user?.name || 'کاربر عمومی'}</div>
@@ -2997,14 +3223,23 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
                           </td>
                           <td className="py-4 px-4">
                             <div className="flex flex-wrap items-center justify-center gap-1.5">
-                              {/* Word Download */}
+                              {/* Word DOCX Download */}
                               <button
-                                onClick={() => handleDownloadWordDoc(b)}
-                                className="px-2.5 py-1.5 rounded-xl bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 border border-blue-500/30 text-[11px] font-semibold flex items-center gap-1 transition shadow-sm"
-                                title="دانلود فایل ورد (.doc)"
+                                onClick={() => handleDownloadWordDocx(b)}
+                                className="px-2.5 py-1.5 rounded-xl bg-blue-500/15 hover:bg-blue-500/25 text-blue-300 border border-blue-500/30 text-[11px] font-semibold flex items-center gap-1 transition shadow-sm"
+                                title="دانلود فایل استاندارد Word (.docx) راست‌چین بدون کشیدگی متن"
                               >
                                 <FileText className="w-3.5 h-3.5" />
-                                <span>Word</span>
+                                <span>Word (.docx)</span>
+                              </button>
+
+                              {/* Word .doc Legacy Download */}
+                              <button
+                                onClick={() => handleDownloadWordDoc(b)}
+                                className="px-2 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] font-semibold flex items-center gap-1 transition"
+                                title="دانلود فایل ورد نسخه (.doc)"
+                              >
+                                <span>.doc</span>
                               </button>
 
                               {/* PDF Print */}
@@ -3049,13 +3284,25 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
                             </div>
                           </td>
                           <td className="py-4 px-4 text-left">
-                            <button
-                              onClick={() => handleDeleteBookAdmin(b.id)}
-                              className="p-1.5 rounded-lg text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 transition"
-                              title="حذف کتاب"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
+                            <div className="flex items-center justify-end gap-1.5">
+                              {/* Admin Private Edit Button */}
+                              <button
+                                onClick={() => setAdminEditingBook(b)}
+                                className="px-2.5 py-1.5 rounded-xl bg-purple-600/20 hover:bg-purple-600/30 text-purple-300 border border-purple-500/30 text-[11px] font-bold flex items-center gap-1 transition shadow-sm"
+                                title="ویرایش نسخه اختصاصی مدیریت (بدون تغییر روی پنل کاربر)"
+                              >
+                                <Edit3 className="w-3.5 h-3.5 text-purple-400" />
+                                <span>ویرایش مدیریت</span>
+                              </button>
+
+                              <button
+                                onClick={() => handleDeleteBookAdmin(b.id)}
+                                className="p-1.5 rounded-lg text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 transition"
+                                title="حذف کتاب"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       ))
@@ -3158,6 +3405,19 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
                 </div>
               </div>
             )}
+
+            {/* Admin Private Book Editor Modal */}
+            {adminEditingBook && (
+              <AdminBookEditorModal
+                book={adminEditingBook}
+                token={token}
+                isOpen={Boolean(adminEditingBook)}
+                onClose={() => setAdminEditingBook(null)}
+                onSaveSuccess={() => {
+                  fetchAllBooks();
+                }}
+              />
+            )}
           </div>
         )}
 
@@ -3253,14 +3513,24 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
                             </span>
                           </td>
                           <td className="py-3.5 px-4 text-center">
-                            <button
-                              onClick={() => handleDeleteBookAdmin(b.id)}
-                              className="px-3 py-1.5 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 text-[11px] font-bold flex items-center gap-1 mx-auto transition"
-                              title="حذف کامل کتاب از سیستم"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                              <span>حذف کتاب</span>
-                            </button>
+                            <div className="flex items-center justify-center gap-1.5">
+                              <button
+                                onClick={() => setAdminEditingBook(b)}
+                                className="px-2.5 py-1.5 rounded-xl bg-purple-600/20 hover:bg-purple-600/30 text-purple-300 border border-purple-500/30 text-[11px] font-bold flex items-center gap-1 transition shadow-sm"
+                                title="ویرایش نسخه اختصاصی مدیریت (بدون تغییر روی پنل کاربر)"
+                              >
+                                <Edit3 className="w-3.5 h-3.5 text-purple-400" />
+                                <span>ویرایش مدیریت</span>
+                              </button>
+                              <button
+                                onClick={() => handleDeleteBookAdmin(b.id)}
+                                className="px-2.5 py-1.5 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 text-[11px] font-bold flex items-center gap-1 transition"
+                                title="حذف کامل کتاب از سیستم"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                                <span>حذف</span>
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       ))
@@ -4634,11 +4904,12 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
                     <tr>
                       <th className="py-3.5 px-4">عنوان کلید / سرور</th>
                       <th className="py-3.5 px-4">ارائه‌دهنده و مدل</th>
-                      <th className="py-3.5 px-4">کلید ماسک شده</th>
                       <th className="py-3.5 px-4">وضعیت</th>
-                      <th className="py-3.5 px-4">تعداد درخواست‌ها</th>
-                      <th className="py-3.5 px-4">توکن‌های مصرفی</th>
-                      <th className="py-3.5 px-4">تاخیر پاسخ</th>
+                      <th className="py-3.5 px-4">توکن‌های سوخته امروز</th>
+                      <th className="py-3.5 px-4">هزینه امروز (دلار / تومان)</th>
+                      <th className="py-3.5 px-4">مجموع کل توکن‌ها و هزینه</th>
+                      <th className="py-3.5 px-4">درخواست‌ها</th>
+                      <th className="py-3.5 px-4">تاخیر</th>
                       <th className="py-3.5 px-4 text-left">عملیات</th>
                     </tr>
                   </thead>
@@ -4646,7 +4917,12 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
                     {apiKeys.map((k) => {
                       const isCooldown = k.cooldownUntil > Date.now();
                       const secondsLeft = Math.max(0, Math.ceil((k.cooldownUntil - Date.now()) / 1000));
-                      const masked = k.apiKey ? `${k.apiKey.slice(0, 4)}...${k.apiKey.slice(-4)}` : 'کلید سرور';
+                      const todayTokens = k.todayTokensUsed || 0;
+                      const todayCostUsd = k.todayCostUsd ?? Number(((todayTokens / 1000000) * 0.15).toFixed(4));
+                      const todayCostTomans = k.todayCostTomans ?? Math.round(todayCostUsd * 95000);
+                      const totalTokens = k.totalTokensUsed || 0;
+                      const totalCostUsd = k.totalCostUsd ?? Number(((totalTokens / 1000000) * 0.15).toFixed(4));
+                      const totalCostTomans = k.totalCostTomans ?? Math.round(totalCostUsd * 95000);
 
                       return (
                         <tr key={k.id} className="hover:bg-slate-800/40 transition-colors">
@@ -4660,9 +4936,6 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
                             <span className="px-2 py-0.5 rounded bg-slate-800 text-amber-300 font-mono text-[11px]">
                               {k.provider} / {k.model}
                             </span>
-                          </td>
-                          <td className="py-3.5 px-4 font-mono text-slate-400" dir="ltr">
-                            {masked}
                           </td>
                           <td className="py-3.5 px-4">
                             <div className="flex items-center gap-1.5">
@@ -4693,10 +4966,29 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
                             </div>
                           </td>
                           <td className="py-3.5 px-4 font-mono">
-                            <span className="text-white font-bold">{k.successfulRequests || 0}</span> موفق / <span className="text-rose-400">{k.failedRequests || 0}</span> خطا
+                            <div className="text-amber-400 font-bold text-sm">
+                              {todayTokens.toLocaleString('en-US')}
+                            </div>
+                            <span className="text-[10px] text-slate-500">توکن امروز</span>
                           </td>
-                          <td className="py-3.5 px-4 font-mono text-amber-400 font-bold">
-                            {(k.totalTokensUsed || 0).toLocaleString('en-US')}
+                          <td className="py-3.5 px-4 font-mono">
+                            <div className="text-emerald-400 font-bold">
+                              ${todayCostUsd.toFixed(4)}
+                            </div>
+                            <div className="text-[10.5px] text-slate-400 font-sans">
+                              {todayCostTomans.toLocaleString('fa-IR')} تومان
+                            </div>
+                          </td>
+                          <td className="py-3.5 px-4 font-mono">
+                            <div className="text-white font-bold">
+                              {totalTokens.toLocaleString('en-US')}
+                            </div>
+                            <div className="text-[10px] text-slate-400">
+                              ${totalCostUsd.toFixed(4)} • {totalCostTomans.toLocaleString('fa-IR')} ت
+                            </div>
+                          </td>
+                          <td className="py-3.5 px-4 font-mono text-[11px]">
+                            <span className="text-emerald-400 font-bold">{k.successfulRequests || 0}</span> / <span className="text-rose-400">{k.failedRequests || 0}</span>
                           </td>
                           <td className="py-3.5 px-4 font-mono text-slate-300">
                             {k.lastLatencyMs ? `${k.lastLatencyMs} ms` : '-'}
@@ -4747,10 +5039,11 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
             {/* Token Cost Transparency & Live Financial Calculator Card */}
             {(() => {
               const totalTokensUsedAll = apiKeys.reduce((acc, k) => acc + (k.totalTokensUsed || 0), 0);
-              // Standard cost: $0.15 per 1,000,000 tokens on Flash/gpt-4o-mini
-              const estimatedCostUsd = ((totalTokensUsedAll / 1000000) * 0.15);
-              const usdToTomanRate = 92000;
-              const estimatedCostToman = Math.round(estimatedCostUsd * usdToTomanRate);
+              const totalTokensTodayAll = apiKeys.reduce((acc, k) => acc + (k.todayTokensUsed || 0), 0);
+              const todayCostUsdAll = apiKeys.reduce((acc, k) => acc + (k.todayCostUsd || 0), 0);
+              const todayCostTomansAll = apiKeys.reduce((acc, k) => acc + (k.todayCostTomans || 0), 0);
+              const totalCostUsdAll = apiKeys.reduce((acc, k) => acc + (k.totalCostUsd || 0), 0);
+              const totalCostTomansAll = apiKeys.reduce((acc, k) => acc + (k.totalCostTomans || 0), 0);
 
               return (
                 <div className="p-5 rounded-3xl bg-slate-900 border border-slate-800 shadow-xl space-y-4">
@@ -4758,38 +5051,50 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
                     <div className="flex items-center gap-2">
                       <Calculator className="w-5 h-5 text-emerald-400" />
                       <div>
-                        <h3 className="font-bold text-sm text-white">محاسبه‌گر شفاف هزینه واقعی توکن‌های مصرفی سرور</h3>
+                        <h3 className="font-bold text-sm text-white">محاسبه‌گر شفاف هزینه توکن‌های سوخته‌شده امروز و کل سرور</h3>
                         <p className="text-[11px] text-slate-400">شفافیت ۱۰۰٪ تجاری: برآورد ریالی و دلاری هزینه‌های پردازش هوش مصنوعی</p>
                       </div>
                     </div>
                     <span className="text-[10px] bg-emerald-500/10 text-emerald-400 px-2.5 py-1 rounded-full font-bold border border-emerald-500/20">
-                      نرخ میانگین: ۰.۱۵$ به ازای هر ۱ میلیون توکن
+                      نرخ میانگین: ۰.۱۵$ به ازای هر ۱ میلیون توکن (دلار ۹۵,۰۰۰ تومان)
                     </span>
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
+                    <div className="bg-slate-950 p-3.5 rounded-2xl border border-amber-500/20 bg-amber-500/5">
+                      <span className="text-amber-400 font-semibold text-[11px] block mb-1">🔥 توکن‌های سوخته‌شده امروز:</span>
+                      <div className="text-xl font-black text-amber-300 font-mono">
+                        {totalTokensTodayAll.toLocaleString('en-US')} <span className="text-xs font-normal text-slate-400">توکن</span>
+                      </div>
+                      <span className="text-[10px] text-slate-400 mt-1 block">مصرف تمام کلیدهای سرور در امروز</span>
+                    </div>
+
+                    <div className="bg-slate-950 p-3.5 rounded-2xl border border-emerald-500/20 bg-emerald-500/5">
+                      <span className="text-emerald-400 font-semibold text-[11px] block mb-1">💵 هزینه توکن‌های امروز:</span>
+                      <div className="text-lg font-black text-emerald-300 font-mono">
+                        ${todayCostUsdAll.toFixed(4)} <span className="text-xs font-normal text-emerald-400">USD</span>
+                      </div>
+                      <div className="text-xs font-bold text-emerald-400 mt-0.5">
+                        {todayCostTomansAll.toLocaleString('fa-IR')} تومان
+                      </div>
+                    </div>
+
                     <div className="bg-slate-950 p-3.5 rounded-2xl border border-slate-800">
                       <span className="text-slate-400 text-[11px] block mb-1">مجموع کل توکن‌های مصرف‌شده:</span>
-                      <div className="text-lg font-black text-amber-400 font-mono">
+                      <div className="text-lg font-black text-white font-mono">
                         {totalTokensUsedAll.toLocaleString('en-US')} <span className="text-xs font-normal text-slate-400">توکن</span>
                       </div>
-                      <span className="text-[10px] text-slate-500 mt-1 block">شامل درخواست‌های ترجمه و واژه‌نامه</span>
+                      <span className="text-[10px] text-slate-500 mt-1 block">از زمان آغاز به کار سرور</span>
                     </div>
 
                     <div className="bg-slate-950 p-3.5 rounded-2xl border border-slate-800">
-                      <span className="text-slate-400 text-[11px] block mb-1">هزینه معادل دلاری (USD):</span>
-                      <div className="text-lg font-black text-emerald-400 font-mono">
-                        ${estimatedCostUsd.toFixed(4)} <span className="text-xs font-normal text-slate-400">USD</span>
-                      </div>
-                      <span className="text-[10px] text-slate-500 mt-1 block">بر مبنای تعرفه رسمی Google & OpenAI</span>
-                    </div>
-
-                    <div className="bg-slate-950 p-3.5 rounded-2xl border border-slate-800">
-                      <span className="text-slate-400 text-[11px] block mb-1">معادل هزینه به تومان ایران:</span>
+                      <span className="text-slate-400 text-[11px] block mb-1">مجموع کل هزینه پردازش:</span>
                       <div className="text-lg font-black text-blue-400 font-mono">
-                        {estimatedCostToman.toLocaleString('fa-IR')} <span className="text-xs font-normal text-slate-400">تومان</span>
+                        ${totalCostUsdAll.toFixed(4)}
                       </div>
-                      <span className="text-[10px] text-slate-500 mt-1 block">با احتساب دلار ۹۲,۰۰۰ تومانی</span>
+                      <div className="text-xs font-bold text-slate-300 mt-0.5">
+                        {totalCostTomansAll.toLocaleString('fa-IR')} تومان
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -8214,86 +8519,495 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
               </div>
             </div>
 
-            {/* Section 3: Announcement Bar Control */}
+            {/* Section 3: User Dashboard & Top Announcement Bar Control */}
             <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 space-y-5 shadow-xl">
-              <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-800">
                 <div className="flex items-center gap-2">
                   <Sparkles className="w-5 h-5 text-amber-400" />
-                  <h3 className="font-bold text-base text-white">نوار اعلان بالای سایت (Top Announcement Bar)</h3>
+                  <div>
+                    <h3 className="font-bold text-base text-white">نوار اعلان تخفیف صفحه کاربران و بالای سایت</h3>
+                    <p className="text-[11px] text-slate-400">اعلان سراسری که در بالای پیشخوان تمام کاربران و صفحات سایت نمایش داده می‌شود.</p>
+                  </div>
                 </div>
 
-                <label className="flex items-center gap-2 cursor-pointer text-xs">
-                  <input
-                    type="checkbox"
-                    checked={settings.seo?.announcementEnabled ?? true}
-                    onChange={(e) =>
-                      setSettings({
-                        ...settings,
-                        seo: {
-                          siteTitle: settings.seo?.siteTitle ?? 'مترجم آنلاین کتاب با هوش مصنوعی',
-                          metaDescription: settings.seo?.metaDescription ?? '',
-                          metaKeywords: settings.seo?.metaKeywords ?? '',
-                          logoUrl: settings.seo?.logoUrl ?? '',
-                          faviconUrl: settings.seo?.faviconUrl ?? '',
-                          announcementEnabled: e.target.checked,
-                          announcementText: settings.seo?.announcementText ?? '',
-                        },
-                      })
-                    }
-                    className="rounded accent-amber-500 w-4 h-4"
-                  />
-                  <span className="text-amber-400 font-bold">فعال‌سازی نوار اعلان در بالای تمام صفحات</span>
-                </label>
-              </div>
+                <div className="flex items-center gap-3">
+                  <label className="flex items-center gap-2 cursor-pointer text-xs bg-slate-950 px-3 py-1.5 rounded-xl border border-slate-800">
+                    <input
+                      type="checkbox"
+                      checked={settings.announcementBar?.enabled ?? settings.seo?.announcementEnabled ?? true}
+                      onChange={(e) => {
+                        const isChecked = e.target.checked;
+                        const currentAnn = settings.announcementBar || {
+                          text: '🎉 تخفیف ویژه چاپ و ترجمه: هزینه ترجمه هر کلمه فقط ۴۵ تومان همراه با استخراج هوشمند واژه‌نامه تخصصی و صفحه‌بندی کتاب.',
+                          type: 'warning',
+                          linkUrl: '',
+                          linkText: 'ثبت سفارش کتاب',
+                          enabled: true,
+                        };
+                        setSettings({
+                          ...settings,
+                          announcementBar: {
+                            ...currentAnn,
+                            enabled: isChecked,
+                          },
+                          seo: {
+                            ...(settings.seo || {
+                              siteTitle: 'مترجم آنلاین کتاب با هوش مصنوعی',
+                              metaDescription: '',
+                              metaKeywords: '',
+                              logoUrl: '',
+                              faviconUrl: '',
+                              announcementEnabled: true,
+                              announcementText: '',
+                            }),
+                            announcementEnabled: isChecked,
+                          },
+                        });
+                      }}
+                      className="rounded accent-amber-500 w-4 h-4"
+                    />
+                    <span className={settings.announcementBar?.enabled ? 'text-amber-400 font-bold' : 'text-slate-400'}>
+                      {settings.announcementBar?.enabled ? 'اعلان فعال است' : 'اعلان غیرفعال'}
+                    </span>
+                  </label>
 
-              <div className="space-y-3">
-                <label className="block text-xs font-semibold text-slate-300">متن اعلان بالای سایت:</label>
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    value={settings.seo?.announcementText ?? settings.cms.announcement ?? ''}
-                    onChange={(e) =>
-                      setSettings({
-                        ...settings,
-                        seo: {
-                          siteTitle: settings.seo?.siteTitle ?? 'مترجم آنلاین کتاب با هوش مصنوعی',
-                          metaDescription: settings.seo?.metaDescription ?? '',
-                          metaKeywords: settings.seo?.metaKeywords ?? '',
-                          logoUrl: settings.seo?.logoUrl ?? '',
-                          faviconUrl: settings.seo?.faviconUrl ?? '',
-                          announcementEnabled: settings.seo?.announcementEnabled ?? true,
-                          announcementText: e.target.value,
-                        },
-                      })
-                    }
-                    placeholder="مثال: 🎉 تخفیف ۵۰ درصدی نوروزی بر روی تمام سفارش‌های ترجمه کتاب با کد NOROOZ"
-                    className="flex-1 px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs focus:border-amber-500 focus:outline-none"
-                  />
                   <button
                     type="button"
-                    onClick={() =>
-                      setSettings({
-                        ...settings,
-                        seo: {
-                          siteTitle: settings.seo?.siteTitle ?? 'مترجم آنلاین کتاب با هوش مصنوعی',
-                          metaDescription: settings.seo?.metaDescription ?? '',
-                          metaKeywords: settings.seo?.metaKeywords ?? '',
-                          logoUrl: settings.seo?.logoUrl ?? '',
-                          faviconUrl: settings.seo?.faviconUrl ?? '',
-                          announcementEnabled: false,
-                          announcementText: '',
-                        },
-                      })
-                    }
-                    className="px-3.5 py-2 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 text-xs font-bold transition"
-                    title="پاک کردن و غیرفعال‌سازی نوار اعلان"
+                    onClick={handleSaveAnnouncement}
+                    disabled={isSavingAnnouncement}
+                    className="px-4 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs shadow-md transition flex items-center gap-1"
                   >
-                    پاک کردن اعلان
+                    {isSavingAnnouncement ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : announcementSaveSuccess ? <Check className="w-3.5 h-3.5" /> : <Save className="w-3.5 h-3.5" />}
+                    <span>{announcementSaveSuccess ? 'ذخیره شد!' : 'ذخیره اعلان'}</span>
                   </button>
                 </div>
-                <p className="text-[10px] text-slate-400">
-                  اگر اعلان را غیرفعال کنید یا متن آن را پاک کنید، نوار بالایی از روی سایت برداشته می‌شود.
-                </p>
+              </div>
+
+              <div className="space-y-4">
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-xs font-semibold text-slate-300">متن اعلان ویژه (نمایش در بالای پیشخوان کاربران):</label>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const defaultText = '🎉 تخفیف ویژه چاپ و ترجمه: هزینه ترجمه هر کلمه فقط ۴۵ تومان همراه با استخراج هوشمند واژه‌نامه تخصصی و صفحه‌بندی کتاب.';
+                        const currentAnn = settings.announcementBar || {
+                          type: 'warning',
+                          linkUrl: '',
+                          linkText: 'ثبت سفارش کتاب',
+                          enabled: true,
+                          text: '',
+                        };
+                        setSettings({
+                          ...settings,
+                          announcementBar: {
+                            ...currentAnn,
+                            text: defaultText,
+                            enabled: true,
+                          },
+                          seo: {
+                            ...(settings.seo || {
+                              siteTitle: 'مترجم آنلاین کتاب با هوش مصنوعی',
+                              metaDescription: '',
+                              metaKeywords: '',
+                              logoUrl: '',
+                              faviconUrl: '',
+                              announcementEnabled: true,
+                              announcementText: '',
+                            }),
+                            announcementText: defaultText,
+                            announcementEnabled: true,
+                          },
+                        });
+                      }}
+                      className="text-[11px] text-amber-400 hover:text-amber-300 font-semibold underline flex items-center gap-1"
+                    >
+                      <RotateCcw className="w-3 h-3" />
+                      <span>بازنشانی به متن پیش‌فرض تخفیف ۴۵ تومانی</span>
+                    </button>
+                  </div>
+
+                  <textarea
+                    rows={2}
+                    value={settings.announcementBar?.text ?? settings.seo?.announcementText ?? '🎉 تخفیف ویژه چاپ و ترجمه: هزینه ترجمه هر کلمه فقط ۴۵ تومان همراه با استخراج هوشمند واژه‌نامه تخصصی و صفحه‌بندی کتاب.'}
+                    onChange={(e) => {
+                      const newText = e.target.value;
+                      const currentAnn = settings.announcementBar || {
+                        type: 'warning',
+                        linkUrl: '',
+                        linkText: 'ثبت سفارش کتاب',
+                        enabled: true,
+                        text: '',
+                      };
+                      setSettings({
+                        ...settings,
+                        announcementBar: {
+                          ...currentAnn,
+                          text: newText,
+                        },
+                        seo: {
+                          ...(settings.seo || {
+                            siteTitle: 'مترجم آنلاین کتاب با هوش مصنوعی',
+                            metaDescription: '',
+                            metaKeywords: '',
+                            logoUrl: '',
+                            faviconUrl: '',
+                            announcementEnabled: true,
+                            announcementText: '',
+                          }),
+                          announcementText: newText,
+                        },
+                      });
+                    }}
+                    placeholder="متن اعلان را بنویسید..."
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs focus:border-amber-500 focus:outline-none leading-relaxed"
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-300 mb-1">آدرس پیوند اعلان (اختیاری):</label>
+                    <input
+                      type="text"
+                      dir="ltr"
+                      value={settings.announcementBar?.linkUrl || ''}
+                      onChange={(e) => {
+                        const currentAnn = settings.announcementBar || {
+                          type: 'warning',
+                          text: '🎉 تخفیف ویژه چاپ و ترجمه: هزینه ترجمه هر کلمه فقط ۴۵ تومان همراه با استخراج هوشمند واژه‌نامه تخصصی و صفحه‌بندی کتاب.',
+                          linkText: 'ثبت سفارش کتاب',
+                          enabled: true,
+                          linkUrl: '',
+                        };
+                        setSettings({
+                          ...settings,
+                          announcementBar: {
+                            ...currentAnn,
+                            linkUrl: e.target.value,
+                          },
+                        });
+                      }}
+                      placeholder="/?page=new-book یا https://..."
+                      className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs font-mono focus:border-amber-500 focus:outline-none"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-300 mb-1">متن دکمه پیوند (اختیاری):</label>
+                    <input
+                      type="text"
+                      value={settings.announcementBar?.linkText || ''}
+                      onChange={(e) => {
+                        const currentAnn = settings.announcementBar || {
+                          type: 'warning',
+                          text: '🎉 تخفیف ویژه چاپ و ترجمه: هزینه ترجمه هر کلمه فقط ۴۵ تومان همراه با استخراج هوشمند واژه‌نامه تخصصی و صفحه‌بندی کتاب.',
+                          linkUrl: '',
+                          enabled: true,
+                          linkText: '',
+                        };
+                        setSettings({
+                          ...settings,
+                          announcementBar: {
+                            ...currentAnn,
+                            linkText: e.target.value,
+                          },
+                        });
+                      }}
+                      placeholder="مثال: مشاهده تعرفه‌ها و ثبت کتاب"
+                      className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs focus:border-amber-500 focus:outline-none"
+                    />
+                  </div>
+                </div>
+
+                {/* Live Preview Box */}
+                <div className="p-3.5 rounded-2xl bg-slate-950 border border-amber-500/20 text-xs">
+                  <span className="text-[10px] text-slate-400 block mb-2 font-semibold">پیش‌نمایش زنده در صفحه کاربران:</span>
+                  {settings.announcementBar?.enabled ? (
+                    <div className="p-3 rounded-xl bg-gradient-to-r from-amber-500/15 via-slate-900 to-indigo-950/30 border border-amber-500/30 flex items-center justify-between gap-3 text-xs">
+                      <div className="flex items-center gap-2">
+                        <span className="w-2.5 h-2.5 rounded-full bg-amber-400 shrink-0"></span>
+                        <span className="text-amber-200 font-medium">
+                          {settings.announcementBar?.text || 'متن اعلان خالی است.'}
+                        </span>
+                      </div>
+                      {settings.announcementBar?.linkText && (
+                        <span className="px-2.5 py-1 rounded-lg bg-amber-500/20 text-amber-300 font-bold border border-amber-500/30 text-[10px] shrink-0">
+                          {settings.announcementBar.linkText}
+                        </span>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="text-slate-500 text-center py-2">
+                      نوار اعلان هم‌اکنون غیرفعال است و به کاربران نمایش داده نمی‌شود.
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Section 4: Sitemap, Robots.txt & Agentic AI Browsing Manager */}
+            <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 space-y-6 shadow-xl">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-800">
+                <div className="flex items-center gap-2">
+                  <Globe className="w-5 h-5 text-emerald-400" />
+                  <div>
+                    <h3 className="font-bold text-base text-white">مدیریت فایل‌های سئو، خزنده‌ها و مرور عامل‌گرا (Agentic AI Browsing)</h3>
+                    <p className="text-[11px] text-slate-400">لینک‌های مستقیم برای Google Search Console و خزنده‌های هوش مصنوعی (ChatGPT, Claude, Gemini, Perplexity)</p>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleSaveSeoFiles}
+                  disabled={isSavingSeoFiles}
+                  className="px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs shadow-md transition flex items-center gap-1.5 self-start sm:self-auto"
+                >
+                  {isSavingSeoFiles ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : seoFilesSaveSuccess ? <Check className="w-3.5 h-3.5" /> : <Save className="w-3.5 h-3.5" />}
+                  <span>{seoFilesSaveSuccess ? 'فایل‌ها با موفقیت ذخیره شدند!' : 'ذخیره اختصاصی فایل‌های سئو'}</span>
+                </button>
+              </div>
+
+              {/* Direct URLs & One-Click Copy for Google Search Console & AI Bots */}
+              <div className="space-y-2.5">
+                <h4 className="text-xs font-bold text-slate-300 flex items-center gap-1.5">
+                  <ExternalLink className="w-4 h-4 text-amber-400" />
+                  <span>آدرس‌های رسمی سرور (جهت ثبت در سرچ کنسول گوگل و موتورهای جستجو):</span>
+                </h4>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {[
+                    {
+                      label: 'نقشه سایت (Sitemap XML)',
+                      path: '/sitemap.xml',
+                      desc: 'جهت ثبت در Google Search Console > Sitemaps',
+                      color: 'border-emerald-500/30 bg-emerald-500/5',
+                      badge: 'گوگل سرچ کنسول',
+                      badgeColor: 'text-emerald-400 bg-emerald-500/10',
+                    },
+                    {
+                      label: 'فایل دستورات خزنده‌ها (Robots.txt)',
+                      path: '/robots.txt',
+                      desc: 'هدایت ربات‌های گوگل، بینگ و موتورهای جستجو',
+                      color: 'border-blue-500/30 bg-blue-500/5',
+                      badge: 'خزنده‌های سئو',
+                      badgeColor: 'text-blue-400 bg-blue-500/10',
+                    },
+                    {
+                      label: 'عامل‌های هوش مصنوعی (llms.txt)',
+                      path: '/llms.txt',
+                      desc: 'استاندارد مرور عامل‌گرا (ChatGPT, Claude, Perplexity, Gemini)',
+                      color: 'border-purple-500/30 bg-purple-500/5',
+                      badge: 'Agentic AI',
+                      badgeColor: 'text-purple-400 bg-purple-500/10',
+                    },
+                    {
+                      label: 'مستندات کامل مدل‌ها (llms-full.txt)',
+                      path: '/llms-full.txt',
+                      desc: 'شرح جامع قابلیت‌های ترجمه برای مدل‌های استدلال',
+                      color: 'border-amber-500/30 bg-amber-500/5',
+                      badge: 'Full LLM Context',
+                      badgeColor: 'text-amber-400 bg-amber-500/10',
+                    },
+                    {
+                      label: 'پلاگین هوش مصنوعی (.well-known)',
+                      path: '/.well-known/ai-plugin.json',
+                      desc: 'مانیفست استاندارد OpenAPI برای عامل‌های هوش مصنوعی',
+                      color: 'border-teal-500/30 bg-teal-500/5',
+                      badge: 'OpenAI Plugin',
+                      badgeColor: 'text-teal-400 bg-teal-500/10',
+                    },
+                  ].map((item, idx) => {
+                    const fullUrl = `${window.location.origin}${item.path}`;
+                    const isCopied = copiedSeoLink === item.path;
+                    return (
+                      <div key={idx} className={`p-3.5 rounded-2xl border ${item.color} flex flex-col justify-between gap-2.5`}>
+                        <div>
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="font-bold text-white text-xs">{item.label}</span>
+                            <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${item.badgeColor}`}>
+                              {item.badge}
+                            </span>
+                          </div>
+                          <p className="text-[10px] text-slate-400 leading-relaxed">{item.desc}</p>
+                          <div className="mt-2 p-1.5 rounded-lg bg-slate-950 border border-slate-800 text-[11px] font-mono text-slate-300 break-all select-all dir-ltr text-left">
+                            {fullUrl}
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-1.5 pt-1">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              navigator.clipboard.writeText(fullUrl);
+                              setCopiedSeoLink(item.path);
+                              setTimeout(() => setCopiedSeoLink(null), 2500);
+                            }}
+                            className="flex-1 py-1 px-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] font-semibold flex items-center justify-center gap-1 transition"
+                          >
+                            {isCopied ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                            <span>{isCopied ? 'کپی شد!' : 'کپی لینک مستقیم'}</span>
+                          </button>
+                          <a
+                            href={item.path}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition"
+                            title="مشاهده مستقیم در تب جدید"
+                          >
+                            <ExternalLink className="w-3.5 h-3.5" />
+                          </a>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* In-Panel Text/Code Editor Tabs */}
+              <div className="pt-4 border-t border-slate-800">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <Code className="w-4 h-4 text-amber-400" />
+                    <span className="text-xs font-bold text-white">ویرایشگر مستقیم محتوای فایل‌ها:</span>
+                  </div>
+
+                  <div className="flex items-center gap-1 p-1 bg-slate-950 rounded-xl border border-slate-800 text-xs">
+                    <button
+                      type="button"
+                      onClick={() => setSeoFilesTab('robots')}
+                      className={`px-3 py-1 rounded-lg font-semibold transition ${
+                        seoFilesTab === 'robots' ? 'bg-slate-800 text-amber-400 shadow' : 'text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      فایل robots.txt
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSeoFilesTab('sitemap')}
+                      className={`px-3 py-1 rounded-lg font-semibold transition ${
+                        seoFilesTab === 'sitemap' ? 'bg-slate-800 text-amber-400 shadow' : 'text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      نقشه سایت sitemap.xml
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSeoFilesTab('llms')}
+                      className={`px-3 py-1 rounded-lg font-semibold transition ${
+                        seoFilesTab === 'llms' ? 'bg-slate-800 text-amber-400 shadow' : 'text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      عامل‌های هوش مصنوعی (llms.txt)
+                    </button>
+                  </div>
+                </div>
+
+                {/* SubTab 1: Robots.txt */}
+                {seoFilesTab === 'robots' && (
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between text-[11px] text-slate-400">
+                      <span>محتوای متنی فایل robots.txt در مسیر ریشه سایت:</span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const defRobots = `User-agent: *\nAllow: /\nDisallow: /api/\nDisallow: /admin\nDisallow: /auth/\n\nSitemap: ${window.location.origin}/sitemap.xml\nLLMs-Txt: ${window.location.origin}/llms.txt\n`;
+                          setRobotsTxtContent(defRobots);
+                        }}
+                        className="text-amber-400 hover:underline flex items-center gap-1"
+                      >
+                        <RotateCcw className="w-3 h-3" />
+                        <span>بازنشانی به پیش‌فرض استاندارد</span>
+                      </button>
+                    </div>
+                    <textarea
+                      rows={10}
+                      dir="ltr"
+                      value={robotsTxtContent}
+                      onChange={(e) => setRobotsTxtContent(e.target.value)}
+                      placeholder="User-agent: *\nAllow: /..."
+                      className="w-full px-4 py-3 rounded-2xl bg-slate-950 border border-slate-800 text-slate-200 font-mono text-xs focus:border-amber-500 focus:outline-none leading-relaxed"
+                    />
+                  </div>
+                )}
+
+                {/* SubTab 2: Sitemap.xml */}
+                {seoFilesTab === 'sitemap' && (
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between text-[11px] text-slate-400">
+                      <span>کد XML سفارشی (در صورت خالی بودن، نقشه سایت خودکار شامل تمام صفحات و مقالات وبلاگ تولید می‌شود):</span>
+                      <button
+                        type="button"
+                        onClick={() => setSitemapXmlContent('')}
+                        className="text-amber-400 hover:underline flex items-center gap-1"
+                      >
+                        <RotateCcw className="w-3 h-3" />
+                        <span>پاکسازی و بازگشت به حالت پویا (پیشنهاد گوگل)</span>
+                      </button>
+                    </div>
+                    <textarea
+                      rows={10}
+                      dir="ltr"
+                      value={sitemapXmlContent}
+                      onChange={(e) => setSitemapXmlContent(e.target.value)}
+                      placeholder="<?xml version='1.0' encoding='UTF-8'?>\n<urlset xmlns='http://www.sitemaps.org/schemas/sitemap/0.9'>\n  <url>\n    <loc>https://gaiafa.ir/</loc>\n  </url>\n</urlset>"
+                      className="w-full px-4 py-3 rounded-2xl bg-slate-950 border border-slate-800 text-slate-200 font-mono text-xs focus:border-amber-500 focus:outline-none leading-relaxed"
+                    />
+                    <p className="text-[10px] text-slate-500">
+                      نکته: اگر این فیلد خالی بماند، سرور به صورت خودکار آخرین صفحات فعال، مقالات منتشر شده وبلاگ و روت‌های عمومی را با تگ‌های lastmod و changefreq در فایل sitemap.xml تولید می‌کند.
+                    </p>
+                  </div>
+                )}
+
+                {/* SubTab 3: llms.txt */}
+                {seoFilesTab === 'llms' && (
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between text-[11px] text-slate-400">
+                      <span>محتوای استاندارد Agentic Browsing (llms.txt) برای درک مدل‌های زبانی:</span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const defLlms = `# سامانه ابری ترجمه کتاب با هوش مصنوعی (Gaiafa / Book Translator)\n\n> سامانه تخصصی و تجاری ترجمه کتاب‌های انگلیسی به فارسی با هوش مصنوعی جمینای و مدل‌های پیشرفته.\n\n## ویژگی‌ها\n- حفظ دقیق ساختار سند، پاورقی‌ها و جداول\n- استخراج هوشمند واژه‌نامه تخصصی (Glossary)\n- خروجی Word، PDF و کتابخوان دیجیتال\n- تعرفه اقتصادی هر کلمه ۴۵ تومان\n\n## پیوندها\n- [صفحه اصلی](${window.location.origin}/)\n- [وبلاگ و مقالات](${window.location.origin}/blog)\n- [راهنمای جامع](${window.location.origin}/page/guide)\n`;
+                          setLlmsTxtContent(defLlms);
+                        }}
+                        className="text-amber-400 hover:underline flex items-center gap-1"
+                      >
+                        <RotateCcw className="w-3 h-3" />
+                        <span>بازنشانی به متن پیش‌فرض عامل‌ها</span>
+                      </button>
+                    </div>
+                    <textarea
+                      rows={10}
+                      dir="ltr"
+                      value={llmsTxtContent}
+                      onChange={(e) => setLlmsTxtContent(e.target.value)}
+                      placeholder="# Project Name\n\n> Summary..."
+                      className="w-full px-4 py-3 rounded-2xl bg-slate-950 border border-slate-800 text-slate-200 font-mono text-xs focus:border-amber-500 focus:outline-none leading-relaxed"
+                    />
+                  </div>
+                )}
+
+                <div className="flex items-center justify-between pt-3">
+                  <span className="text-xs text-slate-400">
+                    {seoFilesSaveSuccess ? (
+                      <span className="text-emerald-400 font-bold flex items-center gap-1">
+                        <Check className="w-4 h-4" />
+                        تغییرات فایل‌های سئو با موفقیت در دیتابیس ثبت شد و روی سرور فعال گردید.
+                      </span>
+                    ) : (
+                      'تغییرات شما به صورت آنی در مسیرهای مربوطه سرور اعمال می‌شود.'
+                    )}
+                  </span>
+
+                  <button
+                    type="button"
+                    onClick={handleSaveSeoFiles}
+                    disabled={isSavingSeoFiles}
+                    className="px-5 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs shadow-md transition flex items-center gap-1.5"
+                  >
+                    {isSavingSeoFiles ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+                    <span>ذخیره فایل‌های سئو و خزنده‌ها</span>
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -8597,7 +9311,7 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
                   <ShieldCheck className="w-5 h-5 text-amber-400" />
                   <h3 className="font-bold text-base text-white">تنظیمات کپچا و ضد ربات (Bot Protection & Captcha)</h3>
                 </div>
-                <label className="flex items-center gap-2 cursor-pointer">
+                <label className="flex items-center gap-2 cursor-pointer bg-slate-950 px-3 py-1.5 rounded-xl border border-slate-800">
                   <input
                     type="checkbox"
                     checked={settings.security.captcha?.enabled || false}
@@ -8609,6 +9323,7 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
                           captcha: {
                             ...(settings.security.captcha || {
                               provider: 'math',
+                              recaptchaVersion: 'v2',
                               siteKey: '',
                               secretKey: '',
                               requiredForLogin: false,
@@ -8625,6 +9340,21 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
                 </label>
               </div>
 
+              {/* Default Disabled Status Banner */}
+              {!settings.security.captcha?.enabled ? (
+                <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/25 flex items-center gap-2.5 text-xs text-amber-200">
+                  <Info className="w-4 h-4 text-amber-400 shrink-0" />
+                  <span>
+                    سیستم کپچا در سراسر سامانه <strong>غیرفعال</strong> است (حالت پیش‌فرض). کاربران بدون هیچ مانع یا نیازی به حل کپچا وارد یا ثبت‌نام می‌شوند. برای فعال‌سازی در سایت، تیک بالا را فعال و ذخیره نمایید.
+                  </span>
+                </div>
+              ) : (
+                <div className="p-3 rounded-2xl bg-emerald-500/10 border border-emerald-500/25 flex items-center gap-2 text-xs text-emerald-200">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                  <span>سیستم کپچا هم‌اکنون در سایت فعال است و فرم‌های تعیین‌شده اعتبارسنجی می‌شوند.</span>
+                </div>
+              )}
+
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
                   <label className="block text-xs font-semibold text-slate-300 mb-1.5">نوع ارائه‌دهنده کپچا:</label>
@@ -8638,6 +9368,7 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
                           captcha: {
                             ...(settings.security.captcha || {
                               enabled: false,
+                              recaptchaVersion: 'v2',
                               siteKey: '',
                               secretKey: '',
                               requiredForLogin: false,
@@ -8672,6 +9403,7 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
                             ...(settings.security.captcha || {
                               enabled: false,
                               provider: 'math',
+                              recaptchaVersion: 'v2',
                               secretKey: '',
                               requiredForLogin: false,
                               requiredForRegister: true,
@@ -8701,6 +9433,7 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
                             ...(settings.security.captcha || {
                               enabled: false,
                               provider: 'math',
+                              recaptchaVersion: 'v2',
                               siteKey: '',
                               requiredForLogin: false,
                               requiredForRegister: true,
@@ -8713,6 +9446,185 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
                     className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-white font-mono text-xs focus:border-amber-500 focus:outline-none"
                   />
                 </div>
+              </div>
+
+              {/* Version Selector for Google reCAPTCHA (v2 vs v3) */}
+              {(settings.security.captcha?.provider === 'recaptcha' || !settings.security.captcha?.provider) && (
+                <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-semibold text-slate-200">
+                      انتخاب نسخه گوگل ری‌کپچا (reCAPTCHA Version):
+                    </label>
+                    <span className="text-[11px] text-amber-400 font-mono font-bold">
+                      {settings.security.captcha?.recaptchaVersion === 'v3' ? 'نسخه ۳ نامرئی (v3)' : 'نسخه ۲ تیک من ربات نیستم (v2)'}
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setSettings({
+                          ...settings,
+                          security: {
+                            ...settings.security,
+                            captcha: {
+                              ...(settings.security.captcha || {
+                                enabled: false,
+                                provider: 'recaptcha',
+                                siteKey: '',
+                                secretKey: '',
+                                requiredForLogin: false,
+                                requiredForRegister: true,
+                              }),
+                              recaptchaVersion: 'v2',
+                            },
+                          },
+                        })
+                      }
+                      className={`p-3.5 rounded-xl border text-right transition ${
+                        (settings.security.captcha?.recaptchaVersion || 'v2') === 'v2'
+                          ? 'bg-amber-500/15 border-amber-500/60 text-white shadow-sm'
+                          : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between mb-1.5">
+                        <span className="font-bold text-xs text-amber-300">نسخه ۲ - چک‌باکس من ربات نیستم (v2 Checkbox)</span>
+                        {(settings.security.captcha?.recaptchaVersion || 'v2') === 'v2' && (
+                          <CheckCircle2 className="w-4 h-4 text-amber-400" />
+                        )}
+                      </div>
+                      <p className="text-[11px] text-slate-300 leading-relaxed">
+                        کادر رسمی «من ربات نیستم» به کاربر نمایش داده می‌شود و با کلیک تیک سبز می‌خورد. (کلیدهای وارد شده باید در پنل گوگل از نوع reCAPTCHA v2 Checkbox باشند).
+                      </p>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setSettings({
+                          ...settings,
+                          security: {
+                            ...settings.security,
+                            captcha: {
+                              ...(settings.security.captcha || {
+                                enabled: false,
+                                provider: 'recaptcha',
+                                siteKey: '',
+                                secretKey: '',
+                                requiredForLogin: false,
+                                requiredForRegister: true,
+                              }),
+                              recaptchaVersion: 'v3',
+                            },
+                          },
+                        })
+                      }
+                      className={`p-3.5 rounded-xl border text-right transition ${
+                        settings.security.captcha?.recaptchaVersion === 'v3'
+                          ? 'bg-amber-500/15 border-amber-500/60 text-white shadow-sm'
+                          : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between mb-1.5">
+                        <span className="font-bold text-xs text-amber-300">نسخه ۳ - هوشمند و نامرئی (v3 Invisible)</span>
+                        {settings.security.captcha?.recaptchaVersion === 'v3' && (
+                          <CheckCircle2 className="w-4 h-4 text-amber-400" />
+                        )}
+                      </div>
+                      <p className="text-[11px] text-slate-300 leading-relaxed">
+                        هیچ کادر یا چک‌باکسی به کاربر نشان داده نمی‌شود؛ رفتار کاربر خودکار ارزیابی و امتیازدهی می‌شود. (کلیدها باید در پنل گوگل از نوع reCAPTCHA v3 باشند).
+                      </p>
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Captcha Connection Test Section */}
+              <div className="pt-2 border-t border-slate-800/80 space-y-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="text-xs text-slate-300">
+                    <span className="font-bold text-white block">تست اتصال و سلامت کلیدهای کپچا:</span>
+                    <span className="text-[11px] text-slate-400">
+                      اعتبارسنجی زنده برقراری ارتباط با سرور گوگل و صحت کلید محرمانه (Secret Key).
+                    </span>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => handleTestCaptcha()}
+                    disabled={testingCaptcha}
+                    className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-750 text-amber-400 border border-amber-500/30 hover:border-amber-500/60 font-semibold text-xs transition flex items-center justify-center gap-2 shrink-0 disabled:opacity-50 shadow-sm"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${testingCaptcha ? 'animate-spin' : ''}`} />
+                    <span>{testingCaptcha ? 'در حال تست ارتباط...' : 'تست اتصال کپچا'}</span>
+                  </button>
+                </div>
+
+                {captchaTestResult && (
+                  <div
+                    className={`p-3.5 rounded-2xl border text-xs animate-in fade-in ${
+                      captchaTestResult.success
+                        ? 'bg-emerald-950/40 border-emerald-500/40 text-emerald-300'
+                        : 'bg-rose-950/40 border-rose-500/40 text-rose-300'
+                    }`}
+                  >
+                    <div className="flex items-start gap-3">
+                      {captchaTestResult.success ? (
+                        <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" />
+                      ) : (
+                        <AlertCircle className="w-5 h-5 text-rose-400 shrink-0 mt-0.5" />
+                      )}
+                      <div className="flex-1 space-y-1">
+                        <div className="flex items-center justify-between font-bold text-xs">
+                          <span className={captchaTestResult.success ? 'text-emerald-300' : 'text-rose-300'}>
+                            {captchaTestResult.success ? 'نتیجه تست: ارتباط موفق و کلید معتبر است' : 'نتیجه تست: خطا در اعتبارسنجی'}
+                          </span>
+                          {typeof captchaTestResult.latencyMs === 'number' && (
+                            <span className="font-mono text-[10px] px-2 py-0.5 rounded-md bg-slate-900 border border-slate-800 text-slate-300">
+                              {captchaTestResult.latencyMs}ms
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-[11px] leading-relaxed text-slate-200">
+                          {captchaTestResult.message || captchaTestResult.error}
+                        </p>
+                        {captchaTestResult.score !== undefined && (
+                          <div className="text-[11px] text-emerald-400 font-mono pt-0.5">
+                            امتیاز امنیتی گوگل: {captchaTestResult.score} / 1.0
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Live Preview Box for Admin */}
+                {settings.security.captcha?.provider === 'recaptcha' && settings.security.captcha?.siteKey && (
+                  <div className="p-3 bg-slate-950/70 border border-slate-800 rounded-2xl space-y-2">
+                    <div className="flex items-center justify-between text-[11px] text-slate-300">
+                      <span className="font-semibold text-white">پیش‌نمایش زنده در پنل مدیریت:</span>
+                      <span className="text-[10px] text-amber-400 font-mono">
+                        {settings.security.captcha?.recaptchaVersion === 'v3' ? 'reCAPTCHA v3' : 'reCAPTCHA v2 Checkbox'}
+                      </span>
+                    </div>
+                    <p className="text-[10px] text-slate-400">
+                      {settings.security.captcha?.recaptchaVersion === 'v3'
+                        ? 'در نسخه ۳، اعتبارسنجی خودکار انجام می‌پذیرد. با کلیک بر دکمه تست، توکن واقعی به سرور ارسال و امتیاز ریسک سنجیده می‌شود.'
+                        : 'برای تست زنده، روی چک‌باکس من ربات نیستم کلیک فرمایید؛ با تیک سبز، توکن زنده در سرور گوگل ارزیابی خواهد شد.'}
+                    </p>
+                    <div className="flex justify-center p-3 bg-slate-900/60 rounded-xl border border-slate-800/80">
+                      <CaptchaWidget
+                        action="login"
+                        onTokenChange={(tok) => {
+                          if (tok && tok !== 'math_passed' && tok !== 'math_verified_ok') {
+                            handleTestCaptcha(tok);
+                          }
+                        }}
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div className="flex flex-wrap items-center gap-6 pt-2 border-t border-slate-800/80 text-xs text-slate-300">
@@ -8769,6 +9681,141 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout }: AdminPa
                   />
                   <span>الزام حل کپچا در ورود با رمز عبور</span>
                 </label>
+              </div>
+            </div>
+
+            {/* Google OAuth 2.0 Configuration Card */}
+            <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400">
+                    <svg className="w-4 h-4" viewBox="0 0 24 24">
+                      <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
+                      <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+                      <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" />
+                      <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" />
+                    </svg>
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-base text-white">تنظیمات ورود سریع با حساب گوگل (Google OAuth 2.0 Sign-In)</h3>
+                    <p className="text-xs text-slate-400 mt-0.5">احراز هویت واقعی و رسمی جیمیل از طریق پنجره پاپ‌آپ گوگل با توکن اختصاصی</p>
+                  </div>
+                </div>
+
+                <label className="flex items-center gap-2 cursor-pointer bg-slate-950 px-3 py-1.5 rounded-xl border border-slate-800">
+                  <input
+                    type="checkbox"
+                    checked={settings.security.googleOAuth?.enabled || false}
+                    onChange={(e) =>
+                      setSettings({
+                        ...settings,
+                        security: {
+                          ...settings.security,
+                          googleOAuth: {
+                            clientId: settings.security.googleOAuth?.clientId || '',
+                            clientSecret: settings.security.googleOAuth?.clientSecret || '',
+                            enabled: e.target.checked,
+                          },
+                        },
+                      })
+                    }
+                    className="rounded accent-amber-500 w-4 h-4"
+                  />
+                  <span className="text-xs text-amber-300 font-bold">فعال‌سازی ورود با گوگل</span>
+                </label>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+                    شناسه کلاینت گوگل (Google Client ID):
+                  </label>
+                  <input
+                    type="text"
+                    dir="ltr"
+                    placeholder="xxxxxxxxxxxx-xxxxxxxxxxxxxxxx.apps.googleusercontent.com"
+                    value={settings.security.googleOAuth?.clientId || ''}
+                    onChange={(e) =>
+                      setSettings({
+                        ...settings,
+                        security: {
+                          ...settings.security,
+                          googleOAuth: {
+                            clientId: e.target.value.trim(),
+                            clientSecret: settings.security.googleOAuth?.clientSecret || '',
+                            enabled: settings.security.googleOAuth?.enabled || false,
+                          },
+                        },
+                      })
+                    }
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-white font-mono text-xs focus:border-amber-500 focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+                    کلید محرمانه کلاینت (Google Client Secret):
+                  </label>
+                  <input
+                    type="password"
+                    dir="ltr"
+                    placeholder="GOCSPX-xxxxxxxxxxxxxxxxxxxxxxxx"
+                    value={settings.security.googleOAuth?.clientSecret || ''}
+                    onChange={(e) =>
+                      setSettings({
+                        ...settings,
+                        security: {
+                          ...settings.security,
+                          googleOAuth: {
+                            clientId: settings.security.googleOAuth?.clientId || '',
+                            clientSecret: e.target.value.trim(),
+                            enabled: settings.security.googleOAuth?.enabled || false,
+                          },
+                        },
+                      })
+                    }
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-white font-mono text-xs focus:border-amber-500 focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              {/* Authorized Redirect URI copy box */}
+              <div className="bg-slate-950 p-3.5 rounded-2xl border border-slate-800/80 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
+                    <ExternalLink className="w-3.5 h-3.5 text-amber-400" />
+                    آدرس بازگشت تایید هویت (Authorized redirect URI):
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const redirectUrl = `${window.location.origin}/auth/callback`;
+                      navigator.clipboard.writeText(redirectUrl);
+                      setCopiedOAuthUri(true);
+                      setTimeout(() => setCopiedOAuthUri(false), 3000);
+                    }}
+                    className="text-xs font-mono text-amber-400 hover:text-amber-300 flex items-center gap-1 bg-amber-500/10 hover:bg-amber-500/20 px-2.5 py-1 rounded-lg border border-amber-500/20 transition"
+                  >
+                    {copiedOAuthUri ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                    <span>{copiedOAuthUri ? 'کپی شد!' : 'کپی آدرس بازگشت'}</span>
+                  </button>
+                </div>
+                <div className="p-2 rounded-xl bg-slate-900 border border-slate-800 font-mono text-[11px] text-amber-300 break-all select-all text-left" dir="ltr">
+                  {typeof window !== 'undefined' ? `${window.location.origin}/auth/callback` : 'https://gaiafa.ir/auth/callback'}
+                </div>
+                <div className="text-[11px] text-slate-400 leading-relaxed space-y-1">
+                  <p>
+                    📌 <strong className="text-slate-300">راهنمای راه‌اندازی سریع در کنسول گوگل:</strong>
+                  </p>
+                  <ol className="list-decimal list-inside space-y-0.5 text-slate-400 pr-1">
+                    <li>وارد کنسول <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener noreferrer" className="text-amber-400 underline font-mono">Google Cloud Console</a> شوید.</li>
+                    <li>در بخش <strong className="text-slate-300">Credentials</strong> روی دکمه <strong className="text-slate-300">+ Create Credentials</strong> و سپس <strong className="text-slate-300">OAuth client ID</strong> کلیک کنید.</li>
+                    <li>نوع برنامه را <strong className="text-slate-300">Web application</strong> انتخاب کنید.</li>
+                    <li>در بخش <strong className="text-slate-300">Authorized JavaScript origins</strong> آدرس دامنه سایت‌تان (<code className="text-amber-300 font-mono text-[10px]">{typeof window !== 'undefined' ? window.location.origin : 'https://gaiafa.ir'}</code>) را وارد کنید.</li>
+                    <li>در بخش <strong className="text-slate-300">Authorized redirect URIs</strong> آدرس بازگشت فوق را کپی و اضافه کنید.</li>
+                    <li>مقادیر Client ID و Client Secret حاصله را در کادرهای بالا قرار داده و روی دکمه <strong className="text-amber-400">ذخیره تنظیمات امنیتی</strong> در بالای صفحه کلیک نمایید.</li>
+                  </ol>
+                </div>
               </div>
             </div>
 

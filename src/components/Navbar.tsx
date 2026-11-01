@@ -77,21 +77,21 @@ export const Navbar: React.FC<NavbarProps> = ({
       <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-2">
         
         {/* Brand & Logo */}
-        <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+        <div className="flex items-center gap-1.5 sm:gap-3 min-w-0">
           {onBackToDashboard && (
             <button
               onClick={onBackToDashboard}
-              className="px-2.5 sm:px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-amber-400 border border-slate-700 flex items-center gap-1 text-xs font-semibold transition shadow-sm shrink-0"
+              className="px-2 sm:px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-amber-400 border border-slate-700 flex items-center gap-1 text-[11px] sm:text-xs font-semibold transition shadow-sm shrink-0"
               title="بازگشت به میز کاربری"
             >
               <span>← پیشخوان</span>
             </button>
           )}
-          <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-gradient-to-tr from-amber-500 to-amber-400 flex items-center justify-center shadow-lg shadow-amber-500/20 text-slate-950 font-bold shrink-0">
-            <BookOpen className="w-4 h-4" />
+          <div className="w-7 h-7 sm:w-9 sm:h-9 rounded-lg sm:rounded-xl bg-gradient-to-tr from-amber-500 to-amber-400 flex items-center justify-center shadow-lg shadow-amber-500/20 text-slate-950 font-bold shrink-0">
+            <BookOpen className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
           </div>
           <div className="min-w-0">
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5 sm:gap-2">
               <h1 className="font-bold text-xs sm:text-base tracking-tight text-white truncate">
                 ویراستار کتاب
               </h1>
@@ -266,14 +266,15 @@ export const Navbar: React.FC<NavbarProps> = ({
             <button
               onClick={() => setShowExportMenu(!showExportMenu)}
               disabled={completedChunks === 0}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition shadow-sm ${
+              className={`flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-bold transition shadow-sm shrink-0 ${
                 completedChunks > 0
                   ? 'bg-blue-600 hover:bg-blue-500 text-white shadow-md shadow-blue-600/20'
                   : 'bg-slate-800 text-slate-500 cursor-not-allowed border border-slate-800'
               }`}
             >
-              <Download className="w-3.5 h-3.5" />
-              <span>خروجی ({completedChunks}/{totalChunks})</span>
+              <Download className="w-3.5 h-3.5 shrink-0" />
+              <span className="hidden xs:inline">خروجی </span>
+              <span>({completedChunks}/{totalChunks})</span>
             </button>
 
             {showExportMenu && (
@@ -300,35 +301,20 @@ export const Navbar: React.FC<NavbarProps> = ({
                   </div>
                 </button>
 
-                {/* Word DOCX */}
+                {/* Word DOCX (Standard Microsoft Word) */}
                 <button
                   onClick={handleDocxExport}
                   disabled={isExportingDocx}
-                  className="w-full text-right px-4 py-2 text-xs hover:bg-slate-700 text-slate-200 flex items-center justify-between transition"
+                  className="w-full text-right px-4 py-2.5 text-xs hover:bg-slate-700 text-slate-200 flex items-center justify-between transition"
                 >
                   <div className="flex items-center gap-2">
                     <FileText className="w-4 h-4 text-blue-400" />
                     <div>
-                      <div className="font-semibold text-white">فایل Word (.docx)</div>
-                      <div className="text-[10px] text-slate-400">صفحه‌بندی شده، فونت وزیرمتن و RTL</div>
+                      <div className="font-semibold text-white">فایل رسمی Word (.docx)</div>
+                      <div className="text-[10px] text-slate-400">قالب استاندارد چاپ، قلم وزیرمتن، راست‌چین و بدون کشیدگی</div>
                     </div>
                   </div>
-                  {isExportingDocx && <span className="text-[10px] text-blue-400">در حال ساخت...</span>}
-                </button>
-
-                {/* Word DOC (Legacy HTML) */}
-                <button
-                  onClick={() => {
-                    downloadWordHtml(currentProject);
-                    setShowExportMenu(false);
-                  }}
-                  className="w-full text-right px-4 py-2 text-xs hover:bg-slate-700 text-slate-200 flex items-center gap-2 transition"
-                >
-                  <FileText className="w-4 h-4 text-cyan-400" />
-                  <div>
-                    <div className="font-semibold text-white">سند مایکروسافت ورد (.doc)</div>
-                    <div className="text-[10px] text-slate-400">سازگار با تمام نسخه‌های Word</div>
-                  </div>
+                  {isExportingDocx && <span className="text-[10px] text-blue-400 font-mono">در حال آماده‌سازی...</span>}
                 </button>
 
                 {/* PDF Print */}

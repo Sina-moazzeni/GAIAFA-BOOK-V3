@@ -27,6 +27,8 @@ const BooksLibraryModal = React.lazy(() => import('./components/BooksLibraryModa
 const ExportDesignModal = React.lazy(() => import('./components/ExportDesignModal.tsx').then(m => ({ default: m.ExportDesignModal })));
 const TokenEstimatorModal = React.lazy(() => import('./components/TokenEstimatorModal.tsx').then(m => ({ default: m.TokenEstimatorModal })));
 const PrintDocument = React.lazy(() => import('./components/PrintDocument.tsx').then(m => ({ default: m.PrintDocument })));
+const AddPageModal = React.lazy(() => import('./components/AddPageModal.tsx').then(m => ({ default: m.AddPageModal })));
+import type { AddPagePayload } from './components/AddPageModal.tsx';
 
 import {
   BookProject,
@@ -138,9 +140,13 @@ export default function App() {
   const [isProvidersModalOpen, setIsProvidersModalOpen] = useState(false);
   const [isLibraryModalOpen, setIsLibraryModalOpen] = useState(false);
   const [isDesignModalOpen, setIsDesignModalOpen] = useState(false);
+  const [isAddPageModalOpen, setIsAddPageModalOpen] = useState(false);
+  const [addPageDefaultTargetChunkId, setAddPageDefaultTargetChunkId] = useState<string | undefined>(undefined);
+  const [addPageDefaultPosition, setAddPageDefaultPosition] = useState<'start' | 'end' | 'before' | 'after'>('after');
 
   // Active translation chunk in workspace
   const [activeChunkId, setActiveChunkId] = useState<string>('');
+  const [loadingWorkspaceBookId, setLoadingWorkspaceBookId] = useState<string | null>(null);
   const [isBatchTranslating, setIsBatchTranslating] = useState(false);
   const [isStoppingBatch, setIsStoppingBatch] = useState(false);
   const [batchProgress, setBatchProgress] = useState({ current: 0, total: 0, secondsToNextCall: 0 });
@@ -269,6 +275,17 @@ export default function App() {
     } else {
       setIsAuthLoading(false);
     }
+
+    const handlePricingEvent = (e: any) => {
+      if (e.detail?.costPerWord) {
+        setCostPerWord(Number(e.detail.costPerWord));
+      }
+    };
+    window.addEventListener('pricing-updated', handlePricingEvent);
+
+    return () => {
+      window.removeEventListener('pricing-updated', handlePricingEvent);
+    };
   }, []);
 
   // Inject Google Search Console, Google Analytics, GTM, and custom scripts
@@ -414,17 +431,86 @@ export default function App() {
     window.history.pushState({}, '', '/');
   };
 
-  // 2. Periodic Polling for Active Background Jobs on the Server
+  // 2. Smart Background Polling for Active Jobs (Bandwidth-efficient)
+  // Only polls lightweight job status (/api/jobs/my-active, <1KB).
+  // NEVER blindly re-downloads all heavy user books and base64 images every 4 seconds!
+  const prevActiveJobsRef = useRef<TranslationJob[]>([]);
+
   useEffect(() => {
     if (!authToken || !currentUser) return;
 
-    const interval = setInterval(() => {
-      fetchActiveJobs(authToken);
-      fetchUserBooks(authToken, true); // silent sync
-    }, 4000);
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch('/api/jobs/my-active', {
+          headers: { Authorization: `Bearer ${authToken}` },
+        });
+        if (res.ok) {
+          const data = await res.json();
+          const newJobs: TranslationJob[] = data.jobs || [];
+          setActiveJobs(newJobs);
+
+          // Check if any job completed or made progress before fetching user books
+          const prevRunning = prevActiveJobsRef.current.some(
+            (j) => j.status === 'queued' || j.status === 'processing'
+          );
+          const nowRunning = newJobs.some(
+            (j) => j.status === 'queued' || j.status === 'processing'
+          );
+
+          if (prevRunning && !nowRunning) {
+            // Background cloud translation finished! Sync books ONCE
+            fetchUserBooks(authToken, true);
+          } else if (prevRunning && nowRunning) {
+            // Check if chunk counter progressed
+            const prevChunks = prevActiveJobsRef.current.reduce((acc, j) => acc + (j.completedChunks || 0), 0);
+            const nowChunks = newJobs.reduce((acc, j) => acc + (j.completedChunks || 0), 0);
+            if (nowChunks > prevChunks) {
+              fetchUserBooks(authToken, true);
+            }
+          }
+          prevActiveJobsRef.current = newJobs;
+        }
+      } catch (e) {
+        // silent network error
+      }
+    }, 5000);
 
     return () => clearInterval(interval);
   }, [authToken, currentUser]);
+
+  // Helper to load heavy book chunks on-demand (only when user enters workspace or exports)
+  const ensureBookChunksLoaded = async (target: string | BookProject): Promise<BookProject | null> => {
+    const targetId = typeof target === 'string' ? target : target.id;
+    if (!targetId) return null;
+
+    const existing = books.find((b) => b.id === targetId) || (typeof target !== 'string' ? target : null);
+    if (existing && Array.isArray(existing.chunks) && existing.chunks.length > 0) {
+      return existing;
+    }
+
+    try {
+      const token = authToken || (typeof window !== 'undefined' ? localStorage.getItem(STORAGE_KEY_AUTH_TOKEN) : '') || '';
+      const headers: Record<string, string> = {};
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      const res = await fetch(`/api/books/${targetId}`, { headers });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.book) {
+          const fullBook: BookProject = {
+            ...data.book,
+            chunks: Array.isArray(data.book.chunks) ? data.book.chunks : [],
+            glossary: Array.isArray(data.book.glossary) ? data.book.glossary : [],
+          };
+          setBooks((prev) => prev.map((b) => (b.id === targetId ? fullBook : b)));
+          return fullBook;
+        }
+      }
+    } catch (e) {
+      console.warn('Error loading book chunks', e);
+    }
+    return existing;
+  };
 
   // Dedicated function to switch and lock active book with immediate localStorage & ref synchronization
   const handleSelectBook = (selected: string | BookProject, targetView?: 'workspace' | 'dashboard') => {
@@ -448,10 +534,42 @@ export default function App() {
       }
     }
 
-    if (targetView) {
+    if (targetView === 'workspace') {
+      const targetBook = books.find((b) => b.id === targetId) || (typeof selected !== 'string' ? selected : undefined);
+      const needsLoad = !targetBook?.chunks || targetBook.chunks.length === 0;
+      if (needsLoad) {
+        setLoadingWorkspaceBookId(targetId);
+      }
+      setCurrentView('workspace');
+
+      ensureBookChunksLoaded(targetId).then((fullBook) => {
+        setLoadingWorkspaceBookId(null);
+        if (fullBook && fullBook.chunks.length > 0) {
+          if (!fullBook.chunks.some((c) => c.id === activeChunkIdRef.current)) {
+            setActiveChunkId(fullBook.chunks[0].id);
+            activeChunkIdRef.current = fullBook.chunks[0].id;
+          }
+        }
+      }).catch(() => setLoadingWorkspaceBookId(null));
+    } else if (targetView) {
       setCurrentView(targetView);
     }
   };
+
+  // Auto-fetch chunks if current view is workspace and active book chunks haven't been loaded yet
+  useEffect(() => {
+    if (currentView === 'workspace' && activeBookId) {
+      const active = books.find((b) => b.id === activeBookId);
+      if (active && (!active.chunks || active.chunks.length === 0)) {
+        ensureBookChunksLoaded(activeBookId).then((fullBook) => {
+          if (fullBook && fullBook.chunks.length > 0 && !activeChunkIdRef.current) {
+            setActiveChunkId(fullBook.chunks[0].id);
+            activeChunkIdRef.current = fullBook.chunks[0].id;
+          }
+        });
+      }
+    }
+  }, [currentView, activeBookId, books]);
 
   // Fetch user's books from server DB with active book preservation
   const fetchUserBooks = async (token: string, isSilent = false) => {
@@ -466,7 +584,19 @@ export default function App() {
           chunks: Array.isArray(b.chunks) ? b.chunks : [],
           glossary: Array.isArray(b.glossary) ? b.glossary : [],
         }));
-        setBooks(serverBooks);
+
+        setBooks((prevBooks) => {
+          return serverBooks.map((sb: any) => {
+            const existing = prevBooks.find((p) => p.id === sb.id);
+            if (existing && existing.chunks && existing.chunks.length > 0 && (!sb.chunks || sb.chunks.length === 0)) {
+              return {
+                ...sb,
+                chunks: existing.chunks,
+              };
+            }
+            return sb;
+          });
+        });
 
         if (serverBooks.length > 0) {
           const currentActive = activeBookIdRef.current || (typeof window !== 'undefined' ? localStorage.getItem(STORAGE_KEY_ACTIVE_BOOK) : '') || '';
@@ -706,6 +836,34 @@ export default function App() {
     }
   };
 
+  // Online Add New Page / Chunk anywhere in the active book
+  const handleAddChunk = async (payload: AddPagePayload) => {
+    if (!authToken || !activeBookId) return;
+    try {
+      const res = await fetch(`/api/books/${activeBookId}/chunks`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${authToken}`,
+        },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        alert(data.error || 'خطا در افزودن صفحه به کتاب');
+        return;
+      }
+
+      setBooks((prev) => prev.map((b) => (b.id === activeBookId ? data.book : b)));
+      if (data.newChunk?.id) {
+        setActiveChunkId(data.newChunk.id);
+        activeChunkIdRef.current = data.newChunk.id;
+      }
+    } catch (err: any) {
+      alert(`خطا در ایجاد صفحه: ${err.message}`);
+    }
+  };
+
   // Save changes to active project
   const handleUpdateProject = async (updatedProject: BookProject) => {
     setBooks((prev) => prev.map((b) => (b.id === updatedProject.id ? updatedProject : b)));
@@ -748,20 +906,23 @@ export default function App() {
 
   // Exports (dynamically imported on user action to preserve instant initial page speed)
   const handleExportDocx = async (targetBook: BookProject) => {
-    handleSelectBook(targetBook);
+    const fullBook = (await ensureBookChunksLoaded(targetBook)) || targetBook;
+    handleSelectBook(fullBook);
     const { downloadDocx } = await import('./utils/exporter.ts');
-    await downloadDocx(targetBook);
+    await downloadDocx(fullBook);
   };
 
-  const handleExportPdf = (targetBook: BookProject) => {
-    handleSelectBook(targetBook);
+  const handleExportPdf = async (targetBook: BookProject) => {
+    const fullBook = (await ensureBookChunksLoaded(targetBook)) || targetBook;
+    handleSelectBook(fullBook);
     setIsDesignModalOpen(true);
   };
 
   const handleExportEpub = async (targetBook: BookProject) => {
-    handleSelectBook(targetBook);
+    const fullBook = (await ensureBookChunksLoaded(targetBook)) || targetBook;
+    handleSelectBook(fullBook);
     const { downloadStyledHtml } = await import('./utils/exporter.ts');
-    downloadStyledHtml(targetBook);
+    downloadStyledHtml(fullBook);
   };
 
   // Translate a single chunk (inside workspace)
@@ -1032,6 +1193,7 @@ export default function App() {
           currentUser={currentUser}
           onBackToUserPanel={() => setCurrentView('dashboard')}
           onLogout={handleLogout}
+          onCostPerWordUpdated={(newRate) => setCostPerWord(newRate)}
         />
       </Suspense>
     );
@@ -1212,6 +1374,12 @@ export default function App() {
               isBatchTranslating={isBatchTranslating}
               onDeleteChunk={handleDeleteChunk}
               onToggleExcludeChunk={handleToggleExcludeChunk}
+              onOpenAddPageModal={(targetChunkId, pos) => {
+                setAddPageDefaultTargetChunkId(targetChunkId || activeChunkId);
+                setAddPageDefaultPosition(pos || 'after');
+                setIsAddPageModalOpen(true);
+              }}
+              isLoadingChunks={loadingWorkspaceBookId === activeBookId}
             />
           </div>
 
@@ -1219,6 +1387,7 @@ export default function App() {
             <TranslationWorkspace
               currentChunk={currentChunk}
               project={project}
+              isLoadingChunks={loadingWorkspaceBookId === activeBookId}
               onUpdateChunkHtml={(chunkId: string, newHtml: string) => {
                 const updated = project.chunks.map((c) =>
                   c.id === chunkId ? { ...c, translatedHtml: newHtml } : c
@@ -1250,6 +1419,11 @@ export default function App() {
               isAdmin={isUserAdmin}
               onOpenMobileChunks={() => setMobileWorkspaceTab('chunks')}
               onOpenFindReplaceModal={() => setIsFindReplaceModalOpen(true)}
+              onOpenAddPageModal={(targetChunkId, pos) => {
+                setAddPageDefaultTargetChunkId(targetChunkId || currentChunk?.id || activeChunkId);
+                setAddPageDefaultPosition(pos || 'after');
+                setIsAddPageModalOpen(true);
+              }}
             />
           </div>
         </div>
@@ -1341,6 +1515,19 @@ export default function App() {
         onOpenNewBookModal={() => setIsNewBookModalOpen(true)}
         onExportPdf={(book) => handleExportPdf(book)}
       />
+
+      {isAddPageModalOpen && (
+        <Suspense fallback={null}>
+          <AddPageModal
+            isOpen={isAddPageModalOpen}
+            onClose={() => setIsAddPageModalOpen(false)}
+            onSubmit={handleAddChunk}
+            chunks={project?.chunks || []}
+            activeChunkId={addPageDefaultTargetChunkId || activeChunkId}
+            defaultPosition={addPageDefaultPosition}
+          />
+        </Suspense>
+      )}
     </div>
     </Suspense>
   );

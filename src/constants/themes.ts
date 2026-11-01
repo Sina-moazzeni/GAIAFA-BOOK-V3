@@ -223,7 +223,18 @@ export const DEFAULT_DESIGN_CONFIG: BookDesignConfig = {
   brandName: '',
   showPageNumbers: true,
   showCoverPage: true,
+  coverPage: {
+    layout: 'center',
+    titleSize: 32,
+    subtitleSize: 16,
+    authorSize: 13,
+    showMotif: true,
+    showDivider: true,
+  },
   fontSize: 'medium',
+  heading1Size: 22,
+  heading2Size: 17,
+  heading3Size: 14,
   lineSpacing: 'normal',
   paragraphSpacing: 'normal',
   fontFamily: 'Vazirmatn',
@@ -235,4 +246,5 @@ export const DEFAULT_DESIGN_CONFIG: BookDesignConfig = {
   trimSize: 'ruqai',
   continuousFlow: true,
   excludedChunkIds: [],
+  textAlignment: 'right', // استاندارد راست‌چین جهت جلوگیری از کشیدگی بد جاستیفای در ورد
 };
