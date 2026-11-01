@@ -1,5 +1,4 @@
-// Real SMS Gateway Dispatcher with MeliPayamak (Pattern & Direct), Kavenegar, FarazSMS, SMS.ir
-import { SystemSettings } from './db.js';
+import { SystemSettings } from './db.ts';
 
 export interface SendSmsResult {
   success: boolean;

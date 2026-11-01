@@ -1123,6 +1123,53 @@ class Database {
       });
     }
 
+    // Recover any orphaned book files in BOOKS_DIR that are missing in schema.books
+    if (fs.existsSync(BOOKS_DIR)) {
+      try {
+        const existingBookIds = new Set((schema.books || []).map(b => b.id));
+        const files = fs.readdirSync(BOOKS_DIR);
+        for (const file of files) {
+          if (file.endsWith('.json')) {
+            const bookId = file.replace(/\.json$/, '');
+            if (!existingBookIds.has(bookId)) {
+              try {
+                const raw = fs.readFileSync(path.resolve(BOOKS_DIR, file), 'utf-8');
+                const content = JSON.parse(raw);
+                if (content && (content.title || Array.isArray(content.chunks))) {
+                  const chunks = Array.isArray(content.chunks) ? content.chunks : [];
+                  const totalChunks = content.totalChunks || chunks.length;
+                  const completedChunks = content.completedChunks || chunks.filter((c: any) => c.status === 'completed' || Boolean(c.translatedHtml)).length;
+                  const totalImagesCount = content.totalImagesCount || chunks.reduce((acc: number, c: any) => acc + (c.imageCount || (c.hasImages ? 1 : 0)), 0);
+                  const restoredBook: BookRecord = {
+                    id: content.id || bookId,
+                    userId: content.userId || 'usr_demo_1',
+                    title: content.title || 'کتاب بازیابی شده',
+                    originalTitle: content.originalTitle || content.title || 'Recovered Book',
+                    author: content.author || 'نامشخص',
+                    translator: content.translator || 'سامانه هوشمند ترجمه',
+                    tone: content.tone || 'spiritual',
+                    wordCount: content.wordCount || 1000,
+                    estimatedCost: content.estimatedCost || 45000,
+                    status: (completedChunks >= totalChunks && totalChunks > 0) ? 'completed' : (content.status || 'draft'),
+                    totalChunks,
+                    completedChunks,
+                    progressPercent: totalChunks > 0 ? Math.round((completedChunks / totalChunks) * 100) : 0,
+                    totalImagesCount,
+                    chunks: [],
+                    createdAt: content.createdAt || Date.now(),
+                    updatedAt: content.updatedAt || Date.now(),
+                    glossary: Array.isArray(content.glossary) ? content.glossary : [],
+                  };
+                  schema.books.unshift(restoredBook);
+                  existingBookIds.add(bookId);
+                }
+              } catch (e) {}
+            }
+          }
+        }
+      } catch (err) {}
+    }
+
     // Ensure Default Permanent Seed Users ALWAYS exist and have known credentials
     this.ensureDefaultUsers(schema);
     this.ensureSampleTransactions(schema);
@@ -1815,10 +1862,47 @@ class Database {
   }
 
   public getBookById(id: string): BookRecord | undefined {
-    const bookMeta = this.data.books.find(b => b.id === id);
+    let bookMeta = this.data.books.find(b => b.id === id);
+    const bookFilePath = path.resolve(BOOKS_DIR, `${id}.json`);
+
+    // Self-healing: if bookMeta is missing from memory, read from disk if available
+    if (!bookMeta && fs.existsSync(bookFilePath)) {
+      try {
+        const raw = fs.readFileSync(bookFilePath, 'utf-8');
+        const diskContent = JSON.parse(raw);
+        if (diskContent && (diskContent.id === id || diskContent.title)) {
+          const chunks = Array.isArray(diskContent.chunks) ? diskContent.chunks : [];
+          const totalChunks = diskContent.totalChunks || chunks.length;
+          const completedChunks = diskContent.completedChunks || chunks.filter((c: any) => c.status === 'completed' || Boolean(c.translatedHtml)).length;
+          const totalImagesCount = diskContent.totalImagesCount || chunks.reduce((acc: number, c: any) => acc + (c.imageCount || (c.hasImages ? 1 : 0)), 0);
+          bookMeta = {
+            id,
+            userId: diskContent.userId || 'usr_demo_1',
+            title: diskContent.title || 'کتاب بدون عنوان',
+            originalTitle: diskContent.originalTitle || diskContent.title || 'Untitled',
+            author: diskContent.author || 'نامشخص',
+            translator: diskContent.translator || 'سامانه هوشمند ترجمه',
+            tone: diskContent.tone || 'spiritual',
+            wordCount: diskContent.wordCount || 1000,
+            estimatedCost: diskContent.estimatedCost || 45000,
+            status: (completedChunks >= totalChunks && totalChunks > 0) ? 'completed' : (diskContent.status || 'draft'),
+            totalChunks,
+            completedChunks,
+            progressPercent: totalChunks > 0 ? Math.round((completedChunks / totalChunks) * 100) : 0,
+            totalImagesCount,
+            chunks: [],
+            createdAt: diskContent.createdAt || Date.now(),
+            updatedAt: diskContent.updatedAt || Date.now(),
+            glossary: Array.isArray(diskContent.glossary) ? diskContent.glossary : [],
+          };
+          this.data.books.unshift(bookMeta);
+          this.saveData(this.data);
+        }
+      } catch (e) {}
+    }
+
     if (!bookMeta) return undefined;
 
-    const bookFilePath = path.resolve(BOOKS_DIR, `${id}.json`);
     let chunks = Array.isArray(bookMeta.chunks) ? bookMeta.chunks : [];
     let adminCopy = bookMeta.adminCopy;
     let contextCache = bookMeta.contextCache;
@@ -1859,35 +1943,67 @@ class Database {
     let finalAdminCopy = book.adminCopy;
     let finalContextCache = book.contextCache;
 
-    // If incoming chunks array is empty, but book file exists with chunks on disk, preserve existing content!
-    if (finalChunks.length === 0 && fs.existsSync(bookFilePath)) {
+    // Intelligent disk merge: preserve translated chunks if incoming chunks have empty translations
+    if (fs.existsSync(bookFilePath)) {
       try {
         const raw = fs.readFileSync(bookFilePath, 'utf-8');
         const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed.chunks) && parsed.chunks.length > 0) {
-          finalChunks = parsed.chunks;
+        const diskChunks: BookChunkRecord[] = Array.isArray(parsed.chunks) ? parsed.chunks : [];
+
+        if (finalChunks.length === 0) {
+          finalChunks = diskChunks;
+        } else if (diskChunks.length > 0) {
+          // Merge at the chunk level: never overwrite existing translations with empty strings
+          finalChunks = finalChunks.map((inc) => {
+            const diskMatch = diskChunks.find(
+              (d) => d.id === inc.id || (d.chunkNumber === inc.chunkNumber && d.chapterNumber === inc.chapterNumber)
+            );
+            if (diskMatch) {
+              const incHasTrans = typeof inc.translatedHtml === 'string' && inc.translatedHtml.trim().length > 0;
+              const diskHasTrans = typeof diskMatch.translatedHtml === 'string' && diskMatch.translatedHtml.trim().length > 0;
+              if (!incHasTrans && diskHasTrans) {
+                return {
+                  ...inc,
+                  translatedHtml: diskMatch.translatedHtml,
+                  status: diskMatch.status === 'completed' ? 'completed' : inc.status,
+                  translatedAt: diskMatch.translatedAt || inc.translatedAt,
+                  keyUsed: diskMatch.keyUsed || inc.keyUsed,
+                  modelUsed: diskMatch.modelUsed || inc.modelUsed,
+                };
+              }
+            }
+            return inc;
+          });
         }
+
         if (parsed.adminCopy && !finalAdminCopy) {
           finalAdminCopy = parsed.adminCopy;
         }
         if (parsed.contextCache && !finalContextCache) {
           finalContextCache = parsed.contextCache;
         }
-      } catch (err) {}
+      } catch (err) {
+        console.warn(`[DB] Error merging disk content for book ${book.id}:`, err);
+      }
     }
 
     const totalChunks = finalChunks.length > 0 ? finalChunks.length : (book.totalChunks || 0);
     const completedChunks = finalChunks.length > 0
-      ? finalChunks.filter(c => c.status === 'completed' || Boolean(c.translatedHtml)).length
+      ? finalChunks.filter(c => c.status === 'completed' || (typeof c.translatedHtml === 'string' && c.translatedHtml.trim().length > 0)).length
       : (book.completedChunks || 0);
     const progressPercent = totalChunks > 0 ? Math.round((completedChunks / totalChunks) * 100) : 0;
     const totalImagesCount = book.totalImagesCount !== undefined
       ? book.totalImagesCount
       : (finalChunks.length > 0 ? finalChunks.reduce((acc, c) => acc + (c.imageCount || (c.hasImages ? 1 : 0)), 0) : 0);
 
-    // Save heavy content (chunks, adminCopy, contextCache) in isolated file
+    // Save heavy content and self-describing book metadata in isolated file
     try {
       const bookPayload = JSON.stringify({
+        ...book,
+        totalChunks,
+        completedChunks,
+        progressPercent,
+        totalImagesCount,
         chunks: finalChunks,
         adminCopy: finalAdminCopy || null,
         contextCache: finalContextCache || null,
@@ -1917,7 +2033,12 @@ class Database {
       this.data.books.unshift(bookMeta);
     }
     this.saveData(this.data);
-    return book;
+    return {
+      ...bookMeta,
+      chunks: finalChunks,
+      adminCopy: finalAdminCopy,
+      contextCache: finalContextCache,
+    };
   }
 
   public deleteBook(bookId: string, userId?: string): boolean {

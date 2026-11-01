@@ -1266,12 +1266,35 @@ ${urls.map((u) => `  <url>
     if (tone) book.tone = tone;
     if (sourceLanguage) book.sourceLanguage = sourceLanguage;
     if (targetLanguage) book.targetLanguage = targetLanguage;
-    if (Array.isArray(chunks)) book.chunks = chunks;
+
+    if (Array.isArray(chunks) && chunks.length > 0) {
+      // Safely merge incoming chunks: if incoming chunk has empty translatedHtml but server has existing translatedHtml, preserve it!
+      const existingChunks = Array.isArray(book.chunks) ? book.chunks : [];
+      book.chunks = chunks.map((incChunk: any) => {
+        const exist = existingChunks.find((c: any) => c.id === incChunk.id || (c.chunkNumber === incChunk.chunkNumber && c.chapterNumber === incChunk.chapterNumber));
+        if (exist) {
+          const incHasHtml = typeof incChunk.translatedHtml === 'string' && incChunk.translatedHtml.trim().length > 0;
+          const existHasHtml = typeof exist.translatedHtml === 'string' && exist.translatedHtml.trim().length > 0;
+          if (!incHasHtml && existHasHtml) {
+            return {
+              ...incChunk,
+              translatedHtml: exist.translatedHtml,
+              status: exist.status || 'completed',
+              translatedAt: exist.translatedAt || incChunk.translatedAt,
+              keyUsed: exist.keyUsed || incChunk.keyUsed,
+              modelUsed: exist.modelUsed || incChunk.modelUsed,
+            };
+          }
+        }
+        return incChunk;
+      });
+    }
+
     if (Array.isArray(glossary)) book.glossary = glossary;
     if (designConfig) (book as any).designConfig = designConfig;
 
-    db.saveBook(book);
-    return res.json({ success: true, book });
+    const savedBook = db.saveBook(book);
+    return res.json({ success: true, book: savedBook });
   });
 
   // Delete book

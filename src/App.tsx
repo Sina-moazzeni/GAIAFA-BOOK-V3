@@ -458,14 +458,23 @@ export default function App() {
           );
 
           if (prevRunning && !nowRunning) {
-            // Background cloud translation finished! Sync books ONCE
+            // Background cloud translation finished! Sync books and force reload active book chunks
             fetchUserBooks(authToken, true);
+            if (activeBookIdRef.current) {
+              ensureBookChunksLoaded(activeBookIdRef.current, true);
+            }
           } else if (prevRunning && nowRunning) {
             // Check if chunk counter progressed
             const prevChunks = prevActiveJobsRef.current.reduce((acc, j) => acc + (j.completedChunks || 0), 0);
             const nowChunks = newJobs.reduce((acc, j) => acc + (j.completedChunks || 0), 0);
             if (nowChunks > prevChunks) {
               fetchUserBooks(authToken, true);
+              if (activeBookIdRef.current) {
+                const activeJob = newJobs.find((j) => j.bookId === activeBookIdRef.current);
+                if (activeJob) {
+                  ensureBookChunksLoaded(activeBookIdRef.current, true);
+                }
+              }
             }
           }
           prevActiveJobsRef.current = newJobs;
@@ -479,12 +488,22 @@ export default function App() {
   }, [authToken, currentUser]);
 
   // Helper to load heavy book chunks on-demand (only when user enters workspace or exports)
-  const ensureBookChunksLoaded = async (target: string | BookProject): Promise<BookProject | null> => {
+  const ensureBookChunksLoaded = async (target: string | BookProject, forceReload: boolean = false): Promise<BookProject | null> => {
     const targetId = typeof target === 'string' ? target : target.id;
     if (!targetId) return null;
 
     const existing = books.find((b) => b.id === targetId) || (typeof target !== 'string' ? target : null);
-    if (existing && Array.isArray(existing.chunks) && existing.chunks.length > 0) {
+    const existingHasChunks = existing && Array.isArray(existing.chunks) && existing.chunks.length > 0;
+    const existingCompletedCount = existingHasChunks
+      ? existing.chunks.filter((c) => Boolean(c.translatedHtml && c.translatedHtml.trim())).length
+      : 0;
+    const serverCompletedCount = existing?.completedChunks || 0;
+
+    // We can reuse in-memory chunks ONLY if:
+    // 1. Not force reload
+    // 2. We actually have chunks in memory
+    // 3. If server reports completed chunks, our in-memory chunks must have at least that many translated chunks!
+    if (!forceReload && existingHasChunks && (serverCompletedCount === 0 || existingCompletedCount >= serverCompletedCount)) {
       return existing;
     }
 
@@ -536,13 +555,16 @@ export default function App() {
 
     if (targetView === 'workspace') {
       const targetBook = books.find((b) => b.id === targetId) || (typeof selected !== 'string' ? selected : undefined);
-      const needsLoad = !targetBook?.chunks || targetBook.chunks.length === 0;
+      const existingCompleted = targetBook?.chunks ? targetBook.chunks.filter((c) => Boolean(c.translatedHtml && c.translatedHtml.trim())).length : 0;
+      const serverCompleted = targetBook?.completedChunks || 0;
+      const needsLoad = !targetBook?.chunks || targetBook.chunks.length === 0 || (serverCompleted > 0 && existingCompleted < serverCompleted);
+
       if (needsLoad) {
         setLoadingWorkspaceBookId(targetId);
       }
       setCurrentView('workspace');
 
-      ensureBookChunksLoaded(targetId).then((fullBook) => {
+      ensureBookChunksLoaded(targetId, needsLoad).then((fullBook) => {
         setLoadingWorkspaceBookId(null);
         if (fullBook && fullBook.chunks.length > 0) {
           if (!fullBook.chunks.some((c) => c.id === activeChunkIdRef.current)) {
@@ -556,17 +578,23 @@ export default function App() {
     }
   };
 
-  // Auto-fetch chunks if current view is workspace and active book chunks haven't been loaded yet
+  // Auto-fetch chunks if current view is workspace and active book chunks haven't been loaded yet or are missing translations
   useEffect(() => {
     if (currentView === 'workspace' && activeBookId) {
       const active = books.find((b) => b.id === activeBookId);
-      if (active && (!active.chunks || active.chunks.length === 0)) {
-        ensureBookChunksLoaded(activeBookId).then((fullBook) => {
+      const existingCompleted = active?.chunks ? active.chunks.filter((c) => Boolean(c.translatedHtml && c.translatedHtml.trim())).length : 0;
+      const serverCompleted = active?.completedChunks || 0;
+      const needsFetch = !active?.chunks || active.chunks.length === 0 || (serverCompleted > 0 && existingCompleted < serverCompleted);
+
+      if (active && needsFetch) {
+        setLoadingWorkspaceBookId(activeBookId);
+        ensureBookChunksLoaded(activeBookId, true).then((fullBook) => {
+          setLoadingWorkspaceBookId(null);
           if (fullBook && fullBook.chunks.length > 0 && !activeChunkIdRef.current) {
             setActiveChunkId(fullBook.chunks[0].id);
             activeChunkIdRef.current = fullBook.chunks[0].id;
           }
-        });
+        }).catch(() => setLoadingWorkspaceBookId(null));
       }
     }
   }, [currentView, activeBookId, books]);
@@ -589,6 +617,19 @@ export default function App() {
           return serverBooks.map((sb: any) => {
             const existing = prevBooks.find((p) => p.id === sb.id);
             if (existing && existing.chunks && existing.chunks.length > 0 && (!sb.chunks || sb.chunks.length === 0)) {
+              const existingCompletedCount = existing.chunks.filter((c: any) => Boolean(c.translatedHtml && c.translatedHtml.trim())).length;
+              const serverCompletedCount = sb.completedChunks || 0;
+
+              // If server has more completed chunks than in-memory chunks, do not keep stale chunks!
+              if (serverCompletedCount > existingCompletedCount) {
+                if (activeBookIdRef.current === sb.id) {
+                  setTimeout(() => {
+                    ensureBookChunksLoaded(sb.id, true);
+                  }, 50);
+                }
+                return sb; // return sb with chunks: [] so it gets loaded fresh
+              }
+
               return {
                 ...sb,
                 chunks: existing.chunks,
@@ -906,20 +947,20 @@ export default function App() {
 
   // Exports (dynamically imported on user action to preserve instant initial page speed)
   const handleExportDocx = async (targetBook: BookProject) => {
-    const fullBook = (await ensureBookChunksLoaded(targetBook)) || targetBook;
+    const fullBook = (await ensureBookChunksLoaded(targetBook, true)) || targetBook;
     handleSelectBook(fullBook);
     const { downloadDocx } = await import('./utils/exporter.ts');
     await downloadDocx(fullBook);
   };
 
   const handleExportPdf = async (targetBook: BookProject) => {
-    const fullBook = (await ensureBookChunksLoaded(targetBook)) || targetBook;
+    const fullBook = (await ensureBookChunksLoaded(targetBook, true)) || targetBook;
     handleSelectBook(fullBook);
     setIsDesignModalOpen(true);
   };
 
   const handleExportEpub = async (targetBook: BookProject) => {
-    const fullBook = (await ensureBookChunksLoaded(targetBook)) || targetBook;
+    const fullBook = (await ensureBookChunksLoaded(targetBook, true)) || targetBook;
     handleSelectBook(fullBook);
     const { downloadStyledHtml } = await import('./utils/exporter.ts');
     downloadStyledHtml(fullBook);
