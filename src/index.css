@@ -95,12 +95,36 @@
 .book-render-content p {
   line-height: 2.2;
   font-size: 12.5pt;
-  text-align: justify;
+  text-align: right; /* Clean Persian typography default */
   margin-bottom: 24px; /* Distinct spacing between paragraphs for high readability */
   color: var(--theme-text-color, #1e293b);
-  text-justify: inter-word;
-  letter-spacing: -0.01em;
-  word-spacing: 0.03em;
+  letter-spacing: normal;
+  word-spacing: normal;
+  overflow-wrap: break-word;
+  word-break: normal;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+/* Text alignment controls for Persian book publishing */
+.book-render-content.book-align-right p,
+.book-align-right p {
+  text-align: right !important;
+  text-justify: none !important;
+}
+
+.book-render-content.book-align-both p,
+.book-align-both p {
+  text-align: justify !important;
+  text-justify: inter-word !important;
+}
+
+/* Prevent accidental horizontal margins or indents from pushing text outside page bounds */
+.book-render-content p,
+.book-render-content div,
+.book-render-content section {
+  margin-left: 0;
+  margin-right: 0;
 }
 
 /* Configurable paragraph spacing presets */
@@ -279,7 +303,17 @@
 
   table.print-doc-table {
     width: 100% !important;
+    max-width: 100% !important;
     border-collapse: collapse !important;
+    table-layout: fixed !important;
+  }
+
+  .book-page-content-wrapper {
+    box-sizing: border-box !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    overflow-wrap: break-word !important;
+    word-break: normal !important;
   }
 
   thead.print-table-header {

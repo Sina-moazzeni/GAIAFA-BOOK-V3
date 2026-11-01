@@ -73,14 +73,22 @@ export const PrintDocument: React.FC<PrintDocumentProps> = ({ project }) => {
       ? '40mm'
       : '22mm';
 
-  const marginPadding =
+  // Dedicated physical margins in millimeters for book publishing.
+  // Persian RTL books require a safe right margin (outer/binding margin) of at least 20-22mm
+  // to ensure characters never clip off the page edge on any printer or PDF renderer.
+  const horizontalMarginMm =
     design.pageMargin === 'compact'
-      ? 'px-8 sm:px-10'
+      ? 16 // 16mm safe compact margin
       : design.pageMargin === 'generous'
-      ? 'px-14 sm:px-20'
-      : 'px-10 sm:px-14';
+      ? 28 // 28mm generous luxury margin
+      : 22; // 22mm standard book publishing margin (default)
+
+  const horizontalPaddingStyle = `${horizontalMarginMm}mm`;
 
   const paragraphSpacingClass = `p-spacing-${design.paragraphSpacing || 'normal'}`;
+
+  const isJustified = design.textAlignment === 'both';
+  const textAlignClass = isJustified ? 'text-justify book-align-both' : 'text-right book-align-right';
 
   return (
     <div
@@ -142,11 +150,15 @@ export const PrintDocument: React.FC<PrintDocumentProps> = ({ project }) => {
             <tr>
               <th className="font-normal text-right p-0 border-0">
                 <div
-                  className="h-12 px-8 flex items-center justify-between text-[9pt] border-b"
+                  className="h-12 flex items-center justify-between text-[9pt] border-b"
                   style={{
+                    paddingLeft: horizontalPaddingStyle,
+                    paddingRight: horizontalPaddingStyle,
                     backgroundColor: pageBgColor,
                     color: headerColor,
                     borderColor,
+                    boxSizing: 'border-box',
+                    width: '100%',
                   }}
                 >
                   <div className="flex items-center gap-2">
@@ -182,11 +194,15 @@ export const PrintDocument: React.FC<PrintDocumentProps> = ({ project }) => {
                 {/* Breathing space between book text and footer */}
                 <div style={{ height: '8mm' }} />
                 <div
-                  className="h-12 px-8 flex items-center justify-between text-[9pt] border-t"
+                  className="h-12 flex items-center justify-between text-[9pt] border-t"
                   style={{
+                    paddingLeft: horizontalPaddingStyle,
+                    paddingRight: horizontalPaddingStyle,
                     backgroundColor: pageBgColor,
                     color: footerColor,
                     borderColor,
+                    boxSizing: 'border-box',
+                    width: '100%',
                   }}
                 >
                   <div className="flex items-center gap-2">
@@ -215,7 +231,20 @@ export const PrintDocument: React.FC<PrintDocumentProps> = ({ project }) => {
 
         <tbody className="print-table-body">
           <tr>
-            <td className={`p-0 ${marginPadding} py-2`}>
+            <td className="p-0 border-0 align-top">
+              <div
+                className="book-page-content-wrapper"
+                style={{
+                  paddingLeft: horizontalPaddingStyle,
+                  paddingRight: horizontalPaddingStyle,
+                  paddingTop: '4mm',
+                  paddingBottom: '8mm',
+                  width: '100%',
+                  maxWidth: '100%',
+                  boxSizing: 'border-box',
+                  direction: 'rtl',
+                }}
+              >
               {/* Cover Page / Title Page (Fully customizable by user) */}
               {design.showCoverPage && (() => {
                 const cover = design.coverPage || {};
@@ -355,9 +384,10 @@ export const PrintDocument: React.FC<PrintDocumentProps> = ({ project }) => {
             >
               {/* Continuous Chapter Body with Preserved Colors, Subheadings & Spaced Paragraphs */}
               <div
-                className={`book-render-content ${fontSizeClass} ${paragraphSpacingClass} text-justify`}
+                className={`book-render-content ${fontSizeClass} ${paragraphSpacingClass} ${textAlignClass}`}
                 style={{
                   lineHeight: lineSpacingStyle,
+                  textAlign: isJustified ? 'justify' : 'right',
                 }}
                 dangerouslySetInnerHTML={{ __html: chapter.htmlContent }}
               />
@@ -374,9 +404,10 @@ export const PrintDocument: React.FC<PrintDocumentProps> = ({ project }) => {
             </div>
           ))}
         </div>
-      </td>
-    </tr>
-  </tbody>
+              </div>
+            </td>
+          </tr>
+        </tbody>
 </table>
     </div>
   );
