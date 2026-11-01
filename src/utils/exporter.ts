@@ -77,7 +77,7 @@ export function formatToDistinctParagraphs(html: string): string {
  */
 export function sanitizeTranslatedHtml(html: string): string {
   if (!html) return '';
-  return html
+  let sanitized = html
     .replace(/<span[^>]*style=["'][^"']*#(?:9b2c2c|c53030|e53e3e)[^"']*["'][^>]*>([\s\S]*?)<\/span>/gi, '$1')
     .replace(/<span[^>]*class=["'][^"']*highlight[^"']*["'][^>]*>([\s\S]*?)<\/span>/gi, '$1')
     .replace(/<h[1-3][^>]*>\s*مقدمه و بخش نخست\s*(?:\([^\)]*\))?\s*<\/h[1-3]>/gi, '')
@@ -86,6 +86,24 @@ export function sanitizeTranslatedHtml(html: string): string {
     // Strip accidental inline horizontal margins, paddings or text-indent that cause text overflow or right-edge clipping
     .replace(/(?:margin-right|margin-left|padding-right|padding-left|text-indent)\s*:\s*[^;"]+;?/gi, '')
     .trim();
+
+  // Deduplicate identical images in chunk HTML (ensuring each image only appears ONCE)
+  const seenSrcs = new Set<string>();
+  sanitized = sanitized.replace(
+    /(?:<div[^>]*class="[^"]*book-illustration-wrap[^"]*"[^>]*>[\s\S]*?<img\s+[^>]*src=["']([^"']+)["'][^>]*>[\s\S]*?<\/div>|<figure[^>]*>[\s\S]*?<img\s+[^>]*src=["']([^"']+)["'][^>]*>[\s\S]*?<\/figure>|<img\s+[^>]*src=["']([^"']+)["'][^>]*>)/gi,
+    (wholeMatch, src1, src2, src3) => {
+      const src = src1 || src2 || src3;
+      if (!src) return wholeMatch;
+      const fingerprint = src.length > 250 ? src.slice(0, 250) : src;
+      if (seenSrcs.has(fingerprint)) {
+        return '';
+      }
+      seenSrcs.add(fingerprint);
+      return wholeMatch;
+    }
+  );
+
+  return sanitized;
 }
 
 /**
@@ -96,10 +114,10 @@ export function htmlToPlainText(html: string): string {
   if (!html) return '';
   let clean = html;
 
-  // Preserve image slots
-  clean = clean.replace(/<figure[^>]*class="[^"]*book-illustration-figure[^"]*"[^>]*>([\s\S]*?)<\/figure>/gi, '\n[[تصویر کتاب]]\n');
-  clean = clean.replace(/<div[^>]*class="[^"]*book-illustration-wrap[^"]*"[^>]*>([\s\S]*?)<\/div>/gi, '\n[[تصویر کتاب]]\n');
-  clean = clean.replace(/<img[^>]*>/gi, '\n[[تصویر کتاب]]\n');
+  // Preserve image slots cleanly without producing duplicate tokens for nested wrappers
+  clean = clean.replace(/<figure[^>]*>[\s\S]*?<img[^>]*>[\s\S]*?<\/figure>|<div[^>]*class="[^"]*book-illustration-wrap[^"]*"[^>]*>[\s\S]*?<\/div>|<img[^>]*>/gi, '\n[[تصویر کتاب]]\n');
+  // Collapse any consecutive duplicate image placeholders into a single token
+  clean = clean.replace(/(?:\[\[(?:تصویر کتاب|IMAGE_PRESERVED_SLOT_\d+)\]\]\s*){2,}/gi, '[[تصویر کتاب]]\n');
 
   // Replace block closures with double newlines
   clean = clean.replace(/<\/(p|h1|h2|h3|h4|blockquote|div)>/gi, '\n\n');
@@ -130,12 +148,19 @@ export function htmlToPlainText(html: string): string {
 export function plainTextToHtml(plainText: string, originalHtml?: string): string {
   if (!plainText || !plainText.trim()) return '';
 
-  // Extract any original high-res image blocks from originalHtml to prevent losing images
+  // Extract distinct original high-res image blocks from originalHtml to prevent losing or duplicating images
   const originalImages: string[] = [];
+  const seenOriginalFp = new Set<string>();
   if (originalHtml) {
-    const imgMatches = originalHtml.match(/<div[^>]*class="[^"]*book-illustration-wrap[^"]*"[^>]*>[\s\S]*?<\/div>|<img[^>]*src=["']data:[^"']+["'][^>]*>/gi);
+    const imgMatches = originalHtml.match(/<div[^>]*class="[^"]*book-illustration-wrap[^"]*"[^>]*>[\s\S]*?<\/div>|<figure[^>]*>[\s\S]*?<\/figure>|<img[^>]*src=["']data:[^"']+["'][^>]*>/gi);
     if (imgMatches) {
-      originalImages.push(...imgMatches);
+      for (const m of imgMatches) {
+        const fp = m.slice(0, 200);
+        if (!seenOriginalFp.has(fp)) {
+          seenOriginalFp.add(fp);
+          originalImages.push(m);
+        }
+      }
     }
   }
 
@@ -304,6 +329,11 @@ export function groupChunksIntoChapters(chunks: BookChunk[], excludedChunkIds?: 
       currentChapter.htmlContent += `\n${sanitizedChunkHtml}`;
     }
   }
+
+  // Ensure strict image deduplication on concatenated chapter content
+  chapters.forEach(ch => {
+    ch.htmlContent = sanitizeTranslatedHtml(ch.htmlContent);
+  });
 
   return chapters;
 }
