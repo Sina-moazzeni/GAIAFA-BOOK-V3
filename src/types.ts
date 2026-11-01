@@ -1,4 +1,4 @@
-export type ToneId = 'spiritual' | 'novel' | 'self_help' | 'academic' | 'business' | 'aerospace' | 'mathematics';
+export type ToneId = 'spiritual' | 'novel' | 'self_help' | 'academic' | 'business' | 'aerospace' | 'mathematics' | 'candid_secrets';
 
 export type UserRole = 'admin' | 'staff' | 'publisher' | 'user';
 

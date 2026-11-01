@@ -57,6 +57,14 @@ export const TONE_DEFINITIONS: ToneDefinition[] = [
     sampleKeywords: ['اثبات برهان', 'میدان برداری', 'همگرایی یکنواخت', 'فضای هیلبرت', 'توپولوژی'],
     systemToneTag: 'ریاضیات و علوم پایه (Formal mathematical proof, logical precision, and strict theorem terminology)',
   },
+  {
+    id: 'candid_secrets',
+    name: 'صریح و رک (جامعه مخفی، رازها و افشاگری)',
+    enLabel: 'Candid & Direct (Secret Societies & Mysteries)',
+    description: 'لحنی کاملاً صریح، جسورانه، برهنه و بدون خودسانسوری یا تلطیف کلمات؛ مختص کتاب‌های جامعه مخفی، فرقه‌های سرّی، افشاگری‌های تاریخی و سیاسی، اسناد پنهان و توطئه‌شناسی با معادل‌های کوبنده، رسا و بی‌پروا.',
+    sampleKeywords: ['جامعه مخفی', 'فرقه باطنی', 'اسناد محرمانه', 'حلقه قدرت', 'نظم نوین جهانی', 'مناسک سرّی', 'دولت پنهان'],
+    systemToneTag: 'صریح، رک، افشاگرانه، بی‌پروا و عریان بدون تلطیف یا سانسور کلمات (Candid, blunt, unfiltered, revelatory, fearless, and direct Persian for secret societies, occult, and conspiracies)',
+  },
 ];
 
 export const DEFAULT_GLOSSARIES: Record<string, GlossaryItem[]> = {
@@ -120,5 +128,21 @@ export const DEFAULT_GLOSSARIES: Record<string, GlossaryItem[]> = {
     { id: 'gm4', en: 'Convergence', fa: 'همگرایی' },
     { id: 'gm5', en: 'Linear transformation', fa: 'تبدیل خطی' },
     { id: 'gm6', en: 'Differential equation', fa: 'معادله دیفرانسیل' },
+  ],
+  candid_secrets: [
+    { id: 'gcs1', en: 'Secret society', fa: 'جامعه مخفی / فرقه سرّی', note: 'تشکل پنهان با سوگند رازداری' },
+    { id: 'gcs2', en: 'Occult', fa: 'اسرار مکتوم / علوم باطنی سرّی' },
+    { id: 'gcs3', en: 'Initiation ritual', fa: 'مناسک تشرف / آیین ورود سرّی' },
+    { id: 'gcs4', en: 'Deep state', fa: 'دولت پنهان / حاکمیت سایه' },
+    { id: 'gcs5', en: 'New World Order', fa: 'نظم نوین جهانی' },
+    { id: 'gcs6', en: 'Esoteric doctrine', fa: 'آموزه‌های باطنی و رمزی' },
+    { id: 'gcs7', en: 'Whistleblower', fa: 'افشاگر / فاش‌کننده اسناد' },
+    { id: 'gcs8', en: 'Cabal', fa: 'باند دسیسه‌چین / محفل پشت پرده' },
+    { id: 'gcs9', en: 'Illuminati', fa: 'ایلومیناتی / حلقه روشن‌ضمیران' },
+    { id: 'gcs10', en: 'Freemasonry', fa: 'فراماسونری' },
+    { id: 'gcs11', en: 'Shadow government', fa: 'حکومت در سایه' },
+    { id: 'gcs12', en: 'Exposé', fa: 'افشاگری تکان‌دهنده' },
+    { id: 'gcs13', en: 'Conspiracy', fa: 'توطئه و تبانی سازمان‌یافته' },
+    { id: 'gcs14', en: 'Brotherhood', fa: 'اخوت / برادری سرّی' },
   ],
 };
