@@ -2366,9 +2366,32 @@ ${urls.map((u) => `  <url>
     return res.json({ success: true, message: `ارسال به شماره ${targetPhone} با موفقیت ثبت شد.` });
   });
 
-  // Admin View Books of a User
+  // Admin View Books of a User (lightweight summary without heavy base64 images)
   app.get('/api/admin/users/:id/books', requireAdmin, (req, res) => {
-    const books = db.getBooks(req.params.id);
+    const rawBooks = db.getBooks(req.params.id);
+    const books = rawBooks.map(b => ({
+      id: b.id,
+      title: b.title,
+      originalTitle: b.originalTitle,
+      author: b.author,
+      translator: b.translator,
+      tone: b.tone,
+      wordCount: b.wordCount,
+      estimatedCost: b.estimatedCost,
+      status: b.status,
+      chunks: (b.chunks || []).map(c => ({
+        id: c.id,
+        chunkNumber: c.chunkNumber,
+        chapterNumber: c.chapterNumber,
+        chapterTitle: c.chapterTitle,
+        wordCount: c.wordCount,
+        status: c.status,
+        // Lightweight sample text without multi-megabyte base64 images:
+        translatedHtml: c.translatedHtml ? c.translatedHtml.replace(/<img[^>]*>/gi, '').slice(0, 300) : '',
+      })),
+      createdAt: b.createdAt,
+      updatedAt: b.updatedAt,
+    }));
     return res.json({ books });
   });
 
@@ -3164,12 +3187,9 @@ ${urls.map((u) => `  <url>
         status: b.status,
         chunksCount: (b.chunks || []).length,
         completedChunks: (b.chunks || []).filter(c => c.status === 'completed').length,
-        chunks: b.chunks || [],
-        glossary: b.glossary || [],
         user: owner ? { id: owner.id, name: owner.name, email: owner.email, phone: owner.phone } : null,
         hasAdminCopy: Boolean(b.adminCopy),
         adminCopyEditedAt: b.adminCopy?.editedAt || null,
-        adminCopy: b.adminCopy || null,
         createdAt: b.createdAt,
         updatedAt: b.updatedAt,
       };

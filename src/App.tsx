@@ -430,14 +430,49 @@ export default function App() {
     window.history.pushState({}, '', '/');
   };
 
-  // 2. Periodic Polling for Active Background Jobs on the Server
+  // 2. Smart Background Polling for Active Jobs (Bandwidth-efficient)
+  // Only polls lightweight job status (/api/jobs/my-active, <1KB).
+  // NEVER blindly re-downloads all heavy user books and base64 images every 4 seconds!
+  const prevActiveJobsRef = useRef<TranslationJob[]>([]);
+
   useEffect(() => {
     if (!authToken || !currentUser) return;
 
-    const interval = setInterval(() => {
-      fetchActiveJobs(authToken);
-      fetchUserBooks(authToken, true); // silent sync
-    }, 4000);
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch('/api/jobs/my-active', {
+          headers: { Authorization: `Bearer ${authToken}` },
+        });
+        if (res.ok) {
+          const data = await res.json();
+          const newJobs: TranslationJob[] = data.jobs || [];
+          setActiveJobs(newJobs);
+
+          // Check if any job completed or made progress before fetching user books
+          const prevRunning = prevActiveJobsRef.current.some(
+            (j) => j.status === 'queued' || j.status === 'processing'
+          );
+          const nowRunning = newJobs.some(
+            (j) => j.status === 'queued' || j.status === 'processing'
+          );
+
+          if (prevRunning && !nowRunning) {
+            // Background cloud translation finished! Sync books ONCE
+            fetchUserBooks(authToken, true);
+          } else if (prevRunning && nowRunning) {
+            // Check if chunk counter progressed
+            const prevChunks = prevActiveJobsRef.current.reduce((acc, j) => acc + (j.completedChunks || 0), 0);
+            const nowChunks = newJobs.reduce((acc, j) => acc + (j.completedChunks || 0), 0);
+            if (nowChunks > prevChunks) {
+              fetchUserBooks(authToken, true);
+            }
+          }
+          prevActiveJobsRef.current = newJobs;
+        }
+      } catch (e) {
+        // silent network error
+      }
+    }, 5000);
 
     return () => clearInterval(interval);
   }, [authToken, currentUser]);
