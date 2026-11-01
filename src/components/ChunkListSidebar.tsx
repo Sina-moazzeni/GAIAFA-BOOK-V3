@@ -28,6 +28,7 @@ interface ChunkListSidebarProps {
   onDeleteChunk?: (id: string) => void;
   onToggleExcludeChunk?: (id: string) => void;
   onOpenAddPageModal?: (targetChunkId?: string, defaultPosition?: 'after' | 'before' | 'start' | 'end') => void;
+  isLoadingChunks?: boolean;
 }
 
 export const ChunkListSidebar: React.FC<ChunkListSidebarProps> = ({
@@ -39,6 +40,7 @@ export const ChunkListSidebar: React.FC<ChunkListSidebarProps> = ({
   onDeleteChunk,
   onToggleExcludeChunk,
   onOpenAddPageModal,
+  isLoadingChunks = false,
 }) => {
   const [filter, setFilter] = useState<'all' | 'completed' | 'pending'>('all');
   const [search, setSearch] = useState('');
@@ -126,7 +128,12 @@ export const ChunkListSidebar: React.FC<ChunkListSidebarProps> = ({
 
       {/* Chunk List Scroll Area */}
       <div className="flex-1 overflow-y-auto divide-y divide-slate-800/60 p-2 space-y-1">
-        {filteredChunks.length === 0 ? (
+        {isLoadingChunks ? (
+          <div className="py-16 text-center text-xs text-indigo-450 flex flex-col items-center justify-center gap-2 text-indigo-400">
+            <RotateCw className="w-5 h-5 animate-spin text-indigo-400" />
+            <span>در حال بارگذاری بخش‌های کتاب...</span>
+          </div>
+        ) : filteredChunks.length === 0 ? (
           <div className="py-12 text-center text-xs text-slate-500">
             بخشی با این مشخصات یافت نشد.
           </div>

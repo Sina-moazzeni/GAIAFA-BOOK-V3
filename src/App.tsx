@@ -146,6 +146,7 @@ export default function App() {
 
   // Active translation chunk in workspace
   const [activeChunkId, setActiveChunkId] = useState<string>('');
+  const [loadingWorkspaceBookId, setLoadingWorkspaceBookId] = useState<string | null>(null);
   const [isBatchTranslating, setIsBatchTranslating] = useState(false);
   const [isStoppingBatch, setIsStoppingBatch] = useState(false);
   const [batchProgress, setBatchProgress] = useState({ current: 0, total: 0, secondsToNextCall: 0 });
@@ -534,17 +535,23 @@ export default function App() {
     }
 
     if (targetView === 'workspace') {
+      const targetBook = books.find((b) => b.id === targetId) || (typeof selected !== 'string' ? selected : undefined);
+      const needsLoad = !targetBook?.chunks || targetBook.chunks.length === 0;
+      if (needsLoad) {
+        setLoadingWorkspaceBookId(targetId);
+      }
+      setCurrentView('workspace');
+
       ensureBookChunksLoaded(targetId).then((fullBook) => {
+        setLoadingWorkspaceBookId(null);
         if (fullBook && fullBook.chunks.length > 0) {
           if (!fullBook.chunks.some((c) => c.id === activeChunkIdRef.current)) {
             setActiveChunkId(fullBook.chunks[0].id);
             activeChunkIdRef.current = fullBook.chunks[0].id;
           }
         }
-      });
-    }
-
-    if (targetView) {
+      }).catch(() => setLoadingWorkspaceBookId(null));
+    } else if (targetView) {
       setCurrentView(targetView);
     }
   };
@@ -1372,6 +1379,7 @@ export default function App() {
                 setAddPageDefaultPosition(pos || 'after');
                 setIsAddPageModalOpen(true);
               }}
+              isLoadingChunks={loadingWorkspaceBookId === activeBookId}
             />
           </div>
 
@@ -1379,6 +1387,7 @@ export default function App() {
             <TranslationWorkspace
               currentChunk={currentChunk}
               project={project}
+              isLoadingChunks={loadingWorkspaceBookId === activeBookId}
               onUpdateChunkHtml={(chunkId: string, newHtml: string) => {
                 const updated = project.chunks.map((c) =>
                   c.id === chunkId ? { ...c, translatedHtml: newHtml } : c

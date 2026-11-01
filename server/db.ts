@@ -1853,23 +1853,44 @@ class Database {
     this.ensureDataDirectory();
     book.updatedAt = Date.now();
 
-    const chunks = Array.isArray(book.chunks) ? book.chunks : [];
-    const totalChunks = chunks.length > 0 ? chunks.length : (book.totalChunks || 0);
-    const completedChunks = chunks.length > 0
-      ? chunks.filter(c => c.status === 'completed' || Boolean(c.translatedHtml)).length
+    const incomingChunks = Array.isArray(book.chunks) ? book.chunks : [];
+    const bookFilePath = path.resolve(BOOKS_DIR, `${book.id}.json`);
+    let finalChunks = incomingChunks;
+    let finalAdminCopy = book.adminCopy;
+    let finalContextCache = book.contextCache;
+
+    // If incoming chunks array is empty, but book file exists with chunks on disk, preserve existing content!
+    if (finalChunks.length === 0 && fs.existsSync(bookFilePath)) {
+      try {
+        const raw = fs.readFileSync(bookFilePath, 'utf-8');
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed.chunks) && parsed.chunks.length > 0) {
+          finalChunks = parsed.chunks;
+        }
+        if (parsed.adminCopy && !finalAdminCopy) {
+          finalAdminCopy = parsed.adminCopy;
+        }
+        if (parsed.contextCache && !finalContextCache) {
+          finalContextCache = parsed.contextCache;
+        }
+      } catch (err) {}
+    }
+
+    const totalChunks = finalChunks.length > 0 ? finalChunks.length : (book.totalChunks || 0);
+    const completedChunks = finalChunks.length > 0
+      ? finalChunks.filter(c => c.status === 'completed' || Boolean(c.translatedHtml)).length
       : (book.completedChunks || 0);
     const progressPercent = totalChunks > 0 ? Math.round((completedChunks / totalChunks) * 100) : 0;
     const totalImagesCount = book.totalImagesCount !== undefined
       ? book.totalImagesCount
-      : (chunks.length > 0 ? chunks.reduce((acc, c) => acc + (c.imageCount || (c.hasImages ? 1 : 0)), 0) : 0);
+      : (finalChunks.length > 0 ? finalChunks.reduce((acc, c) => acc + (c.imageCount || (c.hasImages ? 1 : 0)), 0) : 0);
 
     // Save heavy content (chunks, adminCopy, contextCache) in isolated file
-    const bookFilePath = path.resolve(BOOKS_DIR, `${book.id}.json`);
     try {
       const bookPayload = JSON.stringify({
-        chunks,
-        adminCopy: book.adminCopy || null,
-        contextCache: book.contextCache || null,
+        chunks: finalChunks,
+        adminCopy: finalAdminCopy || null,
+        contextCache: finalContextCache || null,
       });
       const tmpPath = `${bookFilePath}.tmp`;
       fs.writeFileSync(tmpPath, bookPayload, 'utf-8');
