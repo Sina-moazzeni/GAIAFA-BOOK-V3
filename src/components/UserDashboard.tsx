@@ -80,10 +80,17 @@ export function UserDashboard({
 
   // Helper for per-book words and financial calculations
   const getBookUsage = (b: BookProject) => {
-    const totalChunks = b.chunks?.length || 0;
-    const completedChunks = b.chunks?.filter((c) => c.status === 'completed').length || 0;
+    const totalChunks = (b as any).totalChunks !== undefined ? (b as any).totalChunks : (b.chunks?.length || 0);
+    const completedChunks = (b as any).completedChunks !== undefined ? (b as any).completedChunks : (b.chunks?.filter((c) => c.status === 'completed' || Boolean(c.translatedHtml)).length || 0);
     const totalWords = b.wordCount || b.chunks?.reduce((acc, c) => acc + (c.wordCount || 0), 0) || 0;
-    const completedWords = b.chunks?.filter((c) => c.status === 'completed').reduce((acc, c) => acc + (c.wordCount || 0), 0) || 0;
+    
+    const percent = (b as any).progressPercent !== undefined 
+      ? (b as any).progressPercent 
+      : (totalChunks > 0 ? Math.round((completedChunks / totalChunks) * 100) : 0);
+
+    const completedWords = (b.chunks && b.chunks.length > 0)
+      ? b.chunks.filter((c) => c.status === 'completed' || Boolean(c.translatedHtml)).reduce((acc, c) => acc + (c.wordCount || 0), 0)
+      : Math.round(totalWords * (percent / 100));
 
     const isSpecialized = b.tone === 'academic' || b.tone === 'aerospace' || b.tone === 'mathematics';
     const effectiveCostPerWord = Math.round(systemCostPerWord * (isSpecialized ? 1.25 : 1.0));
@@ -91,9 +98,8 @@ export function UserDashboard({
       ? Math.round(completedWords * effectiveCostPerWord)
       : (b.estimatedCost || Math.round(totalWords * effectiveCostPerWord));
 
-    const percent = totalChunks > 0 ? Math.round((completedChunks / totalChunks) * 100) : 0;
-    const isCompleted = totalChunks > 0 && completedChunks === totalChunks;
-    const isTranslating = activeJobs.some((j) => j.bookId === b.id) || b.chunks?.some((c) => c.status === 'queued' || c.status === 'translating');
+    const isCompleted = (totalChunks > 0 && completedChunks >= totalChunks) || percent >= 100;
+    const isTranslating = activeJobs.some((j) => j.bookId === b.id) || (b.chunks ? b.chunks.some((c) => c.status === 'queued' || c.status === 'translating') : (percent > 0 && percent < 100));
 
     return {
       totalChunks,
@@ -124,8 +130,9 @@ export function UserDashboard({
   });
 
   const filteredBooks = books.filter((b) => {
-    const isCompleted = b.chunks?.every((c) => c.status === 'completed') && b.chunks?.length > 0;
-    const isTranslating = activeJobs.some((j) => j.bookId === b.id) || b.chunks?.some((c) => c.status === 'queued' || c.status === 'translating');
+    const usage = getBookUsage(b);
+    const isCompleted = usage.isCompleted;
+    const isTranslating = usage.isTranslating;
 
     if (filter === 'completed') return isCompleted;
     if (filter === 'translating') return isTranslating;

@@ -546,6 +546,11 @@ export interface BookProject {
   wordCount?: number;
   estimatedCost?: number;
   adminCopy?: AdminBookCopy;
+  totalChunks?: number;
+  completedChunks?: number;
+  progressPercent?: number;
+  hasImages?: boolean;
+  hasAdminCopy?: boolean;
 }
 
 export interface AdminBookChunkCopy {

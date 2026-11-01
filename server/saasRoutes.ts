@@ -1074,14 +1074,39 @@ ${urls.map((u) => `  <url>
   // 4. BOOKS MANAGEMENT
   // ==========================================
 
-  // Get user's books
+  // Get user's books (Ultra-lightweight metadata list - <10KB, instant load, zero data drain!)
   app.get('/api/books', requireAuth, (req, res) => {
     const user = (req as any).user as User;
-    const books = db.getBooks(user.id).map(b => ({
-      ...b,
-      chunks: Array.isArray(b.chunks) ? b.chunks : [],
-      glossary: Array.isArray(b.glossary) ? b.glossary : [],
-    }));
+    const rawBooks = db.getBooks(user.id);
+    const books = rawBooks.map(b => {
+      const totalChunks = (b as any).totalChunks !== undefined ? (b as any).totalChunks : (Array.isArray(b.chunks) ? b.chunks.length : 0);
+      const completedChunks = (b as any).completedChunks !== undefined ? (b as any).completedChunks : (Array.isArray(b.chunks) ? b.chunks.filter(c => c.status === 'completed' || Boolean(c.translatedHtml)).length : 0);
+      const progressPercent = totalChunks > 0 ? Math.round((completedChunks / totalChunks) * 100) : 0;
+      return {
+        id: b.id,
+        userId: b.userId,
+        title: b.title,
+        originalTitle: b.originalTitle,
+        author: b.author,
+        translator: b.translator,
+        tone: b.tone,
+        sourceLanguage: b.sourceLanguage || 'en',
+        targetLanguage: b.targetLanguage || 'fa',
+        wordCount: b.wordCount || 0,
+        totalImagesCount: b.totalImagesCount || 0,
+        estimatedCost: b.estimatedCost || 0,
+        status: b.status,
+        totalChunks,
+        completedChunks,
+        progressPercent,
+        hasImages: Boolean(b.totalImagesCount && b.totalImagesCount > 0),
+        hasAdminCopy: Boolean(b.adminCopy),
+        createdAt: b.createdAt,
+        updatedAt: b.updatedAt,
+        chunks: [], // Omit heavy chunks from list view to eliminate hundreds of megabytes of transfer!
+        glossary: Array.isArray(b.glossary) ? b.glossary : [],
+      };
+    });
     return res.json({ books });
   });
 

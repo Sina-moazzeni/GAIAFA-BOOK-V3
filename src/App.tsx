@@ -477,6 +477,40 @@ export default function App() {
     return () => clearInterval(interval);
   }, [authToken, currentUser]);
 
+  // Helper to load heavy book chunks on-demand (only when user enters workspace or exports)
+  const ensureBookChunksLoaded = async (target: string | BookProject): Promise<BookProject | null> => {
+    const targetId = typeof target === 'string' ? target : target.id;
+    if (!targetId) return null;
+
+    const existing = books.find((b) => b.id === targetId) || (typeof target !== 'string' ? target : null);
+    if (existing && Array.isArray(existing.chunks) && existing.chunks.length > 0) {
+      return existing;
+    }
+
+    try {
+      const token = authToken || (typeof window !== 'undefined' ? localStorage.getItem(STORAGE_KEY_AUTH_TOKEN) : '') || '';
+      const headers: Record<string, string> = {};
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      const res = await fetch(`/api/books/${targetId}`, { headers });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.book) {
+          const fullBook: BookProject = {
+            ...data.book,
+            chunks: Array.isArray(data.book.chunks) ? data.book.chunks : [],
+            glossary: Array.isArray(data.book.glossary) ? data.book.glossary : [],
+          };
+          setBooks((prev) => prev.map((b) => (b.id === targetId ? fullBook : b)));
+          return fullBook;
+        }
+      }
+    } catch (e) {
+      console.warn('Error loading book chunks', e);
+    }
+    return existing;
+  };
+
   // Dedicated function to switch and lock active book with immediate localStorage & ref synchronization
   const handleSelectBook = (selected: string | BookProject, targetView?: 'workspace' | 'dashboard') => {
     const targetId = typeof selected === 'string' ? selected : selected.id;
@@ -499,10 +533,36 @@ export default function App() {
       }
     }
 
+    if (targetView === 'workspace') {
+      ensureBookChunksLoaded(targetId).then((fullBook) => {
+        if (fullBook && fullBook.chunks.length > 0) {
+          if (!fullBook.chunks.some((c) => c.id === activeChunkIdRef.current)) {
+            setActiveChunkId(fullBook.chunks[0].id);
+            activeChunkIdRef.current = fullBook.chunks[0].id;
+          }
+        }
+      });
+    }
+
     if (targetView) {
       setCurrentView(targetView);
     }
   };
+
+  // Auto-fetch chunks if current view is workspace and active book chunks haven't been loaded yet
+  useEffect(() => {
+    if (currentView === 'workspace' && activeBookId) {
+      const active = books.find((b) => b.id === activeBookId);
+      if (active && (!active.chunks || active.chunks.length === 0)) {
+        ensureBookChunksLoaded(activeBookId).then((fullBook) => {
+          if (fullBook && fullBook.chunks.length > 0 && !activeChunkIdRef.current) {
+            setActiveChunkId(fullBook.chunks[0].id);
+            activeChunkIdRef.current = fullBook.chunks[0].id;
+          }
+        });
+      }
+    }
+  }, [currentView, activeBookId, books]);
 
   // Fetch user's books from server DB with active book preservation
   const fetchUserBooks = async (token: string, isSilent = false) => {
@@ -517,7 +577,19 @@ export default function App() {
           chunks: Array.isArray(b.chunks) ? b.chunks : [],
           glossary: Array.isArray(b.glossary) ? b.glossary : [],
         }));
-        setBooks(serverBooks);
+
+        setBooks((prevBooks) => {
+          return serverBooks.map((sb: any) => {
+            const existing = prevBooks.find((p) => p.id === sb.id);
+            if (existing && existing.chunks && existing.chunks.length > 0 && (!sb.chunks || sb.chunks.length === 0)) {
+              return {
+                ...sb,
+                chunks: existing.chunks,
+              };
+            }
+            return sb;
+          });
+        });
 
         if (serverBooks.length > 0) {
           const currentActive = activeBookIdRef.current || (typeof window !== 'undefined' ? localStorage.getItem(STORAGE_KEY_ACTIVE_BOOK) : '') || '';
@@ -827,20 +899,23 @@ export default function App() {
 
   // Exports (dynamically imported on user action to preserve instant initial page speed)
   const handleExportDocx = async (targetBook: BookProject) => {
-    handleSelectBook(targetBook);
+    const fullBook = (await ensureBookChunksLoaded(targetBook)) || targetBook;
+    handleSelectBook(fullBook);
     const { downloadDocx } = await import('./utils/exporter.ts');
-    await downloadDocx(targetBook);
+    await downloadDocx(fullBook);
   };
 
-  const handleExportPdf = (targetBook: BookProject) => {
-    handleSelectBook(targetBook);
+  const handleExportPdf = async (targetBook: BookProject) => {
+    const fullBook = (await ensureBookChunksLoaded(targetBook)) || targetBook;
+    handleSelectBook(fullBook);
     setIsDesignModalOpen(true);
   };
 
   const handleExportEpub = async (targetBook: BookProject) => {
-    handleSelectBook(targetBook);
+    const fullBook = (await ensureBookChunksLoaded(targetBook)) || targetBook;
+    handleSelectBook(fullBook);
     const { downloadStyledHtml } = await import('./utils/exporter.ts');
-    downloadStyledHtml(targetBook);
+    downloadStyledHtml(fullBook);
   };
 
   // Translate a single chunk (inside workspace)

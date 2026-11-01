@@ -218,8 +218,15 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout, onCostPer
   const isStaff = currentUser.role === 'staff';
   const [activeTab, setActiveTab] = useState<AdminTab>(isStaff ? 'overview' : 'overview');
 
-  // Overview Data
-  const [overview, setOverview] = useState<any>(null);
+  // Overview Data (Cached locally so stats never flicker to zero on refresh)
+  const [overview, setOverview] = useState<any>(() => {
+    try {
+      const cached = localStorage.getItem('admin_overview_cache');
+      return cached ? JSON.parse(cached) : null;
+    } catch (e) {
+      return null;
+    }
+  });
   const [loadingOverview, setLoadingOverview] = useState(false);
 
   // Monthly Analytics Data
@@ -608,15 +615,21 @@ export function AdminPanel({ currentUser, onBackToUserPanel, onLogout, onCostPer
   const fetchOverview = async () => {
     setLoadingOverview(true);
     try {
+      const currentToken = localStorage.getItem('auth_token') || token;
       const res = await fetch('/api/admin/overview', {
-        headers: { Authorization: `Bearer ${token}` },
+        headers: { Authorization: `Bearer ${currentToken}` },
       });
       if (res.ok) {
         const data = await res.json();
-        setOverview(data);
+        if (data && typeof data === 'object' && data.totalBooks !== undefined) {
+          setOverview(data);
+          try {
+            localStorage.setItem('admin_overview_cache', JSON.stringify(data));
+          } catch (e) {}
+        }
       }
     } catch (e) {
-      console.warn('Could not fetch admin overview');
+      console.warn('Could not fetch admin overview', e);
     } finally {
       setLoadingOverview(false);
     }

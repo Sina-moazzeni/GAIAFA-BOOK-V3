@@ -7,6 +7,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const DATA_DIR = path.resolve(__dirname, '../data');
 const DB_FILE = path.resolve(DATA_DIR, 'database.json');
+const BOOKS_DIR = path.resolve(DATA_DIR, 'books');
 
 export type UserRole = 'admin' | 'staff' | 'publisher' | 'user';
 
@@ -88,6 +89,9 @@ export interface BookRecord {
   adminCopy?: AdminBookCopy;
   createdAt: number;
   updatedAt: number;
+  totalChunks?: number;
+  completedChunks?: number;
+  progressPercent?: number;
 }
 
 export interface TranslationJob {
@@ -976,6 +980,9 @@ class Database {
     if (!fs.existsSync(DATA_DIR)) {
       fs.mkdirSync(DATA_DIR, { recursive: true });
     }
+    if (!fs.existsSync(BOOKS_DIR)) {
+      fs.mkdirSync(BOOKS_DIR, { recursive: true });
+    }
   }
 
   private loadData(): DatabaseSchema {
@@ -1081,6 +1088,39 @@ class Database {
       }
     } else {
       schema = this.createDefaultSeed();
+    }
+
+    // Migrate & decouple any heavy book chunks into individual files to keep database.json ultra-fast & lightweight (<100KB)
+    if (Array.isArray(schema.books)) {
+      schema.books.forEach((b: any) => {
+        const bookFilePath = path.resolve(BOOKS_DIR, `${b.id}.json`);
+        const totalChunks = b.totalChunks || (b.chunks ? b.chunks.length : 0);
+        const completedChunks = b.completedChunks || (b.chunks ? b.chunks.filter((c: any) => c.status === 'completed' || Boolean(c.translatedHtml)).length : 0);
+        const totalImagesCount = b.totalImagesCount || (b.chunks ? b.chunks.reduce((acc: number, c: any) => acc + (c.imageCount || (c.hasImages ? 1 : 0)), 0) : 0);
+
+        b.totalChunks = totalChunks;
+        b.completedChunks = completedChunks;
+        b.totalImagesCount = totalImagesCount;
+
+        if (Array.isArray(b.chunks) && b.chunks.length > 0) {
+          if (!fs.existsSync(bookFilePath)) {
+            try {
+              fs.writeFileSync(bookFilePath, JSON.stringify({
+                chunks: b.chunks,
+                adminCopy: b.adminCopy || null,
+                contextCache: b.contextCache || null,
+              }), 'utf-8');
+            } catch (err) {
+              console.warn(`[DB] Error migrating book ${b.id}:`, err);
+            }
+          }
+          // Clear heavy chunks from main database.json memory
+          b.chunks = [];
+          if (b.adminCopy) {
+            b.adminCopy = { ...b.adminCopy, chunks: [] };
+          }
+        }
+      });
     }
 
     // Ensure Default Permanent Seed Users ALWAYS exist and have known credentials
@@ -1482,7 +1522,7 @@ class Database {
   private saveData(data: DatabaseSchema) {
     try {
       const tempFile = `${DB_FILE}.tmp`;
-      fs.writeFileSync(tempFile, JSON.stringify(data, null, 2), 'utf-8');
+      fs.writeFileSync(tempFile, JSON.stringify(data), 'utf-8');
       fs.renameSync(tempFile, DB_FILE);
     } catch (err) {
       console.error('Failed to save database atomically:', err);
@@ -1768,25 +1808,92 @@ class Database {
     return false;
   }
 
-  // --- Books Management ---
+  // --- Books Management (Ultra-Fast & Decoupled Architecture) ---
   public getBooks(userId?: string): BookRecord[] {
-    if (userId) {
-      return this.data.books.filter(b => b.userId === userId);
-    }
-    return this.data.books;
+    const list = userId ? this.data.books.filter(b => b.userId === userId) : this.data.books;
+    return list;
   }
 
   public getBookById(id: string): BookRecord | undefined {
-    return this.data.books.find(b => b.id === id);
+    const bookMeta = this.data.books.find(b => b.id === id);
+    if (!bookMeta) return undefined;
+
+    const bookFilePath = path.resolve(BOOKS_DIR, `${id}.json`);
+    let chunks = Array.isArray(bookMeta.chunks) ? bookMeta.chunks : [];
+    let adminCopy = bookMeta.adminCopy;
+    let contextCache = bookMeta.contextCache;
+
+    if (fs.existsSync(bookFilePath)) {
+      try {
+        const raw = fs.readFileSync(bookFilePath, 'utf-8');
+        const content = JSON.parse(raw);
+        if (Array.isArray(content.chunks) && content.chunks.length > 0) {
+          chunks = content.chunks;
+        }
+        if (content.adminCopy) {
+          adminCopy = content.adminCopy;
+        }
+        if (content.contextCache) {
+          contextCache = content.contextCache;
+        }
+      } catch (err) {
+        console.warn(`[DB] Failed to read book content file for ${id}:`, err);
+      }
+    }
+
+    return {
+      ...bookMeta,
+      chunks,
+      adminCopy,
+      contextCache,
+    };
   }
 
   public saveBook(book: BookRecord): BookRecord {
-    const idx = this.data.books.findIndex(b => b.id === book.id);
+    this.ensureDataDirectory();
     book.updatedAt = Date.now();
+
+    const chunks = Array.isArray(book.chunks) ? book.chunks : [];
+    const totalChunks = chunks.length > 0 ? chunks.length : (book.totalChunks || 0);
+    const completedChunks = chunks.length > 0
+      ? chunks.filter(c => c.status === 'completed' || Boolean(c.translatedHtml)).length
+      : (book.completedChunks || 0);
+    const progressPercent = totalChunks > 0 ? Math.round((completedChunks / totalChunks) * 100) : 0;
+    const totalImagesCount = book.totalImagesCount !== undefined
+      ? book.totalImagesCount
+      : (chunks.length > 0 ? chunks.reduce((acc, c) => acc + (c.imageCount || (c.hasImages ? 1 : 0)), 0) : 0);
+
+    // Save heavy content (chunks, adminCopy, contextCache) in isolated file
+    const bookFilePath = path.resolve(BOOKS_DIR, `${book.id}.json`);
+    try {
+      const bookPayload = JSON.stringify({
+        chunks,
+        adminCopy: book.adminCopy || null,
+        contextCache: book.contextCache || null,
+      });
+      const tmpPath = `${bookFilePath}.tmp`;
+      fs.writeFileSync(tmpPath, bookPayload, 'utf-8');
+      fs.renameSync(tmpPath, bookFilePath);
+    } catch (err) {
+      console.error(`[DB] Error saving individual book file for ${book.id}:`, err);
+    }
+
+    // Save lightweight metadata in main DB
+    const bookMeta: BookRecord = {
+      ...book,
+      totalChunks,
+      completedChunks,
+      progressPercent,
+      totalImagesCount,
+      chunks: [], // Kept empty in main db.json to guarantee 100% lightweight database!
+      adminCopy: book.adminCopy ? { ...book.adminCopy, chunks: [] } : undefined,
+    };
+
+    const idx = this.data.books.findIndex(b => b.id === book.id);
     if (idx !== -1) {
-      this.data.books[idx] = book;
+      this.data.books[idx] = bookMeta;
     } else {
-      this.data.books.unshift(book);
+      this.data.books.unshift(bookMeta);
     }
     this.saveData(this.data);
     return book;
@@ -1796,8 +1903,16 @@ class Database {
     const idx = this.data.books.findIndex(b => b.id === bookId && (!userId || b.userId === userId));
     if (idx !== -1) {
       this.data.books.splice(idx, 1);
-      // Also clean up any associated active jobs
       this.data.jobs = this.data.jobs.filter(j => j.bookId !== bookId);
+
+      // Clean up individual book content file
+      try {
+        const bookFilePath = path.resolve(BOOKS_DIR, `${bookId}.json`);
+        if (fs.existsSync(bookFilePath)) {
+          fs.unlinkSync(bookFilePath);
+        }
+      } catch (e) {}
+
       this.saveData(this.data);
       return true;
     }
@@ -1823,12 +1938,12 @@ class Database {
     },
     adminId?: string
   ): AdminBookCopy | null {
-    const book = this.getBookById(bookId);
-    if (!book) return null;
+    const fullBook = this.getBookById(bookId);
+    if (!fullBook) return null;
 
     const baseChunks: AdminBookChunkCopy[] = copyData.chunks && Array.isArray(copyData.chunks)
       ? copyData.chunks
-      : (book.chunks || []).map(c => ({
+      : (fullBook.chunks || []).map(c => ({
           id: c.id,
           chapterNumber: c.chapterNumber,
           chapterTitle: c.chapterTitle,
@@ -1838,28 +1953,26 @@ class Database {
           wordCount: c.wordCount || 0,
         }));
 
-    book.adminCopy = {
+    fullBook.adminCopy = {
       editedAt: Date.now(),
       editedByAdminId: adminId,
-      title: (copyData.title || book.title || 'کتاب ترجمه شده').trim(),
-      originalTitle: (copyData.originalTitle ?? book.originalTitle ?? '').trim(),
-      author: (copyData.author ?? book.author ?? '').trim(),
-      translator: (copyData.translator ?? book.translator ?? '').trim(),
-      designConfig: copyData.designConfig || (book as any).designConfig || {},
+      title: (copyData.title || fullBook.title || 'کتاب ترجمه شده').trim(),
+      originalTitle: (copyData.originalTitle ?? fullBook.originalTitle ?? '').trim(),
+      author: (copyData.author ?? fullBook.author ?? '').trim(),
+      translator: (copyData.translator ?? fullBook.translator ?? '').trim(),
+      designConfig: copyData.designConfig || (fullBook as any).designConfig || {},
       chunks: baseChunks,
     };
 
-    book.updatedAt = Date.now();
-    this.saveData(this.data);
-    return book.adminCopy;
+    this.saveBook(fullBook);
+    return fullBook.adminCopy;
   }
 
   public deleteAdminBookCopy(bookId: string): boolean {
-    const book = this.getBookById(bookId);
-    if (!book || !book.adminCopy) return false;
-    delete book.adminCopy;
-    book.updatedAt = Date.now();
-    this.saveData(this.data);
+    const fullBook = this.getBookById(bookId);
+    if (!fullBook || !fullBook.adminCopy) return false;
+    delete fullBook.adminCopy;
+    this.saveBook(fullBook);
     return true;
   }
 
@@ -2095,6 +2208,7 @@ class Database {
 
   // --- Export Database Backup ---
   public exportBackup() {
+    const fullBooks = this.data.books.map(b => this.getBookById(b.id) || b);
     return {
       version: '2.0',
       exportedAt: new Date().toISOString(),
@@ -2111,7 +2225,7 @@ class Database {
       },
       data: {
         users: this.data.users,
-        books: this.data.books,
+        books: fullBooks,
         jobs: this.data.jobs,
         transactions: this.data.transactions,
         settings: this.data.settings,
@@ -2140,12 +2254,7 @@ class Database {
     if (Array.isArray(incoming.books)) {
       incoming.books.forEach((inBook: BookRecord) => {
         if (!inBook || !inBook.id) return;
-        const existingIdx = this.data.books.findIndex(b => b.id === inBook.id);
-        if (existingIdx !== -1) {
-          this.data.books[existingIdx] = inBook;
-        } else {
-          this.data.books.push(inBook);
-        }
+        this.saveBook(inBook);
         restoredBooks++;
       });
     }
