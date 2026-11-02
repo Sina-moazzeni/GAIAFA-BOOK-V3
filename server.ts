@@ -29,15 +29,39 @@ function cleanChapterTitle(title: string): string {
   return cleaned || 'فصل کتاب';
 }
 
+function stripBookUrls(html: string): string {
+  if (!html) return '';
+  let cleaned = html;
+  cleaned = cleaned.replace(/<a\s+[^>]*href=["'][^"']*["'][^>]*>\s*https?:\/\/[^\s<]+<\/a>/gi, '');
+  cleaned = cleaned.replace(/<a\s+[^>]*href=["'][^"']*["'][^>]*>\s*www\.[^\s<]+<\/a>/gi, '');
+  cleaned = cleaned.replace(/<a\s+[^>]*href=["'][^"']*["'][^>]*>([\s\S]*?)<\/a>/gi, '$1');
+  cleaned = cleaned.replace(/https?:\/\/[^\s<>"'\)]+/gi, '');
+  cleaned = cleaned.replace(/(?:^|\s)(?:www\.)[a-z0-9\-]+(?:\.[a-z0-9\-]+)+(?:\/[^\s<>"'\)]*)?/gi, ' ');
+  cleaned = cleaned.replace(/\(\s*\)/g, '');
+  cleaned = cleaned.replace(/\[\s*\]/g, '');
+  cleaned = cleaned.replace(/\s{2,}/g, ' ');
+  return cleaned.trim();
+}
+
 function sanitizeTranslatedHtml(html: string): string {
   if (!html) return '';
-  let clean = html
+  let clean = stripBookUrls(html)
     .replace(/<span[^>]*style=["'][^"']*#(?:9b2c2c|c53030|e53e3e)[^"']*["'][^>]*>([\s\S]*?)<\/span>/gi, '$1')
     .replace(/<span[^>]*class=["'][^"']*highlight[^"']*["'][^>]*>([\s\S]*?)<\/span>/gi, '$1')
     .replace(/<h[1-3][^>]*>\s*مقدمه و بخش نخست\s*(?:\([^\)]*\))?\s*<\/h[1-3]>/gi, '')
     .replace(/<h[1-3][^>]*>[^<]*[\(\[\{]\s*بخش\s*[0-9۰-۹IVXLCDMivxlcdm]+\s*[\)\]\}][^<]*<\/h[1-3]>/gi, '')
     .replace(/<p[^>]*>\s*[\(\[\{]?\s*بخش\s*[0-9۰-۹IVXLCDMivxlcdm]+\s*[\)\]\}]?\s*<\/p>/gi, '')
+    // Strip accidental inline horizontal margins, paddings or text-indent that cause text overflow or right-edge clipping
+    .replace(/(?:margin-right|margin-left|padding-right|padding-left|text-indent)\s*:\s*[^;"]+;?/gi, '')
     .trim();
+
+  // Enhance footnotes or notes paragraphs with distinct publication styling
+  clean = clean.replace(
+    /<p([^>]*)>\s*(\[[0-9۰-۹IVXLCDMivxlcdm]+\]|\([0-9۰-۹IVXLCDMivxlcdm]+\)|(?:پانویس|پاورقی|پی‌نوشت|یادداشت)\s*[:：]|\b[0-9۰-۹]+\s*[-–.]\s*)([\s\S]*?)<\/p>/gi,
+    (match, attrs, num, content) => {
+      return `<div class="book-footnote"><span class="book-footnote-badge">${num}</span> <span class="book-footnote-text">${content}</span></div>`;
+    }
+  );
 
   // If text doesn't contain any <p>, <h1>, <h2>, <figure> tags at all, wrap distinct blocks into <p>
   if (!/<(p|h[1-3]|blockquote|div|figure|img)[\s>]/i.test(clean)) {
@@ -809,7 +833,8 @@ ${hasImages ? `\n[IMAGE PRESERVATION INSTRUCTION]\nThis text contains image plac
 [CRITICAL INSTRUCTION]
 1. Do NOT summarize. Translate every single sentence, dialogue, nuance, and paragraph verbatim from ${sourceLangName} into fluent, natural ${targetLangName} without omission or censorship.
 2. Do NOT invent, add, or output artificial chunk numbers, section labels, or headers such as "بخش ۱", "بخش ۲", "(بخش ۱)", "Part 1", etc. Translate only the actual text content.
-${dedicatedCachePrompt ? '3. Maintain 100% naming, stylistic, and rhythmic continuity with the dedicated book context cache provided above.' : ''}
+3. Do NOT output raw website URLs or internet hyperlinks (e.g. https://... or www....). Book printing strictly prohibits raw URL clutter. If reference notes mention a website or online source, state only the source name without raw URLs.
+${dedicatedCachePrompt ? '4. Maintain 100% naming, stylistic, and rhythmic continuity with the dedicated book context cache provided above.' : ''}
 
 [INPUT TEXT TO TRANSLATE]
 ${cleanEnglishText}`;
@@ -876,7 +901,7 @@ ${cleanEnglishText}`;
               },
             });
 
-            const allowAutoSwitch = db.getSettings().keyPoolSettings?.allowAutoSwitchOnTranslationFailure === true;
+            const allowAutoSwitch = db.getSettings().keyPoolSettings?.allowAutoSwitchOnTranslationFailure !== false;
             const primaryModel = server.model || 'gemini-3.8-flash';
             const candidateModels = allowAutoSwitch
               ? Array.from(new Set([
@@ -913,8 +938,9 @@ ${cleanEnglishText}`;
                 } else if (cleanHtml.startsWith('```')) {
                   cleanHtml = cleanHtml.replace(/^```\s*/, '').replace(/\s*```$/, '');
                 }
+                cleanHtml = sanitizeTranslatedHtml(cleanHtml);
 
-                console.log(`[Auto-Switching Engine] Success via Server "${server.name}" using Key ${sKey.slice(0, 4)}...${sKey.slice(-4)}`);
+                console.log(`[Auto-Switching Engine] Success via Server "${server.name}" (Model: ${candModel}) using Key ${sKey.slice(0, 4)}...${sKey.slice(-4)}`);
                 saveCacheIfApplicable(cleanHtml);
                 return res.json({
                   chunkId,
@@ -924,13 +950,13 @@ ${cleanEnglishText}`;
                   model: candModel,
                   provider: 'gemini',
                   keyUsed: `${sKey.slice(0, 4)}...${sKey.slice(-4)}`,
-                  switchOccurred: isSwitch,
+                  switchOccurred: isSwitch || candModel !== primaryModel,
                   success: true,
                 });
               } catch (mErr: any) {
                 lastCandErr = mErr;
                 const mMsg = String(mErr?.message || mErr);
-                const isTransient =
+                const isTransientOrQuota =
                   mMsg.includes('504') ||
                   mMsg.includes('DEADLINE_EXCEEDED') ||
                   mMsg.includes('Deadline expired') ||
@@ -939,10 +965,16 @@ ${cleanEnglishText}`;
                   mMsg.includes('UNAVAILABLE') ||
                   mMsg.includes('404') ||
                   mMsg.includes('timeout') ||
-                  mMsg.includes('ETIMEDOUT');
-                if (isTransient) {
-                  console.warn(`[Auto-Switching Engine] Transient error (${mMsg.slice(0, 80)}) on ${candModel}. Trying fallback candidate model...`);
-                  await new Promise(r => setTimeout(r, 800));
+                  mMsg.includes('ETIMEDOUT') ||
+                  mMsg.includes('429') ||
+                  mMsg.includes('RESOURCE_EXHAUSTED') ||
+                  mMsg.includes('Quota exceeded') ||
+                  mMsg.includes('limit: 500') ||
+                  mMsg.includes('limit exceeded') ||
+                  mMsg.includes('rate-limits');
+                if (isTransientOrQuota) {
+                  console.warn(`[Auto-Switching Engine] Quota/Transient error (${mMsg.slice(0, 100)}) on ${candModel}. Automatically trying fallback candidate model...`);
+                  await new Promise(r => setTimeout(r, 1000));
                   continue;
                 }
                 throw mErr;
@@ -1127,18 +1159,19 @@ ${cleanEnglishText}`;
     }
   }
 
-  // Fallback model chain in case of temporary 503 high demand on Google servers
+  // Fallback model chain in case of temporary 503 high demand or 429 quota exhaustion on Google servers
   const fallbackChain: Record<string, string[]> = {
-    'gemini-3.5-flash-lite': ['gemini-3.1-flash-lite', 'gemini-3.8-flash', 'gemini-flash-latest'],
-    'gemini-3.1-flash-lite': ['gemini-3.1-flash-lite', 'gemini-3.8-flash', 'gemini-flash-latest'],
-    'gemini-3.8-flash': ['gemini-3.8-flash', 'gemini-3.1-flash-lite', 'gemini-flash-latest'],
-    'gemini-4-argon': ['gemini-4-argon', 'gemini-3.8-flash', 'gemini-3.1-flash-lite'],
-    'gemini-flash-latest': ['gemini-flash-latest', 'gemini-3.8-flash', 'gemini-3.1-flash-lite'],
+    'gemini-3.5-flash-lite': ['gemini-3.5-flash-lite', 'gemini-3.8-flash', 'gemini-3.1-flash-lite', 'gemini-flash-latest', 'gemini-2.5-flash'],
+    'gemini-3.1-flash-lite': ['gemini-3.1-flash-lite', 'gemini-3.8-flash', 'gemini-flash-latest', 'gemini-2.5-flash'],
+    'gemini-3.8-flash': ['gemini-3.8-flash', 'gemini-3.1-flash-lite', 'gemini-flash-latest', 'gemini-2.5-flash'],
+    'gemini-4-argon': ['gemini-4-argon', 'gemini-3.8-flash', 'gemini-3.1-flash-lite', 'gemini-flash-latest'],
+    'gemini-flash-latest': ['gemini-flash-latest', 'gemini-3.8-flash', 'gemini-3.1-flash-lite', 'gemini-2.5-flash'],
+    'gemini-2.5-flash': ['gemini-2.5-flash', 'gemini-3.8-flash', 'gemini-3.1-flash-lite', 'gemini-flash-latest'],
   };
 
-  const allowAutoSwitch = db.getSettings().keyPoolSettings?.allowAutoSwitchOnTranslationFailure === true;
+  const allowAutoSwitch = db.getSettings().keyPoolSettings?.allowAutoSwitchOnTranslationFailure !== false;
   const modelCandidates = allowAutoSwitch
-    ? (fallbackChain[targetModel] || ['gemini-3.1-flash-lite', 'gemini-3.8-flash', 'gemini-flash-latest'])
+    ? (fallbackChain[targetModel] || [targetModel, 'gemini-3.8-flash', 'gemini-3.1-flash-lite', 'gemini-flash-latest', 'gemini-2.5-flash'])
     : [targetModel];
 
   let lastError: any = null;
@@ -1218,7 +1251,10 @@ ${cleanEnglishText}`;
         const isQuotaExceeded =
           errorMessage.includes('429') ||
           errorMessage.includes('RESOURCE_EXHAUSTED') ||
-          errorMessage.includes('Quota exceeded');
+          errorMessage.includes('Quota exceeded') ||
+          errorMessage.includes('limit: 500') ||
+          errorMessage.includes('limit exceeded') ||
+          errorMessage.includes('rate-limits');
 
         const isTransientOrTimeout =
           errorMessage.includes('504') ||
@@ -1236,9 +1272,9 @@ ${cleanEnglishText}`;
           console.warn(`Key ${keyObj.masked} moved to cooldown for 60s.`);
         }
 
-        // If transient error (504 timeout, 503 high demand), switch immediately to next candidate model
-        if (isTransientOrTimeout && mIdx < modelCandidates.length - 1) {
-          console.warn(`Transient/Timeout error detected on ${currentModelCandidate}. Automatically switching to fallback model ${modelCandidates[mIdx + 1]}...`);
+        // If transient or quota exceeded error, switch immediately to next candidate model
+        if ((isTransientOrTimeout || isQuotaExceeded) && mIdx < modelCandidates.length - 1) {
+          console.warn(`Quota or Transient error detected on ${currentModelCandidate}. Automatically switching to fallback model ${modelCandidates[mIdx + 1]}...`);
           await new Promise(r => setTimeout(r, 1000));
           break; // Exit inner loop and try next model in modelCandidates
         }
@@ -1268,8 +1304,8 @@ ${cleanEnglishText}`;
     friendlyError = 'پایان مهلت زمان اتصال به سرور جمینای (خطای ۵۰۴ - DEADLINE_EXCEEDED). این مورد ناشی از کندی موقت گیت‌وی است؛ سامانه به صورت خودکار با مدل‌های سریع‌تر جایگزین را امتحان می‌کند.';
   } else if (errText.includes('503') || errText.includes('high demand') || errText.includes('UNAVAILABLE')) {
     friendlyError = 'سرورهای هوش مصنوعی در حال حاضر دچار ترافیک بالای موقت (کد ۵۰۳) هستند. لطفاً لحظاتی دیگر مجدداً تلاش فرمایید یا مدل دیگری را از بالای صفحه انتخاب نمایید.';
-  } else if (errText.includes('429') || errText.includes('Quota exceeded')) {
-    friendlyError = 'سهمیه مجاز درخواست‌های کلید موقتاً به پایان رسیده است. پس از گذشت یک دقیقه به طور خودکار آزاد می‌شود.';
+  } else if (errText.includes('429') || errText.includes('RESOURCE_EXHAUSTED') || errText.includes('Quota exceeded') || errText.includes('limit: 500')) {
+    friendlyError = 'سقف سهمیه درخواست روزانه این مدل در اکانت رایگان پر شده است (429 Quota Exceeded). سامانه مدل‌های جایگزین را نیز بررسی نمود. با کلیک بر روی «ترجمه مجدد صفحات خطادار» می‌توانید دقایقی دیگر مجدداً تلاش فرمایید یا کلید جدید اضافه نمایید.';
   }
 
   return res.status(500).json({

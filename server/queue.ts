@@ -43,14 +43,38 @@ function cleanChapterTitle(title: string): string {
     .trim() || 'فصل کتاب';
 }
 
+function stripBookUrls(html: string): string {
+  if (!html) return '';
+  let cleaned = html;
+  cleaned = cleaned.replace(/<a\s+[^>]*href=["'][^"']*["'][^>]*>\s*https?:\/\/[^\s<]+<\/a>/gi, '');
+  cleaned = cleaned.replace(/<a\s+[^>]*href=["'][^"']*["'][^>]*>\s*www\.[^\s<]+<\/a>/gi, '');
+  cleaned = cleaned.replace(/<a\s+[^>]*href=["'][^"']*["'][^>]*>([\s\S]*?)<\/a>/gi, '$1');
+  cleaned = cleaned.replace(/https?:\/\/[^\s<>"'\)]+/gi, '');
+  cleaned = cleaned.replace(/(?:^|\s)(?:www\.)[a-z0-9\-]+(?:\.[a-z0-9\-]+)+(?:\/[^\s<>"'\)]*)?/gi, ' ');
+  cleaned = cleaned.replace(/\(\s*\)/g, '');
+  cleaned = cleaned.replace(/\[\s*\]/g, '');
+  cleaned = cleaned.replace(/\s{2,}/g, ' ');
+  return cleaned.trim();
+}
+
 function sanitizeTranslatedHtml(html: string): string {
   if (!html) return '';
-  return html
+  let clean = stripBookUrls(html)
     .replace(/<span style="[^"]*#9b2c2c[^"]*"[^>]*>([\s\S]*?)<\/span>/gi, '$1')
     .replace(/<h[1-3][^>]*>\s*مقدمه و بخش نخست\s*(?:\([^\)]*\))?\s*<\/h[1-3]>/gi, '')
     .replace(/<h[1-3][^>]*>[^<]*[\(\[\{]\s*بخش\s*[0-9۰-۹IVXLCDMivxlcdm]+\s*[\)\]\}][^<]*<\/h[1-3]>/gi, '')
     .replace(/<p[^>]*>\s*[\(\[\{]?\s*بخش\s*[0-9۰-۹IVXLCDMivxlcdm]+\s*[\)\]\}]?\s*<\/p>/gi, '')
     .trim();
+
+  // Enhance footnotes or notes paragraphs
+  clean = clean.replace(
+    /<p([^>]*)>\s*(\[[0-9۰-۹IVXLCDMivxlcdm]+\]|\([0-9۰-۹IVXLCDMivxlcdm]+\)|(?:پانویس|پاورقی|پی‌نوشت|یادداشت)\s*[:：]|\b[0-9۰-۹]+\s*[-–.]\s*)([\s\S]*?)<\/p>/gi,
+    (match, attrs, num, content) => {
+      return `<div class="book-footnote"><span class="book-footnote-badge">${num}</span> <span class="book-footnote-text">${content}</span></div>`;
+    }
+  );
+
+  return clean;
 }
 
 // User-to-Key sticky map to ensure different users get assigned different keys
@@ -466,18 +490,70 @@ export class QueueManager {
       }
     }
 
-    // Check final status
-    const allCompleted = book.chunks.every(c => c.status === 'completed');
+    // --- AUTOMATIC RECOVERY PASS ---
+    // If any chunks failed or ended up empty, automatically retry them before declaring job finished
+    const failedChunks = book.chunks.filter(c => c.status !== 'completed' || !c.translatedHtml);
+    const freshJobState = db.getJobById(job.id);
+    if (failedChunks.length > 0 && freshJobState?.status !== 'stopped') {
+      console.log(`[QueueWorker] Automatic Recovery Pass: Retrying ${failedChunks.length} failed/empty chunks for book "${book.title}"...`);
+      await new Promise(r => setTimeout(r, 3500)); // Brief pause for cooldowns / rate limits
+
+      for (let rIdx = 0; rIdx < failedChunks.length; rIdx++) {
+        const chunk = failedChunks[rIdx];
+        const checkJob = db.getJobById(job.id);
+        if (checkJob?.status === 'stopped') break;
+
+        console.log(`[QueueWorker] Recovery attempt for chunk ${chunk.chunkNumber} (${chunk.chapterTitle})...`);
+        const activeKey = this.getKeyForUser(job.userId);
+        if (!activeKey) break;
+
+        try {
+          const translatedHtml = await this.translateChunkWithAi(
+            chunk.englishText,
+            book,
+            activeKey,
+            chunk.chunkNumber
+          );
+          if (translatedHtml && translatedHtml.trim().length > 0) {
+            chunk.translatedHtml = translatedHtml;
+            chunk.status = 'completed';
+            chunk.errorMessage = undefined;
+            chunk.translatedAt = Date.now();
+            console.log(`[QueueWorker] Recovery SUCCESS for chunk ${chunk.chunkNumber}!`);
+            db.saveBook(book);
+          }
+        } catch (recErr: any) {
+          console.warn(`[QueueWorker] Recovery retry failed for chunk ${chunk.chunkNumber}:`, recErr.message);
+        }
+        await new Promise(r => setTimeout(r, 2000));
+      }
+    }
+
+    // Check final status based on actual completed chunks
+    const completedCount = book.chunks.filter(c => c.status === 'completed' && c.translatedHtml).length;
+    const totalCount = book.chunks.length;
+    const allCompleted = completedCount === totalCount && totalCount > 0;
+
     if (allCompleted) {
       job.status = 'completed';
       job.progressPercent = 100;
       job.completedAt = Date.now();
+      job.error = undefined;
       book.status = 'completed';
-      console.log(`[QueueWorker] Book "${book.title}" successfully completed!`);
+      console.log(`[QueueWorker] Book "${book.title}" successfully completed! (100%)`);
+    } else if (completedCount > 0) {
+      job.status = 'completed';
+      job.progressPercent = Math.round((completedCount / totalCount) * 100);
+      job.completedAt = Date.now();
+      job.error = `${totalCount - completedCount} بخش به دلیل محدودیت سهمیه ترجمه نشدند. می‌توانید با دکمه «ترجمه مجدد صفحات خطادار» آن‌ها را تکمیل فرمایید.`;
+      book.status = 'completed';
+      console.log(`[QueueWorker] Book "${book.title}" partially completed: ${completedCount}/${totalCount}`);
     } else {
-      const anyDone = book.chunks.some(c => c.status === 'completed');
-      job.status = anyDone ? 'completed' : 'failed';
-      book.status = anyDone ? 'completed' : 'error';
+      job.status = 'failed';
+      job.progressPercent = 0;
+      job.error = 'تمام بخش‌ها به دلیل محدودیت سهمیه یا خطای سرور با خطا مواجه شدند.';
+      book.status = 'error';
+      console.log(`[QueueWorker] Book "${book.title}" failed.`);
     }
 
     db.saveJob(job);
@@ -519,7 +595,8 @@ ${dedicatedCachePrompt ? `\n${dedicatedCachePrompt}` : ''}
 [CRITICAL INSTRUCTION]
 1. Translate every paragraph and dialogue in full from ${sourceLangName} into fluent, natural, and publication-ready ${targetLangName} without omission, censorship, or summary.
 2. Do NOT invent or output artificial chunk numbers or section labels such as "بخش ۱", "بخش ۲", "(بخش ۱)", "Part 1", etc.
-${dedicatedCachePrompt ? '3. Maintain 100% naming, stylistic, and rhythmic continuity with the dedicated book context cache provided above.' : ''}
+3. Do NOT output raw website URLs or internet hyperlinks (e.g. https://... or www....). Book printing strictly prohibits raw URL clutter.
+${dedicatedCachePrompt ? '4. Maintain 100% naming, stylistic, and rhythmic continuity with the dedicated book context cache provided above.' : ''}
 
 [INPUT TEXT TO TRANSLATE]
 ${cleanEnglish}`;
@@ -532,14 +609,15 @@ ${cleanEnglish}`;
         httpOptions: { headers: { 'User-Agent': 'aistudio-build' }, timeout: 55000 },
       });
 
-      const allowAutoSwitch = db.getSettings().keyPoolSettings?.allowAutoSwitchOnTranslationFailure === true;
-      const requestedModel = keyConfig.model || 'gemini-3.1-flash-lite';
+      const allowAutoSwitch = db.getSettings().keyPoolSettings?.allowAutoSwitchOnTranslationFailure !== false;
+      const requestedModel = keyConfig.model || 'gemini-3.8-flash';
       const candModels = allowAutoSwitch
         ? Array.from(new Set([
             requestedModel,
-            'gemini-3.1-flash-lite',
             'gemini-3.8-flash',
+            'gemini-3.1-flash-lite',
             'gemini-flash-latest',
+            'gemini-2.5-flash',
           ]))
         : [requestedModel];
 
@@ -569,10 +647,16 @@ ${cleanEnglish}`;
             msg.includes('404') ||
             msg.includes('UNAVAILABLE') ||
             msg.includes('timeout') ||
-            msg.includes('ETIMEDOUT');
+            msg.includes('ETIMEDOUT') ||
+            msg.includes('429') ||
+            msg.includes('RESOURCE_EXHAUSTED') ||
+            msg.includes('Quota exceeded') ||
+            msg.includes('limit: 500') ||
+            msg.includes('limit exceeded') ||
+            msg.includes('rate-limits');
           if (isTransient) {
-            console.warn(`[QueueWorker] Transient error on ${m}: ${msg.slice(0, 80)}. Trying fallback model...`);
-            await new Promise(r => setTimeout(r, 1000));
+            console.warn(`[QueueWorker] Transient or Quota error on ${m}: ${msg.slice(0, 100)}. Trying fallback model...`);
+            await new Promise(r => setTimeout(r, 1200));
             continue;
           }
           throw mErr;

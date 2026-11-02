@@ -73,11 +73,99 @@ export function formatToDistinctParagraphs(html: string): string {
 }
 
 /**
- * Removes any artificial chunk headers injected by AI models into HTML
+ * Strips raw URLs and ugly hyperlinks from book text.
+ * Books should not contain printed raw URLs like https://... or giant links.
+ * Descriptive anchor texts like <a href="...">متن</a> are retained as clean plain text.
+ */
+export function stripBookUrls(html: string): string {
+  if (!html) return '';
+  let cleaned = html;
+
+  // 1. If anchor tag text itself is a URL, remove the whole anchor tag
+  cleaned = cleaned.replace(/<a\s+[^>]*href=["'][^"']*["'][^>]*>\s*https?:\/\/[^\s<]+<\/a>/gi, '');
+  cleaned = cleaned.replace(/<a\s+[^>]*href=["'][^"']*["'][^>]*>\s*www\.[^\s<]+<\/a>/gi, '');
+
+  // 2. If anchor tag has descriptive text, keep only the descriptive text and drop the <a> link wrapper
+  cleaned = cleaned.replace(/<a\s+[^>]*href=["'][^"']*["'][^>]*>([\s\S]*?)<\/a>/gi, '$1');
+
+  // 3. Remove raw URLs in plain text: https://... or http://...
+  cleaned = cleaned.replace(/https?:\/\/[^\s<>"'\)]+/gi, '');
+
+  // 4. Remove www.... links in plain text
+  cleaned = cleaned.replace(/(?:^|\s)(?:www\.)[a-z0-9\-]+(?:\.[a-z0-9\-]+)+(?:\/[^\s<>"'\)]*)?/gi, ' ');
+
+  // 5. Clean up any leftover empty parentheses or brackets like () or [] or [ ]
+  cleaned = cleaned.replace(/\(\s*\)/g, '');
+  cleaned = cleaned.replace(/\[\s*\]/g, '');
+  cleaned = cleaned.replace(/\s{2,}/g, ' ');
+
+  return cleaned.trim();
+}
+
+/**
+ * Detects whether a book chunk represents a Reference, Bibliography, or Sources section
+ * (typically located at the end of the book).
+ */
+export function isReferenceOrBibliographyChunk(chunk: { chapterTitle?: string; englishText?: string; translatedHtml?: string }): boolean {
+  if (!chunk) return false;
+  const title = (chunk.chapterTitle || '').toLowerCase();
+  const keywords = [
+    'references',
+    'bibliography',
+    'works cited',
+    'sources',
+    'further reading',
+    'notes and references',
+    'منابع',
+    'مآخذ',
+    'منابع و مآخذ',
+    'فهرست منابع',
+    'پی‌نوشت‌ها',
+    'پی‌نوشت',
+    'پاورقی‌ها',
+    'یادداشت‌های پایانی',
+    'یادداشت‌ها',
+    'مراجع',
+  ];
+  if (keywords.some(kw => title.includes(kw))) return true;
+
+  // If text or html starts with references or bibliography
+  const snippet = ((chunk.translatedHtml || chunk.englishText || '').slice(0, 200)).toLowerCase();
+  return keywords.some(kw => snippet.includes(kw));
+}
+
+/**
+ * Formats footnotes, endnotes, and references into distinct, publication-grade styling.
+ * Applies separator lines, smaller readable font, and distinct numbering badges.
+ */
+export function formatFootnotesAndReferences(html: string): string {
+  if (!html) return '';
+  let formatted = html;
+
+  // Enhance footnotes or notes paragraphs
+  // E.g. <p>[1] ...</p> or <p>[۱] ...</p> or <p>پاورقی: ...</p> or <p>1. ...</p>
+  formatted = formatted.replace(
+    /<p([^>]*)>\s*(\[[0-9۰-۹IVXLCDMivxlcdm]+\]|\([0-9۰-۹IVXLCDMivxlcdm]+\)|(?:پانویس|پاورقی|پی‌نوشت|یادداشت)\s*[:：]|\b[0-9۰-۹]+\s*[-–.]\s*)([\s\S]*?)<\/p>/gi,
+    (match, attrs, num, content) => {
+      // If content is substantial, render as an elegant distinctive footnote
+      return `<div class="book-footnote"><span class="book-footnote-badge">${num}</span> <span class="book-footnote-text">${content}</span></div>`;
+    }
+  );
+
+  return formatted;
+}
+
+/**
+ * Removes any artificial chunk headers injected by AI models into HTML, strips raw URLs,
+ * and formats footnotes for elegant book typography.
  */
 export function sanitizeTranslatedHtml(html: string): string {
   if (!html) return '';
-  let sanitized = html
+
+  // Strip ugly raw URLs and hyperlinks from book text
+  let sanitized = stripBookUrls(html);
+
+  sanitized = sanitized
     .replace(/<span[^>]*style=["'][^"']*#(?:9b2c2c|c53030|e53e3e)[^"']*["'][^>]*>([\s\S]*?)<\/span>/gi, '$1')
     .replace(/<span[^>]*class=["'][^"']*highlight[^"']*["'][^>]*>([\s\S]*?)<\/span>/gi, '$1')
     .replace(/<h[1-3][^>]*>\s*مقدمه و بخش نخست\s*(?:\([^\)]*\))?\s*<\/h[1-3]>/gi, '')
@@ -102,6 +190,9 @@ export function sanitizeTranslatedHtml(html: string): string {
       return wholeMatch;
     }
   );
+
+  // Format footnotes and references into distinct publication styling
+  sanitized = formatFootnotesAndReferences(sanitized);
 
   return sanitized;
 }

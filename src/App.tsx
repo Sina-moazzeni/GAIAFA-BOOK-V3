@@ -1046,7 +1046,7 @@ export default function App() {
     }
   };
 
-  // Batch translate inside workspace with graceful per-chunk stop and wallet check
+  // Batch translate inside workspace with graceful per-chunk stop, wallet check, and automatic recovery pass
   const handleBatchTranslate = async () => {
     const pending = project.chunks.filter((c) => c.status !== 'completed');
     if (pending.length === 0) {
@@ -1084,6 +1084,70 @@ export default function App() {
 
       // Safe pause between calls only when translation is continuing
       await new Promise((r) => setTimeout(r, 1800));
+    }
+
+    // --- AUTOMATIC RECOVERY PASS ---
+    // If not stopped by user, check if any chunks failed and retry them automatically once
+    if (!isBatchCancelledRef.current) {
+      await new Promise((r) => setTimeout(r, 2500));
+      const latestBook = books.find((b) => b.id === project.id);
+      const chunksToCheck = latestBook?.chunks || project.chunks;
+      const failedToRetry = chunksToCheck.filter(
+        (c) => c.status === 'error' || (!c.translatedHtml && c.status !== 'completed' && !c.isExcludedFromBook)
+      );
+
+      if (failedToRetry.length > 0) {
+        console.log(`[BatchTranslate] Automatic Recovery Pass: Retrying ${failedToRetry.length} failed chunks...`);
+        setBatchProgress({ current: 0, total: failedToRetry.length, secondsToNextCall: 0 });
+
+        for (let rIdx = 0; rIdx < failedToRetry.length; rIdx++) {
+          if (isBatchCancelledRef.current) break;
+          const fc = failedToRetry[rIdx];
+          setActiveChunkId(fc.id);
+          setBatchProgress({ current: rIdx + 1, total: failedToRetry.length, secondsToNextCall: 0 });
+          await translateSingleChunk(fc.id);
+          if (isBatchCancelledRef.current) break;
+          await new Promise((r) => setTimeout(r, 2200));
+        }
+      }
+    }
+
+    setIsStoppingBatch(false);
+    setIsBatchTranslating(false);
+  };
+
+  // Re-translate only failed chunks
+  const handleRetryFailedChunks = async () => {
+    const failed = project.chunks.filter(
+      (c) => c.status === 'error' || (!c.translatedHtml && c.status !== 'completed' && !c.isExcludedFromBook)
+    );
+    if (failed.length === 0) {
+      alert('هیچ صفحه‌ای با وضعیت خطا وجود ندارد.');
+      return;
+    }
+
+    setIsBatchTranslating(true);
+    setIsStoppingBatch(false);
+    isBatchCancelledRef.current = false;
+    setBatchProgress({ current: 0, total: failed.length, secondsToNextCall: 0 });
+
+    for (let i = 0; i < failed.length; i++) {
+      if (isBatchCancelledRef.current) break;
+      const c = failed[i];
+
+      const requiredCost = Math.round((c.wordCount || 100) * costPerWord);
+      if (currentUser && currentUser.role !== 'admin' && (currentUser.walletBalance || 0) < requiredCost) {
+        alert(`موجودی کیف پول شما برای ادامه ترجمه ناکافی است (${(currentUser.walletBalance || 0).toLocaleString('fa-IR')} تومان).`);
+        setIsWalletModalOpen(true);
+        break;
+      }
+
+      setActiveChunkId(c.id);
+      setBatchProgress({ current: i + 1, total: failed.length, secondsToNextCall: 0 });
+      await translateSingleChunk(c.id);
+
+      if (isBatchCancelledRef.current) break;
+      await new Promise((r) => setTimeout(r, 2000));
     }
 
     setIsStoppingBatch(false);
@@ -1429,6 +1493,7 @@ export default function App() {
                 setIsAddPageModalOpen(true);
               }}
               isLoadingChunks={loadingWorkspaceBookId === activeBookId}
+              onRetryFailedChunks={handleRetryFailedChunks}
             />
           </div>
 
@@ -1437,6 +1502,7 @@ export default function App() {
               currentChunk={currentChunk}
               project={project}
               isLoadingChunks={loadingWorkspaceBookId === activeBookId}
+              onRetryFailedChunks={handleRetryFailedChunks}
               onUpdateChunkHtml={(chunkId: string, newHtml: string) => {
                 const updated = project.chunks.map((c) =>
                   c.id === chunkId ? { ...c, translatedHtml: newHtml } : c
@@ -1529,6 +1595,8 @@ export default function App() {
         project={project}
         onUpdateDesign={(config) => handleUpdateProject({ ...project, designConfig: config })}
         onPrintPdf={() => window.print()}
+        onUpdateProject={handleUpdateProject}
+        onDeleteChunk={handleDeleteChunk}
       />
 
       <TokenEstimatorModal

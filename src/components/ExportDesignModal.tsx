@@ -25,11 +25,15 @@ import {
   CheckSquare,
   Square,
   Trash2,
-  Filter
+  Filter,
+  ChevronDown,
+  ChevronUp,
+  Link2Off,
+  Search
 } from 'lucide-react';
 import { BookProject, BookDesignConfig, BookThemeId, BorderStyleId, BackgroundPatternId, CustomColorPalette } from '../types.ts';
 import { BOOK_THEMES, BORDER_STYLES, BACKGROUND_PATTERNS, DEFAULT_DESIGN_CONFIG, BOOK_TRIM_SIZES } from '../constants/themes.ts';
-import { downloadDocx, downloadWordHtml, downloadStyledHtml, downloadPlainText, cleanChapterTitle } from '../utils/exporter.ts';
+import { downloadDocx, downloadWordHtml, downloadStyledHtml, downloadPlainText, cleanChapterTitle, isReferenceOrBibliographyChunk, stripBookUrls } from '../utils/exporter.ts';
 
 interface ExportDesignModalProps {
   isOpen: boolean;
@@ -37,6 +41,8 @@ interface ExportDesignModalProps {
   project: BookProject;
   onUpdateDesign: (config: BookDesignConfig) => void;
   onPrintPdf: () => void;
+  onUpdateProject?: (updated: BookProject) => void;
+  onDeleteChunk?: (chunkId: string) => void;
 }
 
 const STORAGE_GLOBAL_DESIGN = 'persian_book_translator_global_design_v1';
@@ -47,6 +53,8 @@ export const ExportDesignModal: React.FC<ExportDesignModalProps> = ({
   project,
   onUpdateDesign,
   onPrintPdf,
+  onUpdateProject,
+  onDeleteChunk,
 }) => {
   // Load saved global default if project does not have one
   const getInitialConfig = (): BookDesignConfig => {
@@ -168,6 +176,10 @@ export const ExportDesignModal: React.FC<ExportDesignModalProps> = ({
   });
   const [pageNumberInput, setPageNumberInput] = useState('');
   const [pageExcludeFeedback, setPageExcludeFeedback] = useState<string | null>(null);
+  const [inspectingChunkId, setInspectingChunkId] = useState<string | null>(null);
+  const [pageSearchQuery, setPageSearchQuery] = useState<string>('');
+  const [pageFilterType, setPageFilterType] = useState<'all' | 'included' | 'excluded' | 'references'>('all');
+  const [inspectingLangTab, setInspectingLangTab] = useState<'fa' | 'en'>('fa');
 
   const [activeTab, setActiveTab] = useState<'themes' | 'cover' | 'colors' | 'headers' | 'typography' | 'pages'>('themes');
   const [isExportingDocx, setIsExportingDocx] = useState(false);
@@ -289,6 +301,43 @@ export const ExportDesignModal: React.FC<ExportDesignModalProps> = ({
     } else {
       setExcludedChunkIds(prev => Array.from(new Set([...prev, ...emptyIds])));
       setPageExcludeFeedback(`✓ تعداد ${emptyIds.length} صفحه خالی از خروجی PDF حذف گردید.`);
+    }
+    setTimeout(() => setPageExcludeFeedback(null), 3500);
+  };
+
+  const referenceChunks = (project.chunks || []).filter(c => isReferenceOrBibliographyChunk(c));
+  const referenceChunksCount = referenceChunks.length;
+
+  const handleExcludeReferences = () => {
+    if (referenceChunksCount === 0) {
+      setPageExcludeFeedback('هیچ بخش منابع، مآخذ یا رفرنسی در این کتاب یافت نشد.');
+    } else {
+      const refIds = referenceChunks.map(c => c.id);
+      setExcludedChunkIds(prev => Array.from(new Set([...prev, ...refIds])));
+      setPageExcludeFeedback(`✓ تعداد ${referenceChunksCount} بخش رفرنس و منابع پایان کتاب با موفقیت از خروجی PDF حذف گردید.`);
+    }
+    setTimeout(() => setPageExcludeFeedback(null), 4000);
+  };
+
+  const handleStripAllUrls = () => {
+    if (!onUpdateProject) return;
+    let count = 0;
+    const updatedChunks = (project.chunks || []).map(c => {
+      if (c.translatedHtml && (c.translatedHtml.includes('http') || c.translatedHtml.includes('www.') || c.translatedHtml.includes('<a '))) {
+        count++;
+        return {
+          ...c,
+          translatedHtml: stripBookUrls(c.translatedHtml),
+        };
+      }
+      return c;
+    });
+
+    if (count > 0) {
+      onUpdateProject({ ...project, chunks: updatedChunks });
+      setPageExcludeFeedback(`✓ تمام لینک‌ها و آدرس‌های اینترنتی از ${count} صفحه کتاب پاکسازی شدند.`);
+    } else {
+      setPageExcludeFeedback('هیچ لینک یا URL اینترنتی در صفحات کتاب وجود نداشت.');
     }
     setTimeout(() => setPageExcludeFeedback(null), 3500);
   };
@@ -1894,6 +1943,32 @@ export const ExportDesignModal: React.FC<ExportDesignModalProps> = ({
                       <span>حذف صفحات خالی و ترجمه‌نشده</span>
                     </button>
 
+                    {/* Dedicated Button to Exclude End-of-Book References */}
+                    {referenceChunksCount > 0 && (
+                      <button
+                        type="button"
+                        onClick={handleExcludeReferences}
+                        className="px-2.5 py-1.5 rounded-xl text-[11px] font-bold bg-purple-600 hover:bg-purple-500 text-white transition flex items-center gap-1.5 shadow-sm"
+                        title="حذف خودکار تمام بخش‌های منابع، مآخذ و پی‌نوشت‌ها از خروجی نهایی PDF"
+                      >
+                        <BookOpen className="w-3.5 h-3.5" />
+                        <span>حذف رفرنس‌ها و منابع پایان کتاب ({referenceChunksCount} بخش)</span>
+                      </button>
+                    )}
+
+                    {/* Clean URLs from Book Text */}
+                    {onUpdateProject && (
+                      <button
+                        type="button"
+                        onClick={handleStripAllUrls}
+                        className="px-2.5 py-1.5 rounded-xl text-[11px] font-bold bg-slate-800 hover:bg-slate-750 text-amber-300 border border-slate-700 transition flex items-center gap-1.5 shadow-sm"
+                        title="حذف کامل تمام لینک‌ها و آدرس‌های اینترنتی چاپ‌شده وسط متن کتاب"
+                      >
+                        <Link2Off className="w-3.5 h-3.5 text-amber-400" />
+                        <span>پاکسازی تمام لینک‌ها و URLها از متن</span>
+                      </button>
+                    )}
+
                     {excludedChunkIds.length > 0 && (
                       <span className="text-[11px] text-rose-400 font-bold mr-auto">
                         {excludedChunkIds.length} صفحه از خروجی نهایی حذف شده است
@@ -1902,88 +1977,268 @@ export const ExportDesignModal: React.FC<ExportDesignModalProps> = ({
                   </div>
                 </div>
 
-                {/* Interactive Pages List */}
-                <div className="bg-slate-850 p-3 sm:p-4 rounded-2xl border border-slate-750 space-y-2 text-xs">
-                  <div className="text-slate-400 font-semibold mb-2 flex items-center justify-between">
-                    <span>فهرست تمام صفحات و بخش‌های کتاب:</span>
-                    <span className="text-[10px]">برای حذف یا اضافه کردن هر صفحه روی ردیف آن کلیک کنید</span>
-                  </div>
+                {/* Interactive Pages List with Live Inspection */}
+                <div className="bg-slate-850 p-3 sm:p-4 rounded-2xl border border-slate-750 space-y-3 text-xs">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-750 pb-2">
+                    <div>
+                      <span className="text-white font-bold block">فهرست بخش‌ها و صفحات کتاب:</span>
+                      <span className="text-[10px] text-slate-400">برای مشاهده و بررسی دقیق متن هر صفحه، روی ردیف آن کلیک نمایید.</span>
+                    </div>
 
-                  <div className="space-y-1.5 max-h-[380px] overflow-y-auto pr-1">
-                    {(project.chunks || []).map((chunk, idx) => {
-                      const isExcluded = excludedChunkIds.includes(chunk.id);
-                      const hasTranslation = Boolean(chunk.translatedHtml && chunk.translatedHtml.trim().length > 0);
-
-                      return (
-                        <div
-                          key={chunk.id}
-                          onClick={() => handleToggleChunkExcluded(chunk.id)}
-                          className={`p-2.5 rounded-xl border transition cursor-pointer flex items-center justify-between gap-3 ${
-                            isExcluded
-                              ? 'bg-rose-950/20 border-rose-500/30 opacity-70 hover:opacity-100 hover:border-rose-500/60'
-                              : 'bg-slate-900 border-slate-750 hover:border-slate-600'
+                    {/* Filter Pills */}
+                    <div className="flex items-center gap-1 bg-slate-900 p-1 rounded-xl border border-slate-750 text-[10px]">
+                      <button
+                        type="button"
+                        onClick={() => setPageFilterType('all')}
+                        className={`px-2 py-0.5 rounded-lg transition ${
+                          pageFilterType === 'all' ? 'bg-indigo-600 text-white font-bold' : 'text-slate-400 hover:text-white'
+                        }`}
+                      >
+                        همه ({(project.chunks || []).length})
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setPageFilterType('included')}
+                        className={`px-2 py-0.5 rounded-lg transition ${
+                          pageFilterType === 'included' ? 'bg-emerald-600 text-white font-bold' : 'text-slate-400 hover:text-white'
+                        }`}
+                      >
+                        شامل در PDF ({(project.chunks || []).length - excludedChunkIds.length})
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setPageFilterType('excluded')}
+                        className={`px-2 py-0.5 rounded-lg transition ${
+                          pageFilterType === 'excluded' ? 'bg-rose-600 text-white font-bold' : 'text-slate-400 hover:text-white'
+                        }`}
+                      >
+                        حذف‌شده ({excludedChunkIds.length})
+                      </button>
+                      {referenceChunksCount > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => setPageFilterType('references')}
+                          className={`px-2 py-0.5 rounded-lg transition ${
+                            pageFilterType === 'references' ? 'bg-purple-600 text-white font-bold' : 'text-purple-400 hover:text-purple-300'
                           }`}
                         >
-                          <div className="flex items-center gap-2.5 min-w-0">
-                            <input
-                              type="checkbox"
-                              checked={!isExcluded}
-                              onChange={() => handleToggleChunkExcluded(chunk.id)}
-                              onClick={e => e.stopPropagation()}
-                              className="w-4 h-4 rounded border-slate-700 bg-slate-800 text-indigo-600 focus:ring-0 shrink-0"
-                            />
+                          منابع و رفرنس‌ها ({referenceChunksCount})
+                        </button>
+                      )}
+                    </div>
+                  </div>
 
-                            <span className="font-mono font-bold text-xs px-2 py-0.5 rounded bg-slate-800 text-slate-300 shrink-0">
-                              صفحه {chunk.chunkNumber || idx + 1}
-                            </span>
+                  {/* Search within chunks */}
+                  <div className="relative">
+                    <Search className="w-3.5 h-3.5 text-slate-500 absolute right-3 top-2.5" />
+                    <input
+                      type="text"
+                      value={pageSearchQuery}
+                      onChange={e => setPageSearchQuery(e.target.value)}
+                      placeholder="جستجو در عنوان یا متن صفحات برای یافتن سریع..."
+                      className="w-full bg-slate-900 border border-slate-750 rounded-xl pr-8 pl-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"
+                    />
+                  </div>
 
-                            <div className="min-w-0 truncate">
-                              <div className={`font-semibold truncate text-xs ${isExcluded ? 'line-through text-slate-500' : 'text-white'}`}>
-                                {cleanChapterTitle(chunk.chapterTitle)}
+                  <div className="space-y-2 max-h-[420px] overflow-y-auto pr-1">
+                    {(project.chunks || [])
+                      .filter(chunk => {
+                        const isExcluded = excludedChunkIds.includes(chunk.id);
+                        const isRef = isReferenceOrBibliographyChunk(chunk);
+                        if (pageFilterType === 'included' && isExcluded) return false;
+                        if (pageFilterType === 'excluded' && !isExcluded) return false;
+                        if (pageFilterType === 'references' && !isRef) return false;
+                        if (pageSearchQuery.trim()) {
+                          const q = pageSearchQuery.toLowerCase();
+                          const matchTitle = (chunk.chapterTitle || '').toLowerCase().includes(q);
+                          const matchText = (chunk.englishText || '').toLowerCase().includes(q);
+                          const matchFa = (chunk.translatedHtml || '').toLowerCase().includes(q);
+                          const matchNum = String(chunk.chunkNumber).includes(q);
+                          if (!matchTitle && !matchText && !matchFa && !matchNum) return false;
+                        }
+                        return true;
+                      })
+                      .map((chunk, idx) => {
+                        const isExcluded = excludedChunkIds.includes(chunk.id);
+                        const isInspecting = inspectingChunkId === chunk.id;
+                        const isRef = isReferenceOrBibliographyChunk(chunk);
+                        const hasTranslation = Boolean(chunk.translatedHtml && chunk.translatedHtml.trim().length > 0);
+
+                        return (
+                          <div
+                            key={chunk.id}
+                            className={`rounded-2xl border transition overflow-hidden ${
+                              isExcluded
+                                ? 'bg-rose-950/20 border-rose-500/30'
+                                : 'bg-slate-900 border-slate-750 hover:border-slate-650'
+                            }`}
+                          >
+                            {/* Row Header */}
+                            <div
+                              onClick={() => setInspectingChunkId(prev => prev === chunk.id ? null : chunk.id)}
+                              className="p-3 cursor-pointer flex items-center justify-between gap-3 select-none"
+                            >
+                              <div className="flex items-center gap-2.5 min-w-0">
+                                <input
+                                  type="checkbox"
+                                  checked={!isExcluded}
+                                  onChange={() => handleToggleChunkExcluded(chunk.id)}
+                                  onClick={e => e.stopPropagation()}
+                                  className="w-4 h-4 rounded border-slate-700 bg-slate-800 text-indigo-600 focus:ring-0 shrink-0"
+                                />
+
+                                <span className="font-mono font-bold text-xs px-2 py-0.5 rounded bg-slate-800 text-slate-300 shrink-0">
+                                  صفحه {chunk.chunkNumber || idx + 1}
+                                </span>
+
+                                <div className="min-w-0 truncate">
+                                  <div className="flex items-center gap-2">
+                                    <span className={`font-semibold truncate text-xs ${isExcluded ? 'line-through text-slate-500' : 'text-white'}`}>
+                                      {cleanChapterTitle(chunk.chapterTitle)}
+                                    </span>
+                                    {isRef && (
+                                      <span className="px-1.5 py-0.2 rounded bg-purple-500/20 text-purple-300 text-[10px] font-bold border border-purple-500/30 shrink-0">
+                                        بخش منابع / رفرنس
+                                      </span>
+                                    )}
+                                  </div>
+                                  <div className="text-[10px] text-slate-400 truncate max-w-md mt-0.5">
+                                    {chunk.englishText.slice(0, 60)}...
+                                  </div>
+                                </div>
                               </div>
-                              <div className="text-[10px] text-slate-400 truncate max-w-sm">
-                                {chunk.englishText.slice(0, 50)}...
+
+                              <div className="flex items-center gap-2 shrink-0">
+                                <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${
+                                  hasTranslation
+                                    ? 'bg-emerald-500/10 text-emerald-300 border border-emerald-500/20'
+                                    : 'bg-slate-800 text-slate-500 border border-slate-700'
+                                }`}>
+                                  {hasTranslation ? `${chunk.wordCount || 0} کلمه` : 'ترجمه‌نشده'}
+                                </span>
+
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleToggleChunkExcluded(chunk.id);
+                                  }}
+                                  className={`px-2 py-1 rounded-lg text-[10px] font-bold transition flex items-center gap-1 ${
+                                    isExcluded
+                                      ? 'bg-rose-500/20 text-rose-300 border border-rose-500/40 hover:bg-rose-500/30'
+                                      : 'bg-slate-800 text-slate-300 hover:text-white border border-slate-700'
+                                  }`}
+                                >
+                                  {isExcluded ? (
+                                    <>
+                                      <EyeOff className="w-3 h-3 text-rose-400" />
+                                      <span className="hidden sm:inline">حذف از PDF</span>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <Check className="w-3 h-3 text-emerald-400" />
+                                      <span className="hidden sm:inline">چاپ در PDF</span>
+                                    </>
+                                  )}
+                                </button>
+
+                                <span className="p-1 rounded text-slate-400 hover:text-white transition">
+                                  {isInspecting ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                                </span>
                               </div>
                             </div>
-                          </div>
 
-                          <div className="flex items-center gap-2 shrink-0">
-                            <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${
-                              hasTranslation
-                                ? 'bg-emerald-500/10 text-emerald-300 border border-emerald-500/20'
-                                : 'bg-slate-800 text-slate-500 border border-slate-700'
-                            }`}>
-                              {hasTranslation ? `${chunk.wordCount || 0} کلمه` : 'خالی'}
-                            </span>
+                            {/* Inspection Preview Drawer */}
+                            {isInspecting && (
+                              <div className="p-3.5 bg-slate-950/90 border-t border-slate-800 space-y-3 animate-in fade-in">
+                                <div className="flex flex-wrap items-center justify-between gap-2">
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-[11px] font-bold text-slate-300">پیش‌نمایش محتوای صفحه:</span>
+                                    <div className="flex items-center gap-1 bg-slate-900 p-0.5 rounded-lg border border-slate-750 text-[10px]">
+                                      <button
+                                        type="button"
+                                        onClick={() => setInspectingLangTab('fa')}
+                                        className={`px-2 py-0.5 rounded font-bold transition ${
+                                          inspectingLangTab === 'fa' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'
+                                        }`}
+                                      >
+                                        ترجمه فارسی (چاپی)
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => setInspectingLangTab('en')}
+                                        className={`px-2 py-0.5 rounded font-bold transition ${
+                                          inspectingLangTab === 'en' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'
+                                        }`}
+                                      >
+                                        متن اصلی انگلیسی
+                                      </button>
+                                    </div>
+                                  </div>
 
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleToggleChunkExcluded(chunk.id);
-                              }}
-                              className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition flex items-center gap-1 ${
-                                isExcluded
-                                  ? 'bg-rose-500/20 text-rose-300 border border-rose-500/40 hover:bg-rose-500/30'
-                                  : 'bg-slate-800 text-slate-300 hover:text-white border border-slate-700 hover:border-slate-600'
-                              }`}
-                            >
-                              {isExcluded ? (
-                                <>
-                                  <EyeOff className="w-3 h-3 text-rose-400" />
-                                  <span>حذف شده از PDF</span>
-                                </>
-                              ) : (
-                                <>
-                                  <Check className="w-3 h-3 text-emerald-400" />
-                                  <span>چاپ در PDF</span>
-                                </>
-                              )}
-                            </button>
+                                  <div className="flex items-center gap-2">
+                                    {isExcluded ? (
+                                      <button
+                                        type="button"
+                                        onClick={() => handleToggleChunkExcluded(chunk.id)}
+                                        className="px-3 py-1 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[11px] flex items-center gap-1 shadow-sm transition"
+                                      >
+                                        <Check className="w-3.5 h-3.5" />
+                                        <span>بازگرداندن و چاپ این صفحه در PDF</span>
+                                      </button>
+                                    ) : (
+                                      <button
+                                        type="button"
+                                        onClick={() => handleToggleChunkExcluded(chunk.id)}
+                                        className="px-3 py-1 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold text-[11px] flex items-center gap-1 shadow-sm transition"
+                                      >
+                                        <Trash2 className="w-3.5 h-3.5" />
+                                        <span>حذف این صفحه از خروجی PDF</span>
+                                      </button>
+                                    )}
+
+                                    {onDeleteChunk && (
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          if (confirm(`آیا از حذف دائمی صفحه ${chunk.chunkNumber} (${cleanChapterTitle(chunk.chapterTitle)}) از کل کتاب اطمینان دارید؟`)) {
+                                            onDeleteChunk(chunk.id);
+                                          }
+                                        }}
+                                        className="px-2.5 py-1 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-300 border border-red-500/30 font-bold text-[11px] flex items-center gap-1 transition"
+                                        title="حذف دائمی این بخش از دیتابیس کتاب"
+                                      >
+                                        <Trash2 className="w-3 h-3 text-red-400" />
+                                        <span>حذف کامل از کتاب</span>
+                                      </button>
+                                    )}
+                                  </div>
+                                </div>
+
+                                {/* Text View Area */}
+                                <div className="p-3 bg-slate-900 border border-slate-800 rounded-xl max-h-56 overflow-y-auto text-xs leading-relaxed">
+                                  {inspectingLangTab === 'fa' ? (
+                                    chunk.translatedHtml ? (
+                                      <div
+                                        className="book-render-content text-slate-200"
+                                        dangerouslySetInnerHTML={{ __html: chunk.translatedHtml }}
+                                      />
+                                    ) : (
+                                      <div className="text-slate-500 text-center py-6">
+                                        این صفحه هنوز ترجمه نشده است.
+                                      </div>
+                                    )
+                                  ) : (
+                                    <div className="text-slate-300 font-sans whitespace-pre-wrap" dir="ltr">
+                                      {chunk.englishText}
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            )}
                           </div>
-                        </div>
-                      );
-                    })}
+                        );
+                      })}
                   </div>
                 </div>
               </div>

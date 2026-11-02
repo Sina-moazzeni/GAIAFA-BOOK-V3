@@ -29,6 +29,7 @@ interface ChunkListSidebarProps {
   onToggleExcludeChunk?: (id: string) => void;
   onOpenAddPageModal?: (targetChunkId?: string, defaultPosition?: 'after' | 'before' | 'start' | 'end') => void;
   isLoadingChunks?: boolean;
+  onRetryFailedChunks?: () => void;
 }
 
 export const ChunkListSidebar: React.FC<ChunkListSidebarProps> = ({
@@ -41,14 +42,18 @@ export const ChunkListSidebar: React.FC<ChunkListSidebarProps> = ({
   onToggleExcludeChunk,
   onOpenAddPageModal,
   isLoadingChunks = false,
+  onRetryFailedChunks,
 }) => {
-  const [filter, setFilter] = useState<'all' | 'completed' | 'pending'>('all');
+  const [filter, setFilter] = useState<'all' | 'completed' | 'pending' | 'failed'>('all');
   const [search, setSearch] = useState('');
 
   const safeChunks = chunks || [];
+  const failedCount = safeChunks.filter(c => c.status === 'error' || (!c.translatedHtml && !!c.errorMessage)).length;
+
   const filteredChunks = safeChunks.filter(c => {
     if (filter === 'completed' && !c.translatedHtml) return false;
     if (filter === 'pending' && c.translatedHtml) return false;
+    if (filter === 'failed' && c.status !== 'error' && (!c.errorMessage || c.translatedHtml)) return false;
     if (search.trim()) {
       const q = search.toLowerCase();
       const matchTitle = c.chapterTitle.toLowerCase().includes(q);
@@ -123,7 +128,38 @@ export const ChunkListSidebar: React.FC<ChunkListSidebarProps> = ({
           >
             ترجمه‌شده ({chunks.filter(c => c.translatedHtml).length})
           </button>
+          {failedCount > 0 && (
+            <button
+              onClick={() => setFilter('failed')}
+              className={`py-1 px-2 rounded font-medium transition flex items-center gap-1 ${
+                filter === 'failed' ? 'bg-amber-600 text-white shadow-sm' : 'text-amber-400 hover:text-amber-300'
+              }`}
+            >
+              <AlertCircle className="w-3 h-3" />
+              <span>خطادار ({failedCount})</span>
+            </button>
+          )}
         </div>
+
+        {/* Retry Failed Chunks Quick Banner */}
+        {failedCount > 0 && onRetryFailedChunks && (
+          <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-2.5 flex items-center justify-between gap-2">
+            <div className="flex items-center gap-1.5 text-xs text-amber-300">
+              <AlertCircle className="w-4 h-4 text-amber-400 shrink-0" />
+              <span className="font-medium">{failedCount} صفحه به دلیل سهمیه یا خطای سرور ترجمه نشد</span>
+            </div>
+            <button
+              type="button"
+              onClick={onRetryFailedChunks}
+              disabled={isBatchTranslating}
+              className="px-2.5 py-1 rounded-lg bg-amber-600 hover:bg-amber-500 disabled:opacity-50 text-white text-[11px] font-bold flex items-center gap-1 shadow-sm transition shrink-0"
+              title="ترجمه مجدد خودکار صفحاتی که با خطا مواجه شدند"
+            >
+              <RotateCw className="w-3 h-3" />
+              <span>ترجمه مجدد</span>
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Chunk List Scroll Area */}
