@@ -1079,9 +1079,14 @@ ${urls.map((u) => `  <url>
     const user = (req as any).user as User;
     const isStaffOrAdmin = user.role === 'admin' || user.role === 'staff';
     const allBooks = db.getBooks();
+    const scope = req.query.scope as string | undefined;
+
+    // Strict Access Control:
+    // Staff/Admin can view all books across the system (or their own if ?scope=mine)
+    // Regular users can ONLY and EXCLUSIVELY view their own books (b.userId === user.id)
     const rawBooks = isStaffOrAdmin
-      ? allBooks
-      : allBooks.filter(b => b.userId === user.id || b.userId === 'usr_demo_1' || b.userId === 'system' || b.id.startsWith('book_demo') || b.id.startsWith('sample_'));
+      ? (scope === 'mine' ? allBooks.filter(b => b.userId === user.id) : allBooks)
+      : allBooks.filter(b => b.userId === user.id);
 
     const books = rawBooks.map(b => {
       const totalChunks = (b as any).totalChunks !== undefined ? (b as any).totalChunks : (Array.isArray(b.chunks) ? b.chunks.length : 0);
@@ -1124,10 +1129,10 @@ ${urls.map((u) => `  <url>
       return res.status(404).json({ error: 'کتاب مورد نظر یافت نشد.' });
     }
 
-    const isDemoOrPublic = book.id.startsWith('book_demo') || book.id.startsWith('sample_') || book.userId === 'usr_demo_1' || book.userId === 'system';
-    const canAccess = book.userId === user.id || user.role === 'admin' || user.role === 'staff' || isDemoOrPublic;
+    const isStaffOrAdmin = user.role === 'admin' || user.role === 'staff';
+    const isOwner = book.userId === user.id;
 
-    if (!canAccess) {
+    if (!isOwner && !isStaffOrAdmin) {
       return res.status(403).json({ error: 'شما دسترسی به این کتاب را ندارید.' });
     }
 
@@ -1263,7 +1268,10 @@ ${urls.map((u) => `  <url>
       return res.status(404).json({ error: 'کتاب یافت نشد.' });
     }
 
-    if (book.userId !== user.id && user.role !== 'admin') {
+    const isStaffOrAdmin = user.role === 'admin' || user.role === 'staff';
+    const isOwner = book.userId === user.id;
+
+    if (!isOwner && !isStaffOrAdmin) {
       return res.status(403).json({ error: 'دسترسی غیرمجاز.' });
     }
 
@@ -1308,7 +1316,20 @@ ${urls.map((u) => `  <url>
   // Delete book
   app.delete('/api/books/:id', requireAuth, (req, res) => {
     const user = (req as any).user as User;
-    const ok = db.deleteBook(req.params.id, user.role === 'admin' ? undefined : user.id);
+    const book = db.getBookById(req.params.id);
+
+    if (!book) {
+      return res.status(404).json({ error: 'کتاب یافت نشد.' });
+    }
+
+    const isStaffOrAdmin = user.role === 'admin' || user.role === 'staff';
+    const isOwner = book.userId === user.id;
+
+    if (!isOwner && !isStaffOrAdmin) {
+      return res.status(403).json({ error: 'دسترسی غیرمجاز.' });
+    }
+
+    const ok = db.deleteBook(req.params.id, isStaffOrAdmin ? undefined : user.id);
 
     if (!ok) {
       return res.status(404).json({ error: 'کتاب یافت نشد یا دسترسی حذف آن را ندارید.' });
@@ -1326,7 +1347,10 @@ ${urls.map((u) => `  <url>
       return res.status(404).json({ error: 'کتاب یافت نشد.' });
     }
 
-    if (book.userId !== user.id && user.role !== 'admin') {
+    const isStaffOrAdmin = user.role === 'admin' || user.role === 'staff';
+    const isOwner = book.userId === user.id;
+
+    if (!isOwner && !isStaffOrAdmin) {
       return res.status(403).json({ error: 'دسترسی غیرمجاز.' });
     }
 
@@ -1383,7 +1407,10 @@ ${urls.map((u) => `  <url>
       return res.status(404).json({ error: 'کتاب مورد نظر یافت نشد.' });
     }
 
-    if (book.userId !== user.id && user.role !== 'admin') {
+    const isStaffOrAdmin = user.role === 'admin' || user.role === 'staff';
+    const isOwner = book.userId === user.id;
+
+    if (!isOwner && !isStaffOrAdmin) {
       return res.status(403).json({ error: 'دسترسی غیرمجاز.' });
     }
 
@@ -1439,7 +1466,10 @@ ${urls.map((u) => `  <url>
     const book = db.getBookById(req.params.id);
 
     if (!book) return res.status(404).json({ error: 'کتاب یافت نشد.' });
-    if (book.userId !== user.id && user.role !== 'admin' && user.role !== 'staff') {
+    const isStaffOrAdmin = user.role === 'admin' || user.role === 'staff';
+    const isOwner = book.userId === user.id;
+
+    if (!isOwner && !isStaffOrAdmin) {
       return res.status(403).json({ error: 'دسترسی غیرمجاز.' });
     }
 
@@ -1473,7 +1503,10 @@ ${urls.map((u) => `  <url>
     const book = db.getBookById(req.params.id);
 
     if (!book) return res.status(404).json({ error: 'کتاب یافت نشد.' });
-    if (book.userId !== user.id && user.role !== 'admin') {
+    const isStaffOrAdmin = user.role === 'admin' || user.role === 'staff';
+    const isOwner = book.userId === user.id;
+
+    if (!isOwner && !isStaffOrAdmin) {
       return res.status(403).json({ error: 'دسترسی غیرمجاز.' });
     }
 

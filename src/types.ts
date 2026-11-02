@@ -523,6 +523,7 @@ export interface BookDesignConfig {
 
 export interface BookProject {
   id: string;
+  userId?: string;
   title: string;
   originalTitle: string;
   author: string;

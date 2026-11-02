@@ -114,13 +114,21 @@ export function UserDashboard({
     };
   };
 
+  const isManagement = user.role === 'admin' || user.role === 'staff';
+  const [adminScope, setAdminScope] = useState<'all' | 'mine'>('all');
+
+  // Compute displayed books based on role & scope
+  const displayedBooks = isManagement && adminScope === 'mine'
+    ? books.filter((b) => b.userId === user.id)
+    : books;
+
   // Compute stats
-  const totalBooks = books.length;
+  const totalBooks = displayedBooks.length;
   let totalWordsTranslated = 0;
   let completedBooksCount = 0;
   let totalUserSpentOnBooks = 0;
 
-  books.forEach((b) => {
+  displayedBooks.forEach((b) => {
     const usage = getBookUsage(b);
     totalWordsTranslated += usage.completedWords;
     totalUserSpentOnBooks += usage.incurredCost;
@@ -129,7 +137,7 @@ export function UserDashboard({
     }
   });
 
-  const filteredBooks = books.filter((b) => {
+  const filteredBooks = displayedBooks.filter((b) => {
     const usage = getBookUsage(b);
     const isCompleted = usage.isCompleted;
     const isTranslating = usage.isTranslating;
@@ -429,6 +437,35 @@ export function UserDashboard({
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
+            {/* Management Scope Toggle (Only visible to Admin & Staff) */}
+            {isManagement && (
+              <div className="flex items-center gap-1 bg-slate-900 p-1 rounded-xl border border-amber-500/30 text-xs shadow-sm">
+                <button
+                  onClick={() => setAdminScope('all')}
+                  className={`px-2.5 py-1.5 rounded-lg transition-all font-semibold flex items-center gap-1 ${
+                    adminScope === 'all'
+                      ? 'bg-amber-500 text-slate-950 font-bold shadow'
+                      : 'text-amber-400/80 hover:text-white'
+                  }`}
+                  title="مشاهده تمام کتاب‌های ثبت‌شده توسط همه کاربران سیستم"
+                >
+                  <ShieldCheck className="w-3.5 h-3.5" />
+                  <span>همه کتاب‌های سیستم ({books.length})</span>
+                </button>
+                <button
+                  onClick={() => setAdminScope('mine')}
+                  className={`px-2.5 py-1.5 rounded-lg transition-all font-semibold flex items-center gap-1 ${
+                    adminScope === 'mine'
+                      ? 'bg-amber-500 text-slate-950 font-bold shadow'
+                      : 'text-amber-400/80 hover:text-white'
+                  }`}
+                  title="فقط کتاب‌های متعلق به حساب کاربری من"
+                >
+                  <span>کتاب‌های شخصی من ({books.filter((b) => b.userId === user.id).length})</span>
+                </button>
+              </div>
+            )}
+
             {/* View Mode Toggle */}
             <div className="flex items-center gap-1 bg-slate-900 p-1 rounded-xl border border-slate-800 text-xs">
               <button
@@ -457,7 +494,7 @@ export function UserDashboard({
                 onClick={() => setFilter('all')}
                 className={`px-2.5 py-1.5 rounded-lg transition-all ${filter === 'all' ? 'bg-slate-800 text-white font-bold' : 'text-slate-400 hover:text-white'}`}
               >
-                همه ({books.length})
+                همه ({displayedBooks.length})
               </button>
               <button
                 onClick={() => setFilter('completed')}
@@ -639,9 +676,21 @@ export function UserDashboard({
                   <div>
                     {/* Top Row Badges */}
                     <div className="flex items-center justify-between gap-2 mb-3">
-                      <span className="text-[11px] font-semibold px-2.5 py-1 rounded-lg bg-slate-800 text-amber-400 border border-slate-700/80">
-                        {getToneLabel(book.tone)}
-                      </span>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="text-[11px] font-semibold px-2.5 py-1 rounded-lg bg-slate-800 text-amber-400 border border-slate-700/80">
+                          {getToneLabel(book.tone)}
+                        </span>
+                        {isManagement && book.userId && book.userId !== user.id && (
+                          <span className="text-[10px] font-mono px-2 py-0.5 rounded-md bg-purple-500/10 text-purple-300 border border-purple-500/20" title={`شناسه کاربر ثبت‌کننده: ${book.userId}`}>
+                            👤 کاربر دیگر
+                          </span>
+                        )}
+                        {isManagement && book.userId === user.id && (
+                          <span className="text-[10px] font-mono px-2 py-0.5 rounded-md bg-emerald-500/10 text-emerald-300 border border-emerald-500/20">
+                            ⭐ کتاب شما
+                          </span>
+                        )}
+                      </div>
                       {isAllDone ? (
                         <span className="flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400">
                           <CheckCircle2 className="w-3 h-3" />

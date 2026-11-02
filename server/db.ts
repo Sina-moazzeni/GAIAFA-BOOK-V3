@@ -1142,7 +1142,7 @@ class Database {
                   const totalImagesCount = content.totalImagesCount || chunks.reduce((acc: number, c: any) => acc + (c.imageCount || (c.hasImages ? 1 : 0)), 0);
                   const restoredBook: BookRecord = {
                     id: content.id || bookId,
-                    userId: content.userId || 'usr_demo_1',
+                    userId: content.userId || 'usr_admin_1',
                     title: content.title || 'کتاب بازیابی شده',
                     originalTitle: content.originalTitle || content.title || 'Recovered Book',
                     author: content.author || 'نامشخص',
@@ -1877,7 +1877,7 @@ class Database {
           const totalImagesCount = diskContent.totalImagesCount || chunks.reduce((acc: number, c: any) => acc + (c.imageCount || (c.hasImages ? 1 : 0)), 0);
           bookMeta = {
             id,
-            userId: diskContent.userId || 'usr_demo_1',
+            userId: diskContent.userId || 'usr_admin_1',
             title: diskContent.title || 'کتاب بدون عنوان',
             originalTitle: diskContent.originalTitle || diskContent.title || 'Untitled',
             author: diskContent.author || 'نامشخص',

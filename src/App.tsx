@@ -534,6 +534,10 @@ export default function App() {
           setBooks((prev) => prev.map((b) => (b.id === targetId ? fullBook : b)));
           return fullBook;
         }
+      } else if (res.status === 403 || res.status === 404) {
+        // Book does not belong to user or was deleted
+        setBooks((prev) => prev.filter((b) => b.id !== targetId));
+        return null;
       }
     } catch (e) {
       console.warn('Error loading book chunks', e);
@@ -670,6 +674,14 @@ export default function App() {
               activeChunkIdRef.current = fallback.chunks[0].id;
             }
           }
+        } else {
+          setActiveBookId('');
+          activeBookIdRef.current = '';
+          setActiveChunkId('');
+          activeChunkIdRef.current = '';
+          try {
+            localStorage.removeItem(STORAGE_KEY_ACTIVE_BOOK);
+          } catch (e) {}
         }
       }
     } catch (e) {

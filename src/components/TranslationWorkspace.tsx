@@ -70,6 +70,7 @@ interface TranslationWorkspaceProps {
   onOpenAddPageModal?: (targetChunkId?: string, defaultPosition?: 'after' | 'before' | 'start' | 'end') => void;
   isLoadingChunks?: boolean;
   onRetryFailedChunks?: () => void;
+  onBackToDashboard?: () => void;
 }
 
 export const TranslationWorkspace: React.FC<TranslationWorkspaceProps> = ({
@@ -102,6 +103,7 @@ export const TranslationWorkspace: React.FC<TranslationWorkspaceProps> = ({
   onOpenAddPageModal,
   isLoadingChunks = false,
   onRetryFailedChunks,
+  onBackToDashboard,
 }) => {
   // View Modes: 'preview' (Rendered Book Page), 'plain' (Simple Plain Text Manual Editor), 'html' (Raw HTML Code)
   const [viewMode, setViewMode] = useState<'preview' | 'plain' | 'html'>('preview');
