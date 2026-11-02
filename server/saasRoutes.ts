@@ -1077,16 +1077,12 @@ ${urls.map((u) => `  <url>
   // Get user's books (Ultra-lightweight metadata list - <10KB, instant load, zero data drain!)
   app.get('/api/books', requireAuth, (req, res) => {
     const user = (req as any).user as User;
-    const isStaffOrAdmin = user.role === 'admin' || user.role === 'staff';
     const allBooks = db.getBooks();
-    const scope = req.query.scope as string | undefined;
 
-    // Strict Access Control:
-    // Staff/Admin can view all books across the system (or their own if ?scope=mine)
-    // Regular users can ONLY and EXCLUSIVELY view their own books (b.userId === user.id)
-    const rawBooks = isStaffOrAdmin
-      ? (scope === 'mine' ? allBooks.filter(b => b.userId === user.id) : allBooks)
-      : allBooks.filter(b => b.userId === user.id);
+    // Strict User Panel Isolation:
+    // In the User Dashboard, EVERY user (including admin) ONLY sees their own books (b.userId === user.id).
+    // Management oversees all books across the system exclusively in the Admin Panel (/api/admin/all-books).
+    const rawBooks = allBooks.filter((b) => b.userId === user.id);
 
     const books = rawBooks.map(b => {
       const totalChunks = (b as any).totalChunks !== undefined ? (b as any).totalChunks : (Array.isArray(b.chunks) ? b.chunks.length : 0);

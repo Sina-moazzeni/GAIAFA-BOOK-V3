@@ -1123,51 +1123,14 @@ class Database {
       });
     }
 
-    // Recover any orphaned book files in BOOKS_DIR that are missing in schema.books
-    if (fs.existsSync(BOOKS_DIR)) {
-      try {
-        const existingBookIds = new Set((schema.books || []).map(b => b.id));
-        const files = fs.readdirSync(BOOKS_DIR);
-        for (const file of files) {
-          if (file.endsWith('.json')) {
-            const bookId = file.replace(/\.json$/, '');
-            if (!existingBookIds.has(bookId)) {
-              try {
-                const raw = fs.readFileSync(path.resolve(BOOKS_DIR, file), 'utf-8');
-                const content = JSON.parse(raw);
-                if (content && (content.title || Array.isArray(content.chunks))) {
-                  const chunks = Array.isArray(content.chunks) ? content.chunks : [];
-                  const totalChunks = content.totalChunks || chunks.length;
-                  const completedChunks = content.completedChunks || chunks.filter((c: any) => c.status === 'completed' || Boolean(c.translatedHtml)).length;
-                  const totalImagesCount = content.totalImagesCount || chunks.reduce((acc: number, c: any) => acc + (c.imageCount || (c.hasImages ? 1 : 0)), 0);
-                  const restoredBook: BookRecord = {
-                    id: content.id || bookId,
-                    userId: content.userId || 'usr_admin_1',
-                    title: content.title || 'کتاب بازیابی شده',
-                    originalTitle: content.originalTitle || content.title || 'Recovered Book',
-                    author: content.author || 'نامشخص',
-                    translator: content.translator || 'سامانه هوشمند ترجمه',
-                    tone: content.tone || 'spiritual',
-                    wordCount: content.wordCount || 1000,
-                    estimatedCost: content.estimatedCost || 45000,
-                    status: (completedChunks >= totalChunks && totalChunks > 0) ? 'completed' : (content.status || 'draft'),
-                    totalChunks,
-                    completedChunks,
-                    progressPercent: totalChunks > 0 ? Math.round((completedChunks / totalChunks) * 100) : 0,
-                    totalImagesCount,
-                    chunks: [],
-                    createdAt: content.createdAt || Date.now(),
-                    updatedAt: content.updatedAt || Date.now(),
-                    glossary: Array.isArray(content.glossary) ? content.glossary : [],
-                  };
-                  schema.books.unshift(restoredBook);
-                  existingBookIds.add(bookId);
-                }
-              } catch (e) {}
-            }
-          }
-        }
-      } catch (err) {}
+    // Purge any ghost/dummy recovered books from database schema
+    if (Array.isArray(schema.books)) {
+      schema.books = schema.books.filter(
+        (b) =>
+          b.title !== 'کتاب بازیابی شده' &&
+          b.originalTitle !== 'Recovered Book' &&
+          b.title !== 'کتاب بدون عنوان'
+      );
     }
 
     // Ensure Default Permanent Seed Users ALWAYS exist and have known credentials
@@ -1870,7 +1833,13 @@ class Database {
       try {
         const raw = fs.readFileSync(bookFilePath, 'utf-8');
         const diskContent = JSON.parse(raw);
-        if (diskContent && (diskContent.id === id || diskContent.title)) {
+        if (
+          diskContent &&
+          diskContent.id === id &&
+          diskContent.title &&
+          diskContent.title !== 'کتاب بدون عنوان' &&
+          diskContent.title !== 'کتاب بازیابی شده'
+        ) {
           const chunks = Array.isArray(diskContent.chunks) ? diskContent.chunks : [];
           const totalChunks = diskContent.totalChunks || chunks.length;
           const completedChunks = diskContent.completedChunks || chunks.filter((c: any) => c.status === 'completed' || Boolean(c.translatedHtml)).length;
